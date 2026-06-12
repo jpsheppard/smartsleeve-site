@@ -13,7 +13,6 @@
     :root {
       --bg: #020617;
       --panel: #07111f;
-      --line: rgba(57, 255, 20, 0.32);
       --green: #39ff14;
       --green-soft: rgba(57, 255, 20, 0.76);
       --text: #e5fbe7;
@@ -56,28 +55,6 @@
       text-align: center;
       overflow: hidden;
       position: relative;
-    }
-
-    main::before,
-    main::after {
-      content: "";
-      position: absolute;
-      inset: auto;
-      width: 300px;
-      height: 1px;
-      background: linear-gradient(90deg, transparent, var(--line), transparent);
-      transform: rotate(18deg);
-      pointer-events: none;
-    }
-
-    main::before {
-      left: -80px;
-      top: 80px;
-    }
-
-    main::after {
-      right: -70px;
-      bottom: 96px;
     }
 
     .brand {
