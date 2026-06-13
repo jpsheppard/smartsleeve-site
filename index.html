@@ -9,6 +9,7 @@
   <meta property="og:description" content="Agentic AI-powered quantitative trading across adaptive strategy sleeves. Coming soon.">
   <meta property="og:type" content="website">
   <meta property="og:image" content="https://smartsleeve.ai/sqts-logo-green.png?v=20260612-soft-green">
+  <meta name="sqts-analytics-endpoint" content="https://smartsleeve-analytics.jpsheppard88.workers.dev/collect">
   <style>
     :root {
       --bg: #020617;
@@ -108,5 +109,38 @@
     <div class="circuit-line" aria-hidden="true"></div>
     <h1 class="coming-soon">Coming soon</h1>
   </main>
+  <script>
+    (function () {
+      var meta = document.querySelector('meta[name="sqts-analytics-endpoint"]');
+      var endpoint = meta && meta.content ? meta.content : "";
+      if (!endpoint || !window.fetch) {
+        return;
+      }
+      var visitorKey = "sqts_visitor_id_v1";
+      var visitorId = "";
+      try {
+        visitorId = localStorage.getItem(visitorKey) || "";
+        if (!visitorId) {
+          visitorId = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + "-" + Math.random());
+          localStorage.setItem(visitorKey, visitorId);
+        }
+      } catch (_err) {
+        visitorId = "session-" + String(Date.now()) + "-" + Math.random();
+      }
+      fetch(endpoint, {
+        method: "POST",
+        mode: "cors",
+        keepalive: true,
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          site: "smartsleeve.ai",
+          path: window.location.pathname || "/",
+          referrer: document.referrer || "",
+          visitor_id: visitorId,
+          timestamp: new Date().toISOString()
+        })
+      }).catch(function () {});
+    })();
+  </script>
 </body>
 </html>
