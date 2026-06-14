@@ -9,15 +9,13 @@
     </filter>
   </defs>
   <rect width="512" height="512" rx="64" fill="#020617"/>
-  <path d="M176 178 C72 80 340 36 396 128 C452 220 120 188 126 284 C132 392 388 342 336 334" fill="none" stroke="#39ff14" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
-  <path d="M178 178 L118 146 L78 146 L54 124 M178 178 L138 110 L96 96 L62 72 M178 178 L94 208 L58 240 L36 274 M336 334 L388 360 L414 394 L458 430 M336 334 L414 310 L452 270 L478 238 M336 334 L374 412 L420 454 L468 466" fill="none" stroke="#39ff14" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
-  <polygon points="256,140 372,256 256,372 140,256" fill="#07111f" stroke="#39ff14" stroke-width="6" filter="url(#glow)"/>
-  <polygon points="256,180 332,256 256,332 180,256" fill="#040d14" stroke="#67ff4e" stroke-width="3"/>
+  <path d="M420 104 C346 56 164 58 94 132 C38 196 118 246 260 252 C422 260 464 334 378 388 C306 438 152 436 86 382" fill="none" stroke="#39ff14" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+  <path d="M420 104 C346 56 164 58 94 132 C38 196 118 246 260 252 C422 260 464 334 378 388 C306 438 152 436 86 382" fill="none" stroke="#aeff9c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <polygon points="256,154 358,256 256,358 154,256" fill="#07111f" stroke="#39ff14" stroke-width="6" filter="url(#glow)"/>
+  <polygon points="256,182 330,256 256,330 182,256" fill="#030a12" stroke="#67ff4e" stroke-width="3"/>
   <g fill="#67ff4e">
-    <circle cx="238" cy="220" r="4"/><circle cx="256" cy="220" r="4"/><circle cx="274" cy="220" r="4"/>
-    <circle cx="228" cy="238" r="4"/><circle cx="246" cy="238" r="4"/><circle cx="264" cy="238" r="4"/><circle cx="282" cy="238" r="4"/>
-    <circle cx="220" cy="256" r="4"/><circle cx="238" cy="256" r="4"/><circle cx="256" cy="256" r="4"/><circle cx="274" cy="256" r="4"/><circle cx="292" cy="256" r="4"/>
-    <circle cx="228" cy="274" r="4"/><circle cx="246" cy="274" r="4"/><circle cx="264" cy="274" r="4"/><circle cx="282" cy="274" r="4"/>
-    <circle cx="238" cy="292" r="4"/><circle cx="256" cy="292" r="4"/><circle cx="274" cy="292" r="4"/>
+    <circle cx="206" cy="206" r="4"/><circle cx="306" cy="206" r="4"/><circle cx="206" cy="306" r="4"/><circle cx="306" cy="306" r="4"/>
+    <circle cx="256" cy="256" r="4"/><circle cx="232" cy="256" r="4"/><circle cx="280" cy="256" r="4"/>
   </g>
+  <path d="M218 248 H196 V226 M294 264 H316 V286 M248 294 V316 H226 M264 218 V196 H286" fill="none" stroke="#8cff6e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
