@@ -92,9 +92,8 @@ def draw_diamond(draw: ImageDraw.ImageDraw, center: Point, radius: float, fill: 
     return points
 
 
-def draw_chip(base: Image.Image, glow: Image.Image) -> None:
-    center = (256, 256)
-    radius = 102
+def draw_chip(base: Image.Image, glow: Image.Image, center: Point = (256, 256), radius: float = 102) -> None:
+    factor = radius / 102
     glow_draw = ImageDraw.Draw(glow, "RGBA")
     chip_draw = ImageDraw.Draw(base, "RGBA")
 
@@ -107,11 +106,11 @@ def draw_chip(base: Image.Image, glow: Image.Image) -> None:
     chip_draw.line([s(points[0]), s(points[1])], fill=GREEN_HIGHLIGHT, width=2 * SCALE)
     chip_draw.line([s(points[2]), s(points[3])], fill=(24, 145, 36, 235), width=2 * SCALE)
 
-    inner = draw_diamond(chip_draw, center, 74, (3, 10, 18, 255))
+    inner = draw_diamond(chip_draw, center, radius * 0.725, (3, 10, 18, 255))
     chip_draw.line([s(point) for point in inner + [inner[0]]], fill=GREEN_SOFT, width=3 * SCALE, joint="curve")
 
     def local(u: float, v: float) -> Point:
-        return (center[0] + (u - v) * 0.707, center[1] + (u + v) * 0.707)
+        return (center[0] + (u - v) * 0.707 * factor, center[1] + (u + v) * 0.707 * factor)
 
     # Internal buses, pads, vias, and a central die. No exterior pin stubs.
     for offset in (-44, -30, -16, 0, 16, 30, 44):
@@ -127,12 +126,12 @@ def draw_chip(base: Image.Image, glow: Image.Image) -> None:
             for x, y in (local(u, v), local(v, u)):
                 chip_draw.rounded_rectangle(
                     [
-                        round((x - 3) * SCALE),
-                        round((y - 3) * SCALE),
-                        round((x + 3) * SCALE),
-                        round((y + 3) * SCALE),
+                        round((x - 3 * factor) * SCALE),
+                        round((y - 3 * factor) * SCALE),
+                        round((x + 3 * factor) * SCALE),
+                        round((y + 3 * factor) * SCALE),
                     ],
-                    radius=round(1 * SCALE),
+                    radius=round(max(1, factor) * SCALE),
                     fill=(124, 255, 100, 235),
                 )
 
@@ -158,13 +157,27 @@ def draw_chip(base: Image.Image, glow: Image.Image) -> None:
         x, y = point
         chip_draw.ellipse(
             [
-                round((x - 4) * SCALE),
-                round((y - 4) * SCALE),
-                round((x + 4) * SCALE),
-                round((y + 4) * SCALE),
+                round((x - 4 * factor) * SCALE),
+                round((y - 4 * factor) * SCALE),
+                round((x + 4 * factor) * SCALE),
+                round((y + 4 * factor) * SCALE),
             ],
             fill=(151, 255, 131, 235),
         )
+
+
+def transformed_s_path(center_x: float, scale: float) -> list[Point]:
+    curves = [
+        ((420, 104), (346, 56), (164, 58), (94, 132)),
+        ((94, 132), (38, 196), (118, 246), (260, 252)),
+        ((260, 252), (422, 260), (464, 334), (378, 388)),
+        ((378, 388), (306, 438), (152, 436), (86, 382)),
+    ]
+
+    def transform(point: Point) -> Point:
+        return (center_x + (point[0] - 256) * scale, 256 + (point[1] - 256) * scale)
+
+    return polyline_from_curves(tuple(transform(point) for point in curve) for curve in curves)
 
 
 def build_icon() -> Image.Image:
@@ -176,37 +189,69 @@ def build_icon() -> Image.Image:
     base.alpha_composite(radial)
 
     line_layers = [Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0)) for _ in range(4)]
-    s_path = polyline_from_curves(
-        [
-            ((420, 104), (346, 56), (164, 58), (94, 132)),
-            ((94, 132), (38, 196), (118, 246), (260, 252)),
-            ((260, 252), (422, 260), (464, 334), (378, 388)),
-            ((378, 388), (306, 438), (152, 436), (86, 382)),
-        ]
-    )
-    draw_neon_line(line_layers, s_path, width=10)
-    ImageDraw.Draw(line_layers[3], "RGBA").line(
-        [s(point) for point in s_path],
-        fill=GREEN_HIGHLIGHT,
-        width=3 * SCALE,
-        joint="curve",
-    )
+    for center_x in (178, 334):
+        s_path = transformed_s_path(center_x, 0.64)
+        draw_neon_line(line_layers, s_path, width=8)
+        ImageDraw.Draw(line_layers[3], "RGBA").line(
+            [s(point) for point in s_path],
+            fill=GREEN_HIGHLIGHT,
+            width=2 * SCALE,
+            joint="curve",
+        )
 
     for layer_index, blur in ((0, 18), (1, 10), (2, 4)):
         base.alpha_composite(line_layers[layer_index].filter(ImageFilter.GaussianBlur(blur * SCALE)))
     base.alpha_composite(line_layers[3])
 
     chip_glow = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
-    draw_chip(base, chip_glow)
+    for center in ((178, 256), (334, 256)):
+        draw_chip(base, chip_glow, center=center, radius=74)
     base.alpha_composite(chip_glow.filter(ImageFilter.GaussianBlur(8 * SCALE)))
-    draw_chip(base, Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0)))
+    for center in ((178, 256), (334, 256)):
+        draw_chip(base, Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0)), center=center, radius=74)
 
     return base.resize((CANVAS, CANVAS), Image.Resampling.LANCZOS)
 
 
 def write_svg(path: Path) -> None:
+    curves = [
+        ((420, 104), (346, 56), (164, 58), (94, 132)),
+        ((94, 132), (38, 196), (118, 246), (260, 252)),
+        ((260, 252), (422, 260), (464, 334), (378, 388)),
+        ((378, 388), (306, 438), (152, 436), (86, 382)),
+    ]
+
+    def transform(point: Point, center_x: float, scale: float = 0.64) -> Point:
+        return (center_x + (point[0] - 256) * scale, 256 + (point[1] - 256) * scale)
+
+    def fmt(point: Point) -> str:
+        return f"{point[0]:.1f} {point[1]:.1f}"
+
+    def path_d(center_x: float) -> str:
+        first = transform(curves[0][0], center_x)
+        parts = [f"M{fmt(first)}"]
+        for _, c1, c2, end in curves:
+            parts.append(f"C{fmt(transform(c1, center_x))} {fmt(transform(c2, center_x))} {fmt(transform(end, center_x))}")
+        return " ".join(parts)
+
+    def chip_svg(cx: int) -> str:
+        points = f"{cx},182 {cx + 74},256 {cx},330 {cx - 74},256"
+        inner = f"{cx},202 {cx + 54},256 {cx},310 {cx - 54},256"
+        core = f"{cx},234 {cx + 22},256 {cx},278 {cx - 22},256"
+        return f"""
+  <polygon points="{points}" fill="#07111f" stroke="#39ff14" stroke-width="5" filter="url(#glow)"/>
+  <polygon points="{inner}" fill="#030a12" stroke="#67ff4e" stroke-width="2.4"/>
+  <polygon points="{core}" fill="#09221c" stroke="#aeff9c" stroke-width="1.8"/>
+  <g fill="#67ff4e">
+    <circle cx="{cx - 36}" cy="220" r="3"/><circle cx="{cx + 36}" cy="220" r="3"/>
+    <circle cx="{cx - 36}" cy="292" r="3"/><circle cx="{cx + 36}" cy="292" r="3"/>
+    <circle cx="{cx}" cy="256" r="3.5"/><circle cx="{cx - 18}" cy="256" r="3"/><circle cx="{cx + 18}" cy="256" r="3"/>
+  </g>
+  <path d="M{cx - 28} 250 H{cx - 44} V234 M{cx + 28} 262 H{cx + 44} V278 M{cx - 6} 280 V296 H{cx - 24} M{cx + 6} 232 V216 H{cx + 24}" fill="none" stroke="#8cff6e" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+"""
+
     path.write_text(
-        """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+        f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
     <filter id="glow" x="-80%" y="-80%" width="260%" height="260%">
       <feGaussianBlur stdDeviation="8" result="blur"/>
@@ -217,15 +262,11 @@ def write_svg(path: Path) -> None:
     </filter>
   </defs>
   <rect width="512" height="512" rx="64" fill="#020617"/>
-  <path d="M420 104 C346 56 164 58 94 132 C38 196 118 246 260 252 C422 260 464 334 378 388 C306 438 152 436 86 382" fill="none" stroke="#39ff14" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
-  <path d="M420 104 C346 56 164 58 94 132 C38 196 118 246 260 252 C422 260 464 334 378 388 C306 438 152 436 86 382" fill="none" stroke="#aeff9c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-  <polygon points="256,154 358,256 256,358 154,256" fill="#07111f" stroke="#39ff14" stroke-width="6" filter="url(#glow)"/>
-  <polygon points="256,182 330,256 256,330 182,256" fill="#030a12" stroke="#67ff4e" stroke-width="3"/>
-  <g fill="#67ff4e">
-    <circle cx="206" cy="206" r="4"/><circle cx="306" cy="206" r="4"/><circle cx="206" cy="306" r="4"/><circle cx="306" cy="306" r="4"/>
-    <circle cx="256" cy="256" r="4"/><circle cx="232" cy="256" r="4"/><circle cx="280" cy="256" r="4"/>
-  </g>
-  <path d="M218 248 H196 V226 M294 264 H316 V286 M248 294 V316 H226 M264 218 V196 H286" fill="none" stroke="#8cff6e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="{path_d(178)}" fill="none" stroke="#39ff14" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+  <path d="{path_d(334)}" fill="none" stroke="#39ff14" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+  <path d="{path_d(178)}" fill="none" stroke="#aeff9c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="{path_d(334)}" fill="none" stroke="#aeff9c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+{chip_svg(178)}{chip_svg(334)}
 </svg>
 """,
         encoding="utf-8",
