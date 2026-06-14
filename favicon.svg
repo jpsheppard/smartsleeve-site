@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="64" fill="#020617"/>
+  <path d="M176 178 C72 80 340 36 396 128 C452 220 120 188 126 284 C132 392 388 342 336 334" fill="none" stroke="#39ff14" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+  <path d="M178 178 L118 146 L78 146 L54 124 M178 178 L138 110 L96 96 L62 72 M178 178 L94 208 L58 240 L36 274 M336 334 L388 360 L414 394 L458 430 M336 334 L414 310 L452 270 L478 238 M336 334 L374 412 L420 454 L468 466" fill="none" stroke="#39ff14" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+  <polygon points="256,140 372,256 256,372 140,256" fill="#07111f" stroke="#39ff14" stroke-width="6" filter="url(#glow)"/>
+  <polygon points="256,180 332,256 256,332 180,256" fill="#040d14" stroke="#67ff4e" stroke-width="3"/>
+  <g fill="#67ff4e">
+    <circle cx="238" cy="220" r="4"/><circle cx="256" cy="220" r="4"/><circle cx="274" cy="220" r="4"/>
+    <circle cx="228" cy="238" r="4"/><circle cx="246" cy="238" r="4"/><circle cx="264" cy="238" r="4"/><circle cx="282" cy="238" r="4"/>
+    <circle cx="220" cy="256" r="4"/><circle cx="238" cy="256" r="4"/><circle cx="256" cy="256" r="4"/><circle cx="274" cy="256" r="4"/><circle cx="292" cy="256" r="4"/>
+    <circle cx="228" cy="274" r="4"/><circle cx="246" cy="274" r="4"/><circle cx="264" cy="274" r="4"/><circle cx="282" cy="274" r="4"/>
+    <circle cx="238" cy="292" r="4"/><circle cx="256" cy="292" r="4"/><circle cx="274" cy="292" r="4"/>
+  </g>
+</svg>
