@@ -154,14 +154,95 @@ def make_ss_preview() -> None:
         5,
     )
     draw.text((905, 745), "Preview render", font=load_font(28, bold=True), fill=(57, 255, 20, 210))
-    draw.text((905, 788), "Upload the print PNG to Printful or Printify to generate exact production mockups.", font=load_font(24), fill=(167, 183, 200, 255))
+    draw_wrapped_text(
+        draw,
+        (905, 788),
+        "Upload the print PNG to Printful to generate exact production mockups.",
+        load_font(22),
+        (167, 183, 200, 255),
+        370,
+        4,
+    )
     preview.save(OUT / "smartsleeve-ss-tee-preview.png")
+
+
+def make_ss_tank_preview() -> None:
+    source = Image.open(OUT / "smartsleeve-ss-front-print.png").convert("RGBA")
+    preview = Image.new("RGBA", (1400, 1100), (3, 9, 26, 255))
+    draw = ImageDraw.Draw(preview)
+
+    tank = Image.new("RGBA", (820, 820), (0, 0, 0, 0))
+    tdraw = ImageDraw.Draw(tank)
+    tdraw.polygon(
+        [
+            (250, 70),
+            (350, 70),
+            (382, 210),
+            (438, 210),
+            (470, 70),
+            (570, 70),
+            (642, 220),
+            (585, 760),
+            (235, 760),
+            (178, 220),
+        ],
+        fill=(5, 8, 15, 255),
+        outline=(57, 255, 20, 90),
+    )
+    tdraw.pieslice((275, 48, 545, 270), start=0, end=180, fill=(3, 9, 26, 255))
+    tdraw.arc((276, 48, 544, 270), start=0, end=180, fill=(57, 255, 20, 90), width=3)
+    tdraw.rounded_rectangle(
+        (236, 214, 584, 760),
+        radius=28,
+        fill=(1, 3, 10, 255),
+        outline=(57, 255, 20, 54),
+        width=2,
+    )
+    preview.alpha_composite(tank.filter(ImageFilter.GaussianBlur(0.2)), (82, 135))
+
+    crop = source.crop((260, 470, 4240, 3890))
+    art = crop.resize((455, int(crop.height * (455 / crop.width))), Image.Resampling.LANCZOS)
+    if art.height > 395:
+        art = art.resize((int(art.width * (395 / art.height)), 395), Image.Resampling.LANCZOS)
+    centered_paste(preview, art, 492, 340)
+
+    y = draw_wrapped_text(
+        draw,
+        (875, 210),
+        "SmartSleeve SS Chip Tank",
+        load_font(54, bold=True),
+        TEXT_SOFT,
+        455,
+        6,
+    )
+    draw.text((875, y + 20), "$19.99 + shipping", font=load_font(46, bold=True), fill=GREEN)
+    draw_wrapped_text(
+        draw,
+        (875, y + 92),
+        "Black tank top with the double-S chip mark and SmartSleeve lockup.",
+        load_font(32),
+        (167, 183, 200, 255),
+        445,
+        5,
+    )
+    draw.text((905, 745), "Preview render", font=load_font(28, bold=True), fill=(57, 255, 20, 210))
+    draw_wrapped_text(
+        draw,
+        (905, 788),
+        "Use Printful's exact black tank mockups after the variants are selected.",
+        load_font(22),
+        (167, 183, 200, 255),
+        370,
+        4,
+    )
+    preview.save(OUT / "smartsleeve-ss-tank-preview.png")
 
 
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     make_ss_front_art()
     make_ss_preview()
+    make_ss_tank_preview()
 
 
 if __name__ == "__main__":

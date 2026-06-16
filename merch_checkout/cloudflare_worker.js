@@ -17,8 +17,16 @@
 //   MERCH_SHIPPING_USD
 //   MERCH_FULFILLMENT_PROVIDER=printful
 //   PRINTFUL_API_KEY
-//   PRINTFUL_VARIANT_ID_SQTS_TEE
-//   PRINTFUL_VARIANT_ID_SEMISAGE_TEE
+//   PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TEE_S
+//   PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TEE_M
+//   PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TEE_L
+//   PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TEE_XL
+//   PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TEE_2XL
+//   PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TANK_S
+//   PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TANK_M
+//   PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TANK_L
+//   PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TANK_XL
+//   PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TANK_2XL
 //   PRINTFUL_CONFIRM_ORDERS=true
 //
 // Routes:
@@ -30,23 +38,31 @@ const DEFAULT_SITE = "https://smartsleeve.ai";
 const DEFAULT_SUCCESS_PATH = "/app/#shop-success";
 const DEFAULT_CANCEL_PATH = "/app/#shop";
 const MAX_QUANTITY = 6;
+const SIZE_OPTIONS = ["S", "M", "L", "XL", "2XL"];
+const DEFAULT_SS_PRINT_FILE_URL = `${DEFAULT_SITE}/merch/smartsleeve-ss-front-print.png`;
 
 const PRODUCT_CATALOG = {
-  "sqts-tee": {
-    name: "SQTS Circuit Logo Tee",
-    description: "Black SmartSleeve tee with the original SQTS neon circuit logo.",
-    unit_amount: 1999,
-    currency: "usd",
-    fulfillment_sku: "sqts-tee",
-    variant_env: "PRINTFUL_VARIANT_ID_SQTS_TEE",
-  },
   "smartsleeve-ss-tee": {
     name: "SmartSleeve SS Chip Tee",
-    description: "Black SmartSleeve tee with the double-S silicon-chip mark and SQTS lockup.",
+    description: "Black SmartSleeve tee with the double-S silicon-chip mark and SmartSleeve lockup.",
     unit_amount: 1999,
     currency: "usd",
     fulfillment_sku: "smartsleeve-ss-tee",
-    variant_env: "PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TEE",
+    variant_env_prefix: "PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TEE",
+    fallback_variant_env: "PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TEE",
+    print_file_url_env: "PRINTFUL_FILE_URL_SMARTSLEEVE_SS",
+    default_print_file_url: DEFAULT_SS_PRINT_FILE_URL,
+  },
+  "smartsleeve-ss-tank": {
+    name: "SmartSleeve SS Chip Tank",
+    description: "Black SmartSleeve tank top with the double-S silicon-chip mark and SmartSleeve lockup.",
+    unit_amount: 1999,
+    currency: "usd",
+    fulfillment_sku: "smartsleeve-ss-tank",
+    variant_env_prefix: "PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TANK",
+    fallback_variant_env: "PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TANK",
+    print_file_url_env: "PRINTFUL_FILE_URL_SMARTSLEEVE_SS",
+    default_print_file_url: DEFAULT_SS_PRINT_FILE_URL,
   },
 };
 
@@ -95,6 +111,27 @@ function clampQuantity(value) {
 
 function normalizeProductKey(value) {
   return String(value || "").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "");
+}
+
+function normalizeSize(value) {
+  const normalized = String(value || "").trim().toUpperCase();
+  return SIZE_OPTIONS.includes(normalized) ? normalized : "M";
+}
+
+function sizeVariantEnvName(product, size) {
+  return `${product.variant_env_prefix}_${normalizeSize(size)}`;
+}
+
+function printfulVariantId(env, product, size) {
+  const sizeSpecific = Number(env[sizeVariantEnvName(product, size)] || 0);
+  if (sizeSpecific) {
+    return sizeSpecific;
+  }
+  return Number(env[product.fallback_variant_env] || 0);
+}
+
+function printFileUrl(env, product) {
+  return String(env[product.print_file_url_env] || product.default_print_file_url || "").trim();
 }
 
 function orderKey(sessionId) {
@@ -153,16 +190,6 @@ async function createStripeCheckoutSession(request, env) {
     "custom_fields[0][label][type]": "custom",
     "custom_fields[0][label][custom]": "Shirt size",
     "custom_fields[0][type]": "dropdown",
-    "custom_fields[0][dropdown][options][0][label]": "S",
-    "custom_fields[0][dropdown][options][0][value]": "S",
-    "custom_fields[0][dropdown][options][1][label]": "M",
-    "custom_fields[0][dropdown][options][1][value]": "M",
-    "custom_fields[0][dropdown][options][2][label]": "L",
-    "custom_fields[0][dropdown][options][2][value]": "L",
-    "custom_fields[0][dropdown][options][3][label]": "XL",
-    "custom_fields[0][dropdown][options][3][value]": "XL",
-    "custom_fields[0][dropdown][options][4][label]": "2XL",
-    "custom_fields[0][dropdown][options][4][value]": "2XL",
     "line_items[0][quantity]": quantity,
     "line_items[0][price_data][currency]": product.currency,
     "line_items[0][price_data][unit_amount]": product.unit_amount,
@@ -172,6 +199,10 @@ async function createStripeCheckoutSession(request, env) {
     "metadata[fulfillment_sku]": product.fulfillment_sku,
     "metadata[quantity]": String(quantity),
   };
+  SIZE_OPTIONS.forEach((size, index) => {
+    params[`custom_fields[0][dropdown][options][${index}][label]`] = size;
+    params[`custom_fields[0][dropdown][options][${index}][value]`] = size;
+  });
   if (shippingCents > 0) {
     params["shipping_options[0][shipping_rate_data][type]"] = "fixed_amount";
     params["shipping_options[0][shipping_rate_data][fixed_amount][currency]"] = product.currency;
@@ -273,15 +304,24 @@ async function submitPrintfulOrder(env, session) {
   if (!product) {
     return { status: "skipped", reason: "unknown product metadata" };
   }
-  const variantId = Number(env[product.variant_env] || 0);
+  const size = normalizeSize(customFieldValue(session, "shirt_size"));
+  const variantId = printfulVariantId(env, product, size);
   if (!variantId) {
-    return { status: "skipped", reason: `${product.variant_env} not configured` };
+    return {
+      status: "skipped",
+      reason: `${sizeVariantEnvName(product, size)} not configured`,
+      product_key: productKey,
+      size,
+    };
+  }
+  const fileUrl = printFileUrl(env, product);
+  if (!fileUrl) {
+    return { status: "skipped", reason: `${product.print_file_url_env} not configured`, product_key: productKey, size };
   }
   const shipping = session.shipping_details || {};
   const address = shipping.address || {};
   const customer = session.customer_details || {};
   const quantity = clampQuantity(session.metadata && session.metadata.quantity);
-  const size = customFieldValue(session, "shirt_size") || "M";
   const order = {
     external_id: session.id,
     recipient: {
@@ -299,6 +339,13 @@ async function submitPrintfulOrder(env, session) {
         variant_id: variantId,
         quantity,
         name: `${product.name} - ${size}`,
+        retail_price: (product.unit_amount / 100).toFixed(2),
+        files: [
+          {
+            type: "default",
+            url: fileUrl,
+          },
+        ],
       },
     ],
   };
@@ -316,6 +363,9 @@ async function submitPrintfulOrder(env, session) {
     status: response.ok ? "submitted" : "failed",
     provider: "printful",
     confirm,
+    product_key: productKey,
+    size,
+    print_file_url: fileUrl,
     http_status: response.status,
     provider_response: payload,
   };
@@ -343,6 +393,7 @@ async function storeOrder(env, session, fulfillment) {
       currency: session.currency,
       payment_status: session.payment_status,
       customer_email: session.customer_details && session.customer_details.email,
+      size: customFieldValue(session, "shirt_size"),
       fulfillment,
     }),
   );
@@ -364,7 +415,10 @@ async function handleStripeWebhook(request, env) {
   if (alreadyStored) {
     return jsonResponse(request, env, { received: true, duplicate: true });
   }
-  const fulfillment = await maybeFulfill(env, session);
+  const paymentStatus = String(session.payment_status || "").toLowerCase();
+  const fulfillment = paymentStatus === "paid"
+    ? await maybeFulfill(env, session)
+    : { status: "skipped", reason: `payment_status=${paymentStatus || "unknown"}` };
   await storeOrder(env, session, fulfillment);
   return jsonResponse(request, env, { received: true, fulfillment });
 }
@@ -382,6 +436,7 @@ export default {
         stripe_configured: Boolean(env.STRIPE_SECRET_KEY),
         webhook_configured: Boolean(env.STRIPE_WEBHOOK_SECRET),
         fulfillment_provider: env.MERCH_FULFILLMENT_PROVIDER || "none",
+        products: Object.keys(PRODUCT_CATALOG),
       });
     }
     if (request.method === "POST" && url.pathname === "/checkout") {

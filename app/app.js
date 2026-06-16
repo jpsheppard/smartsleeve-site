@@ -3,8 +3,8 @@
 
   var MERCH_MERCHANT_OF_RECORD = "SmartSleeve Quantitative Trading Systems, LLC";
   var MERCH_PRODUCT_URLS = {
-    "sqts-tee": "",
-    "smartsleeve-ss-tee": ""
+    "smartsleeve-ss-tee": "",
+    "smartsleeve-ss-tank": ""
   };
 
   function all(selector, root) {
@@ -126,6 +126,9 @@
 
   document.addEventListener("DOMContentLoaded", function () {
     wireMerchStore();
+    if (window.location.hash === "#shop-success") {
+      showToast("Thanks for the SmartSleeve order. Stripe confirmed checkout; fulfillment will follow through SmartSleeve.");
+    }
     sendAnalytics();
   });
 })();

@@ -61,7 +61,12 @@ MERCH_ALLOWED_ORIGINS = "https://smartsleeve.ai,https://www.smartsleeve.ai"
 
 ## Fulfillment
 
-The Worker supports a first Printful path. Keep `PRINTFUL_CONFIRM_ORDERS` unset or `false` while testing; that creates draft orders instead of immediately charging SmartSleeve for production.
+The Worker supports a first Printful path for two live launch products:
+
+- `smartsleeve-ss-tee`: black SS chip tee
+- `smartsleeve-ss-tank`: black SS chip tank top
+
+Keep `PRINTFUL_CONFIRM_ORDERS` unset or `false` while testing; that creates draft orders instead of immediately charging SmartSleeve for production.
 
 ```toml
 [vars]
@@ -77,9 +82,20 @@ wrangler secret put PRINTFUL_API_KEY
 
 ```toml
 [vars]
-PRINTFUL_VARIANT_ID_SQTS_TEE = "<printful-black-tee-variant-id>"
-PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TEE = "<printful-black-tee-variant-id>"
+PRINTFUL_FILE_URL_SMARTSLEEVE_SS = "https://smartsleeve.ai/merch/smartsleeve-ss-front-print.png"
+PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TEE_S = "<black-tee-size-s-variant-id>"
+PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TEE_M = "<black-tee-size-m-variant-id>"
+PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TEE_L = "<black-tee-size-l-variant-id>"
+PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TEE_XL = "<black-tee-size-xl-variant-id>"
+PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TEE_2XL = "<black-tee-size-2xl-variant-id>"
+PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TANK_S = "<black-tank-size-s-variant-id>"
+PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TANK_M = "<black-tank-size-m-variant-id>"
+PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TANK_L = "<black-tank-size-l-variant-id>"
+PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TANK_XL = "<black-tank-size-xl-variant-id>"
+PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TANK_2XL = "<black-tank-size-2xl-variant-id>"
 ```
+
+The size-specific ids matter: Printful uses different variant ids for different garments, colors, and sizes. The Worker asks the customer for size in Stripe Checkout, then maps that size to the matching Printful variant id and attaches `smartsleeve-ss-front-print.png` as the default print file.
 
 If you choose Printify instead, keep `MERCH_FULFILLMENT_PROVIDER` unset initially. The Stripe checkout still works, and paid orders are stored in KV for manual fulfillment until a Printify-specific handoff is added.
 
@@ -102,4 +118,5 @@ The public site currently keeps this blank until the Worker is deployed and test
 5. Complete checkout with Stripe test card `4242 4242 4242 4242`.
 6. Confirm the Stripe webhook records an order in `MERCH_ORDERS`.
 7. Confirm Printful order creation stays draft while `PRINTFUL_CONFIRM_ORDERS=false`.
-8. Switch to live Stripe and live fulfillment only after one end-to-end test order is correct.
+8. Review the draft order in Printful and confirm the black garment, size, front art, shipping address, and cost are correct.
+9. Switch to live Stripe and live fulfillment only after one end-to-end test order is correct.

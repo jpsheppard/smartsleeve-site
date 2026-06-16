@@ -18,9 +18,21 @@ MERCH_ALLOWED_ORIGINS = "https://smartsleeve.ai,https://www.smartsleeve.ai"
 MERCH_FULFILLMENT_PROVIDER = "none"
 PRINTFUL_CONFIRM_ORDERS = "false"
 
-# Fill these after creating the exact shirt variants in Printful.
-# PRINTFUL_VARIANT_ID_SQTS_TEE = ""
-# PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TEE = ""
+# Fill these after selecting the exact black shirt/tank variants in Printful.
+# The Worker falls back to PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TEE or
+# PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TANK only if size-specific ids are absent,
+# but production should use one id per product/size.
+# PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TEE_S = ""
+# PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TEE_M = ""
+# PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TEE_L = ""
+# PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TEE_XL = ""
+# PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TEE_2XL = ""
+# PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TANK_S = ""
+# PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TANK_M = ""
+# PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TANK_L = ""
+# PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TANK_XL = ""
+# PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TANK_2XL = ""
+# PRINTFUL_FILE_URL_SMARTSLEEVE_SS = "https://smartsleeve.ai/merch/smartsleeve-ss-front-print.png"
 
 # Create a KV namespace and replace the id.
 # [[kv_namespaces]]
