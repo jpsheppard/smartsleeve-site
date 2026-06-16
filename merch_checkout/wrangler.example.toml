@@ -20,7 +20,7 @@ PRINTFUL_CONFIRM_ORDERS = "false"
 
 # Fill these after creating the exact shirt variants in Printful.
 # PRINTFUL_VARIANT_ID_SQTS_TEE = ""
-# PRINTFUL_VARIANT_ID_SEMISAGE_TEE = ""
+# PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TEE = ""
 
 # Create a KV namespace and replace the id.
 # [[kv_namespaces]]

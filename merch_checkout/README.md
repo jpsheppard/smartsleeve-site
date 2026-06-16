@@ -78,7 +78,7 @@ wrangler secret put PRINTFUL_API_KEY
 ```toml
 [vars]
 PRINTFUL_VARIANT_ID_SQTS_TEE = "<printful-black-tee-variant-id>"
-PRINTFUL_VARIANT_ID_SEMISAGE_TEE = "<printful-black-tee-variant-id>"
+PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TEE = "<printful-black-tee-variant-id>"
 ```
 
 If you choose Printify instead, keep `MERCH_FULFILLMENT_PROVIDER` unset initially. The Stripe checkout still works, and paid orders are stored in KV for manual fulfillment until a Printify-specific handoff is added.

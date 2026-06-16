@@ -189,7 +189,7 @@ def build_icon() -> Image.Image:
     base.alpha_composite(radial)
 
     line_layers = [Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0)) for _ in range(4)]
-    for center_x in (178, 334):
+    for center_x in (170, 342):
         s_path = transformed_s_path(center_x, 0.64)
         draw_neon_line(line_layers, s_path, width=8)
         ImageDraw.Draw(line_layers[3], "RGBA").line(
@@ -204,10 +204,10 @@ def build_icon() -> Image.Image:
     base.alpha_composite(line_layers[3])
 
     chip_glow = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
-    for center in ((178, 256), (334, 256)):
+    for center in ((170, 256), (342, 256)):
         draw_chip(base, chip_glow, center=center, radius=74)
     base.alpha_composite(chip_glow.filter(ImageFilter.GaussianBlur(8 * SCALE)))
-    for center in ((178, 256), (334, 256)):
+    for center in ((170, 256), (342, 256)):
         draw_chip(base, Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0)), center=center, radius=74)
 
     return base.resize((CANVAS, CANVAS), Image.Resampling.LANCZOS)
@@ -262,11 +262,11 @@ def write_svg(path: Path) -> None:
     </filter>
   </defs>
   <rect width="512" height="512" rx="64" fill="#020617"/>
-  <path d="{path_d(178)}" fill="none" stroke="#39ff14" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
-  <path d="{path_d(334)}" fill="none" stroke="#39ff14" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
-  <path d="{path_d(178)}" fill="none" stroke="#aeff9c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="{path_d(334)}" fill="none" stroke="#aeff9c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-{chip_svg(178)}{chip_svg(334)}
+  <path d="{path_d(170)}" fill="none" stroke="#39ff14" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+  <path d="{path_d(342)}" fill="none" stroke="#39ff14" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+  <path d="{path_d(170)}" fill="none" stroke="#aeff9c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="{path_d(342)}" fill="none" stroke="#aeff9c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+{chip_svg(170)}{chip_svg(342)}
 </svg>
 """,
         encoding="utf-8",

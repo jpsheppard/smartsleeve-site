@@ -40,13 +40,13 @@ const PRODUCT_CATALOG = {
     fulfillment_sku: "sqts-tee",
     variant_env: "PRINTFUL_VARIANT_ID_SQTS_TEE",
   },
-  "semisage-tee": {
-    name: "Semi Sage Signature Tee",
-    description: "Black SmartSleeve tee with Semi Sage artwork and SQTS lockup.",
+  "smartsleeve-ss-tee": {
+    name: "SmartSleeve SS Chip Tee",
+    description: "Black SmartSleeve tee with the double-S silicon-chip mark and SQTS lockup.",
     unit_amount: 1999,
     currency: "usd",
-    fulfillment_sku: "semisage-tee",
-    variant_env: "PRINTFUL_VARIANT_ID_SEMISAGE_TEE",
+    fulfillment_sku: "smartsleeve-ss-tee",
+    variant_env: "PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TEE",
   },
 };
 

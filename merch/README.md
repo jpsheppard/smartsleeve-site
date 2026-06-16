@@ -5,12 +5,12 @@ These files power the static shop preview at `/app/#shop`.
 ## Print Artwork
 
 - `sqts-original-front-print.png`: high-resolution SQTS front art for black shirts.
-- `semisage-signature-front-print.png`: high-resolution Semi Sage front art with the SmartSleeve Quantitative Trading Systems lockup.
+- `smartsleeve-ss-front-print.png`: high-resolution SmartSleeve SS chip front art with the SmartSleeve Quantitative Trading Systems lockup.
 
 ## Web Previews
 
 - `sqts-original-tee-preview.png`: storefront preview render for the original SQTS tee.
-- `semisage-signature-tee-preview.png`: storefront preview render for the Semi Sage signature tee.
+- `smartsleeve-ss-tee-preview.png`: storefront preview render for the SmartSleeve SS chip tee.
 
 ## Fulfillment Setup
 
