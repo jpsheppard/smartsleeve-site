@@ -119,7 +119,7 @@
   var defaultUniverse = ["MU", "SNDK", "NBIS", "CRDO", "AMD", "NVDA", "TSM", "ALAB", "VRT", "SOXS"];
   var selectedUniverse = [];
   var MERCH_MERCHANT_OF_RECORD = "SmartSleeve Quantitative Trading Systems, LLC";
-  var MERCH_STRIPE_CHECKOUT_ENDPOINT = "";
+  var MERCH_STRIPE_CHECKOUT_ENDPOINT = configuredMetaContent("smartsleeve-merch-checkout-endpoint");
   var MERCH_PROVIDER_STORE_URL = "";
   var MERCH_PRODUCT_URLS = {
     "sqts-tee": "",

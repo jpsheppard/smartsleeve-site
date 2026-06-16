@@ -9,6 +9,7 @@
   <meta name="theme-color" content="#020617">
   <meta name="sqts-analytics-endpoint" content="https://smartsleeve-analytics.jpsheppard88.workers.dev/collect">
   <meta name="smartsleeve-auth-endpoint" content="">
+  <meta name="smartsleeve-merch-checkout-endpoint" content="">
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="manifest" href="/site.webmanifest">
@@ -261,7 +262,7 @@
         <div class="section-heading">
           <p class="eyebrow">SQTS Shop</p>
           <h2>SmartSleeve merch, starting with black tees</h2>
-          <p>Merch checkout is designed for SmartSleeve Quantitative Trading Systems, LLC to be the merchant of record. Customers pay SmartSleeve through hosted Stripe Checkout; after payment clears, a server-side fulfillment webhook sends the order to Printify, Printful, or another print-on-demand vendor.</p>
+          <p>Merch checkout is designed for SmartSleeve Quantitative Trading Systems, LLC to be the merchant of record. Customers pay SmartSleeve through hosted Stripe Checkout; after payment clears, a server-side fulfillment webhook can send the order to Printful, Printify, or another print-on-demand vendor while SmartSleeve keeps the margin.</p>
         </div>
 
         <div class="merch-grid featured-merch">
@@ -333,14 +334,14 @@
             <ol class="numbered-list">
               <li>Create a Stripe account under SmartSleeve Quantitative Trading Systems, LLC and connect a SmartSleeve business bank account.</li>
               <li>Create the two tee products in a print-on-demand vendor account owned or paid by SmartSleeve, using the print PNGs above.</li>
-              <li>Configure the server-side merch checkout endpoint to create hosted Stripe Checkout Sessions for each product.</li>
-              <li>Configure the Stripe payment-success webhook to submit the paid order to the fulfillment vendor and store the vendor order id.</li>
+              <li>Deploy the SmartSleeve Merch Checkout Worker and configure this page's merch checkout endpoint.</li>
+              <li>Configure the Stripe payment-success webhook to submit paid orders to the fulfillment vendor and store Stripe/vendor order ids.</li>
             </ol>
           </article>
           <article class="card">
             <h3>Quality note</h3>
             <p>For lowest friction, launch with direct-to-garment black tees. For a premium drop, use embroidered caps or embroidered chest marks where the provider supports it; large full-color art is usually better printed than embroidered.</p>
-            <p class="billing-note">Current checkout buttons are merchant-of-record ready but disabled until <code>MERCH_STRIPE_CHECKOUT_ENDPOINT</code> is configured. Card data must stay in Stripe-hosted checkout, never on this static site.</p>
+            <p class="billing-note">Current checkout buttons are merchant-of-record ready but disabled until <code>smartsleeve-merch-checkout-endpoint</code> is configured. Card data must stay in Stripe-hosted checkout, never on this static site.</p>
           </article>
         </div>
       </section>
