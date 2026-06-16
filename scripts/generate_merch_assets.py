@@ -11,9 +11,18 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "merch"
 BLACK = (2, 6, 23, 255)
+TRANSPARENT = (0, 0, 0, 0)
 GREEN = (57, 255, 20, 255)
 GREEN_DIM = (57, 255, 20, 150)
 TEXT_SOFT = (205, 255, 210, 255)
+WHITE = (245, 247, 250, 255)
+WHITE_SOFT = (226, 232, 240, 255)
+SLOGAN = "Quantitative trading for the agentic age."
+SITE_URL = "smartsleeve.ai"
+SITE_QR_URL = "https://smartsleeve.ai"
+PRINT_DPI = 300
+QR_PRINT_INCHES = 3.25
+QR_PRINT_PX = round(PRINT_DPI * QR_PRINT_INCHES)
 
 
 def load_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
@@ -28,15 +37,23 @@ def load_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
     return ImageFont.load_default()
 
 
-def fit_font(draw: ImageDraw.ImageDraw, text: str, max_width: int, start_size: int) -> ImageFont.FreeTypeFont:
+def fit_font(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    max_width: int,
+    start_size: int,
+    *,
+    bold: bool = False,
+    min_size: int = 24,
+) -> ImageFont.FreeTypeFont:
     size = start_size
-    while size > 24:
-        font = load_font(size)
+    while size > min_size:
+        font = load_font(size, bold=bold)
         bbox = draw.textbbox((0, 0), text, font=font)
         if bbox[2] - bbox[0] <= max_width:
             return font
         size -= 3
-    return load_font(size)
+    return load_font(size, bold=bold)
 
 
 def centered_paste(base: Image.Image, overlay: Image.Image, center_x: int, top: int) -> None:
@@ -44,50 +61,64 @@ def centered_paste(base: Image.Image, overlay: Image.Image, center_x: int, top: 
 
 
 def glow_line(base: Image.Image, xy: tuple[int, int, int, int], fill: tuple[int, int, int, int], width: int) -> None:
-    glow = Image.new("RGBA", base.size, (0, 0, 0, 0))
+    glow = Image.new("RGBA", base.size, TRANSPARENT)
     gdraw = ImageDraw.Draw(glow)
     gdraw.line(xy, fill=fill, width=width * 4)
     base.alpha_composite(glow.filter(ImageFilter.GaussianBlur(width * 2)))
     ImageDraw.Draw(base).line(xy, fill=fill, width=width)
 
 
-def make_ss_front_art() -> None:
-    icon = Image.open(ROOT / "favicon-512x512.png").convert("RGBA")
-    art = Image.new("RGBA", (4500, 5400), BLACK)
-    icon = icon.resize((2180, 2180), Image.Resampling.LANCZOS)
-    centered_paste(art, icon, 2250, 620)
+def draw_centered_glow_text(
+    image: Image.Image,
+    text: str,
+    center_x: int,
+    y: int,
+    font: ImageFont.FreeTypeFont,
+    fill: tuple[int, int, int, int],
+    *,
+    glow_fill: tuple[int, int, int, int] | None = None,
+    stroke: int = 0,
+) -> tuple[int, int, int, int]:
+    draw = ImageDraw.Draw(image)
+    bbox = draw.textbbox((0, 0), text, font=font, stroke_width=stroke)
+    x = round(center_x - (bbox[2] - bbox[0]) / 2)
+    if glow_fill:
+        glow = Image.new("RGBA", image.size, TRANSPARENT)
+        gdraw = ImageDraw.Draw(glow)
+        for offset in range(16, 0, -4):
+            gdraw.text(
+                (x, y),
+                text,
+                font=font,
+                fill=(glow_fill[0], glow_fill[1], glow_fill[2], 18 + offset * 3),
+                stroke_width=max(1, offset // 3),
+                stroke_fill=(glow_fill[0], glow_fill[1], glow_fill[2], 24),
+            )
+        image.alpha_composite(glow.filter(ImageFilter.GaussianBlur(5)))
+    draw.text((x, y), text, font=font, fill=fill, stroke_width=stroke, stroke_fill=fill)
+    return (x, y, x + bbox[2] - bbox[0], y + bbox[3] - bbox[1])
 
-    draw = ImageDraw.Draw(art)
-    title = "SmartSleeve Quantitative Trading Systems"
-    font = fit_font(draw, title, 3920, 238)
-    bbox = draw.textbbox((0, 0), title, font=font)
-    text_w = bbox[2] - bbox[0]
-    x = int((4500 - text_w) / 2)
-    y = 3235
 
-    glow = Image.new("RGBA", art.size, (0, 0, 0, 0))
-    gdraw = ImageDraw.Draw(glow)
-    for offset in range(14, 0, -3):
-        gdraw.text(
-            (x, y),
-            title,
-            font=font,
-            fill=(57, 255, 20, 18 + offset * 3),
-            stroke_width=offset // 2,
-            stroke_fill=(57, 255, 20, 20),
-        )
-    art.alpha_composite(glow.filter(ImageFilter.GaussianBlur(5)))
-    draw.text((x, y), title, font=font, fill=GREEN)
-
-    line_left = 560
-    line_right = 3940
-    glow_line(art, (line_left, y - 210, line_right, y - 210), GREEN_DIM, 10)
-    glow_line(art, (line_left, y + 335, line_right, y + 335), GREEN_DIM, 10)
-    for cx in (1125, 2250, 3375):
+def draw_neon_lockup_text(
+    image: Image.Image,
+    text: str,
+    y: int,
+    *,
+    max_width: int,
+    start_size: int,
+    line_left: int,
+    line_right: int,
+) -> tuple[int, int, int, int]:
+    draw = ImageDraw.Draw(image)
+    font = fit_font(draw, text, max_width, start_size, min_size=36)
+    bbox = draw_centered_glow_text(image, text, image.width // 2, y, font, GREEN, glow_fill=GREEN)
+    glow_line(image, (line_left, y - 210, line_right, y - 210), GREEN_DIM, 10)
+    glow_line(image, (line_left, y + 335, line_right, y + 335), GREEN_DIM, 10)
+    draw = ImageDraw.Draw(image)
+    for cx in (line_left + (line_right - line_left) // 4, image.width // 2, line_right - (line_right - line_left) // 4):
         draw.ellipse((cx - 24, y - 234, cx + 24, y - 186), fill=GREEN)
         draw.ellipse((cx - 24, y + 311, cx + 24, y + 359), fill=GREEN)
-
-    art.save(OUT / "smartsleeve-ss-front-print.png")
+    return bbox
 
 
 def draw_wrapped_text(
@@ -121,128 +152,535 @@ def draw_wrapped_text(
     return y
 
 
-def make_ss_preview() -> None:
-    source = Image.open(OUT / "smartsleeve-ss-front-print.png").convert("RGBA")
+def gf_tables() -> tuple[list[int], list[int]]:
+    exp = [0] * 512
+    log = [0] * 256
+    x = 1
+    for i in range(255):
+        exp[i] = x
+        log[x] = i
+        x <<= 1
+        if x & 0x100:
+            x ^= 0x11D
+    for i in range(255, 512):
+        exp[i] = exp[i - 255]
+    return exp, log
+
+
+GF_EXP, GF_LOG = gf_tables()
+
+
+def gf_mul(a: int, b: int) -> int:
+    if a == 0 or b == 0:
+        return 0
+    return GF_EXP[GF_LOG[a] + GF_LOG[b]]
+
+
+def poly_mul(a: list[int], b: list[int]) -> list[int]:
+    result = [0] * (len(a) + len(b) - 1)
+    for i, av in enumerate(a):
+        for j, bv in enumerate(b):
+            result[i + j] ^= gf_mul(av, bv)
+    return result
+
+
+def rs_generator(degree: int) -> list[int]:
+    gen = [1]
+    for i in range(degree):
+        gen = poly_mul(gen, [1, GF_EXP[i]])
+    return gen
+
+
+def rs_remainder(data: list[int], degree: int) -> list[int]:
+    gen = rs_generator(degree)
+    result = [0] * degree
+    for byte in data:
+        factor = byte ^ result[0]
+        result = result[1:] + [0]
+        for i in range(degree):
+            result[i] ^= gf_mul(gen[i + 1], factor)
+    return result
+
+
+def bits_from_int(value: int, width: int) -> list[int]:
+    return [((value >> shift) & 1) for shift in range(width - 1, -1, -1)]
+
+
+def qr_data_codewords(payload: str) -> list[int]:
+    data = payload.encode("utf-8")
+    bits: list[int] = []
+    bits.extend([0, 1, 0, 0])  # Byte mode.
+    bits.extend(bits_from_int(len(data), 8))
+    for byte in data:
+        bits.extend(bits_from_int(byte, 8))
+    capacity_bits = 34 * 8  # QR version 2-L.
+    bits.extend([0] * min(4, capacity_bits - len(bits)))
+    while len(bits) % 8:
+        bits.append(0)
+    codewords = [int("".join(str(bit) for bit in bits[i : i + 8]), 2) for i in range(0, len(bits), 8)]
+    pads = [0xEC, 0x11]
+    index = 0
+    while len(codewords) < 34:
+        codewords.append(pads[index % 2])
+        index += 1
+    return codewords
+
+
+def qr_format_bits(mask: int) -> int:
+    # Error correction level L is encoded as 01.
+    data = (1 << 3) | mask
+    rem = data
+    for _ in range(10):
+        rem = (rem << 1) ^ ((rem >> 9) * 0x537)
+    return ((data << 10) | (rem & 0x3FF)) ^ 0x5412
+
+
+def qr_mask(mask: int, x: int, y: int) -> bool:
+    return (
+        (x + y) % 2 == 0
+        if mask == 0
+        else y % 2 == 0
+        if mask == 1
+        else x % 3 == 0
+        if mask == 2
+        else (x + y) % 3 == 0
+        if mask == 3
+        else ((y // 2) + (x // 3)) % 2 == 0
+        if mask == 4
+        else ((x * y) % 2 + (x * y) % 3) == 0
+        if mask == 5
+        else (((x * y) % 2 + (x * y) % 3) % 2) == 0
+        if mask == 6
+        else (((x + y) % 2 + (x * y) % 3) % 2) == 0
+    )
+
+
+def draw_finder(modules: list[list[bool]], function: list[list[bool]], x: int, y: int) -> None:
+    size = len(modules)
+    for dy in range(-1, 8):
+        for dx in range(-1, 8):
+            xx, yy = x + dx, y + dy
+            if not (0 <= xx < size and 0 <= yy < size):
+                continue
+            function[yy][xx] = True
+            modules[yy][xx] = (
+                0 <= dx <= 6
+                and 0 <= dy <= 6
+                and (dx in (0, 6) or dy in (0, 6) or (2 <= dx <= 4 and 2 <= dy <= 4))
+            )
+
+
+def draw_alignment(modules: list[list[bool]], function: list[list[bool]], cx: int, cy: int) -> None:
+    for dy in range(-2, 3):
+        for dx in range(-2, 3):
+            xx, yy = cx + dx, cy + dy
+            function[yy][xx] = True
+            modules[yy][xx] = max(abs(dx), abs(dy)) != 1
+
+
+def reserve_format(modules: list[list[bool]], function: list[list[bool]]) -> None:
+    size = len(modules)
+
+    def set_func(x: int, y: int, value: bool = False) -> None:
+        modules[y][x] = value
+        function[y][x] = True
+
+    for i in range(6):
+        set_func(8, i)
+    set_func(8, 7)
+    set_func(8, 8)
+    set_func(7, 8)
+    for i in range(9, 15):
+        set_func(14 - i, 8)
+    for i in range(8):
+        set_func(size - 1 - i, 8)
+    for i in range(8, 15):
+        set_func(8, size - 15 + i)
+    set_func(8, size - 8, True)
+
+
+def draw_format(modules: list[list[bool]], mask: int) -> None:
+    size = len(modules)
+    bits = qr_format_bits(mask)
+
+    def bit(i: int) -> bool:
+        return ((bits >> i) & 1) != 0
+
+    for i in range(6):
+        modules[i][8] = bit(i)
+    modules[7][8] = bit(6)
+    modules[8][8] = bit(7)
+    modules[8][7] = bit(8)
+    for i in range(9, 15):
+        modules[8][14 - i] = bit(i)
+    for i in range(8):
+        modules[8][size - 1 - i] = bit(i)
+    for i in range(8, 15):
+        modules[size - 15 + i][8] = bit(i)
+    modules[size - 8][8] = True
+
+
+def qr_penalty(modules: list[list[bool]]) -> int:
+    size = len(modules)
+    penalty = 0
+    for rows in (modules, [[modules[y][x] for y in range(size)] for x in range(size)]):
+        for row in rows:
+            run_color = row[0]
+            run_len = 1
+            for value in row[1:]:
+                if value == run_color:
+                    run_len += 1
+                    continue
+                if run_len >= 5:
+                    penalty += 3 + run_len - 5
+                run_color = value
+                run_len = 1
+            if run_len >= 5:
+                penalty += 3 + run_len - 5
+            for i in range(size - 10):
+                window = row[i : i + 11]
+                if window in (
+                    [True, False, True, True, True, False, True, False, False, False, False],
+                    [False, False, False, False, True, False, True, True, True, False, True],
+                ):
+                    penalty += 40
+    for y in range(size - 1):
+        for x in range(size - 1):
+            color = modules[y][x]
+            if modules[y][x + 1] == color and modules[y + 1][x] == color and modules[y + 1][x + 1] == color:
+                penalty += 3
+    dark = sum(1 for row in modules for value in row if value)
+    total = size * size
+    k = abs(dark * 20 - total * 10) // total
+    penalty += k * 10
+    return penalty
+
+
+def qr_matrix(payload: str) -> list[list[bool]]:
+    size = 25  # Version 2.
+    data = qr_data_codewords(payload)
+    full_codewords = data + rs_remainder(data, 10)
+    bitstream: list[bool] = []
+    for codeword in full_codewords:
+        bitstream.extend(bool((codeword >> shift) & 1) for shift in range(7, -1, -1))
+
+    modules = [[False] * size for _ in range(size)]
+    function = [[False] * size for _ in range(size)]
+    draw_finder(modules, function, 0, 0)
+    draw_finder(modules, function, size - 7, 0)
+    draw_finder(modules, function, 0, size - 7)
+    draw_alignment(modules, function, 18, 18)
+    for i in range(8, size - 8):
+        modules[6][i] = i % 2 == 0
+        modules[i][6] = i % 2 == 0
+        function[6][i] = True
+        function[i][6] = True
+    reserve_format(modules, function)
+
+    bit_index = 0
+    y = size - 1
+    direction = -1
+    x = size - 1
+    while x > 0:
+        if x == 6:
+            x -= 1
+        while True:
+            for dx in (0, 1):
+                xx = x - dx
+                if not function[y][xx]:
+                    modules[y][xx] = bitstream[bit_index] if bit_index < len(bitstream) else False
+                    bit_index += 1
+            y += direction
+            if y < 0 or y >= size:
+                y -= direction
+                direction = -direction
+                break
+        x -= 2
+
+    best_modules: list[list[bool]] | None = None
+    best_penalty = 10**9
+    for mask in range(8):
+        candidate = [row[:] for row in modules]
+        for yy in range(size):
+            for xx in range(size):
+                if not function[yy][xx] and qr_mask(mask, xx, yy):
+                    candidate[yy][xx] = not candidate[yy][xx]
+        draw_format(candidate, mask)
+        penalty = qr_penalty(candidate)
+        if penalty < best_penalty:
+            best_penalty = penalty
+            best_modules = candidate
+    assert best_modules is not None
+    return best_modules
+
+
+def render_qr_png(path: Path, payload: str, size_px: int = 1200) -> Image.Image:
+    matrix = qr_matrix(payload)
+    modules = len(matrix)
+    border = 4
+    module_px = size_px // (modules + border * 2)
+    canvas_px = module_px * (modules + border * 2)
+    qr = Image.new("RGBA", (canvas_px, canvas_px), WHITE)
+    draw = ImageDraw.Draw(qr)
+    for y, row in enumerate(matrix):
+        for x, value in enumerate(row):
+            if value:
+                x0 = (x + border) * module_px
+                y0 = (y + border) * module_px
+                draw.rectangle((x0, y0, x0 + module_px - 1, y0 + module_px - 1), fill=(0, 0, 0, 255))
+    if canvas_px != size_px:
+        qr = qr.resize((size_px, size_px), Image.Resampling.NEAREST)
+    qr.save(path)
+    return qr
+
+
+def make_sqts_llc_logo() -> None:
+    source = Image.open(ROOT / "sqts-logo-green.png").convert("RGBA")
+    logo = Image.new("RGBA", (1200, 512), BLACK)
+    logo.alpha_composite(source.crop((0, 0, 1200, 342)), (0, 0))
+
+    draw = ImageDraw.Draw(logo)
+    draw.rectangle((0, 342, 1200, 512), fill=BLACK)
+    text = "SmartSleeve Quantitative Trading Systems, LLC"
+    font = fit_font(draw, text, 1010, 42, min_size=28)
+    draw_centered_glow_text(logo, text, 600, 360, font, GREEN, glow_fill=GREEN)
+    glow_line(logo, (138, 414, 1062, 414), GREEN_DIM, 4)
+    glow_line(logo, (138, 450, 1062, 450), GREEN_DIM, 4)
+    for cx in (285, 600, 915):
+        draw.ellipse((cx - 8, 406, cx + 8, 422), fill=GREEN)
+        draw.ellipse((cx - 8, 442, cx + 8, 458), fill=GREEN)
+    logo.save(ROOT / "sqts-logo-green-llc.png")
+    logo.save(ROOT / "sqts-logo-green.png")
+
+
+def make_sqts_llc_front_art() -> None:
+    logo = Image.open(ROOT / "sqts-logo-green-llc.png").convert("RGBA")
+    art = Image.new("RGBA", (4500, 5400), TRANSPARENT)
+    logo = logo.resize((3600, 1536), Image.Resampling.LANCZOS)
+    centered_paste(art, logo, 2250, 870)
+    slogan_font = fit_font(ImageDraw.Draw(art), SLOGAN, 3520, 190, min_size=88)
+    draw_centered_glow_text(art, SLOGAN, 2250, 3010, slogan_font, WHITE, glow_fill=(255, 255, 255, 255))
+    art.save(OUT / "sqts-llc-front-print.png")
+
+
+def make_ss_short_front_art() -> None:
+    icon = Image.open(ROOT / "favicon-512x512.png").convert("RGBA")
+    art = Image.new("RGBA", (4500, 5400), TRANSPARENT)
+    icon = icon.resize((1880, 1880), Image.Resampling.LANCZOS)
+    centered_paste(art, icon, 2250, 470)
+    draw_neon_lockup_text(
+        art,
+        "SmartSleeve",
+        2570,
+        max_width=3320,
+        start_size=310,
+        line_left=760,
+        line_right=3740,
+    )
+    slogan_font = fit_font(ImageDraw.Draw(art), SLOGAN, 3520, 190, min_size=88)
+    draw_centered_glow_text(art, SLOGAN, 2250, 3515, slogan_font, WHITE, glow_fill=(255, 255, 255, 255))
+    art.save(OUT / "smartsleeve-ss-short-front-print.png")
+
+
+def make_back_art() -> None:
+    for filename, qr in (
+        ("smartsleeve-back-print.png", False),
+        ("smartsleeve-back-qr-print.png", True),
+    ):
+        art = Image.new("RGBA", (4500, 5400), TRANSPARENT)
+        # Keep the back URL prominent but not shoulder-to-shoulder.
+        url_font = fit_font(ImageDraw.Draw(art), SITE_URL, 2700, 340, bold=True, min_size=120)
+        url_y = 2180 if not qr else 1420
+        draw_centered_glow_text(art, SITE_URL, 2250, url_y, url_font, WHITE, glow_fill=(255, 255, 255, 255))
+        if qr:
+            qr_image = Image.open(OUT / "smartsleeve-ai-qr.png").convert("RGBA").resize(
+                (QR_PRINT_PX, QR_PRINT_PX),
+                Image.Resampling.NEAREST,
+            )
+            centered_paste(art, qr_image, 2250, 2360)
+        art.save(OUT / filename)
+
+
+def make_legacy_ss_front_art() -> None:
+    """Keep a compatibility copy for existing checkout references."""
+    source = Image.open(OUT / "smartsleeve-ss-short-front-print.png").convert("RGBA")
+    source.save(OUT / "smartsleeve-ss-front-print.png")
+
+
+def draw_garment(draw: ImageDraw.ImageDraw, kind: str, x: int, y: int, w: int, h: int) -> None:
+    if kind == "tank":
+        points = [
+            (x + int(w * 0.30), y + int(h * 0.03)),
+            (x + int(w * 0.42), y + int(h * 0.03)),
+            (x + int(w * 0.46), y + int(h * 0.20)),
+            (x + int(w * 0.54), y + int(h * 0.20)),
+            (x + int(w * 0.58), y + int(h * 0.03)),
+            (x + int(w * 0.70), y + int(h * 0.03)),
+            (x + int(w * 0.80), y + int(h * 0.20)),
+            (x + int(w * 0.73), y + int(h * 0.94)),
+            (x + int(w * 0.27), y + int(h * 0.94)),
+            (x + int(w * 0.20), y + int(h * 0.20)),
+        ]
+        draw.polygon(points, fill=(5, 8, 15, 255), outline=(57, 255, 20, 90))
+        draw.arc((x + int(w * 0.34), y, x + int(w * 0.66), y + int(h * 0.26)), 0, 180, fill=(57, 255, 20, 90), width=3)
+    else:
+        points = [
+            (x + int(w * 0.15), y + int(h * 0.13)),
+            (x + int(w * 0.36), y + int(h * 0.04)),
+            (x + int(w * 0.50), y + int(h * 0.16)),
+            (x + int(w * 0.64), y + int(h * 0.04)),
+            (x + int(w * 0.85), y + int(h * 0.13)),
+            (x + int(w * 0.76), y + int(h * 0.36)),
+            (x + int(w * 0.69), y + int(h * 0.31)),
+            (x + int(w * 0.69), y + int(h * 0.93)),
+            (x + int(w * 0.31), y + int(h * 0.93)),
+            (x + int(w * 0.31), y + int(h * 0.31)),
+            (x + int(w * 0.24), y + int(h * 0.36)),
+        ]
+        draw.polygon(points, fill=(5, 8, 15, 255), outline=(57, 255, 20, 90))
+        draw.rounded_rectangle(
+            (x + int(w * 0.31), y + int(h * 0.17), x + int(w * 0.69), y + int(h * 0.93)),
+            radius=24,
+            fill=(1, 3, 10, 255),
+            outline=(57, 255, 20, 55),
+            width=2,
+        )
+
+
+def make_preview(
+    filename: str,
+    title: str,
+    front_art_path: Path,
+    back_art_path: Path,
+    *,
+    kind: str,
+    subtitle: str,
+    promo: bool = False,
+) -> None:
     preview = Image.new("RGBA", (1400, 1100), (3, 9, 26, 255))
     draw = ImageDraw.Draw(preview)
 
-    shirt = Image.new("RGBA", (820, 820), (0, 0, 0, 0))
-    sdraw = ImageDraw.Draw(shirt)
-    sdraw.polygon(
-        [(125, 120), (290, 55), (410, 145), (530, 55), (695, 120), (620, 355), (560, 315), (560, 755), (260, 755), (260, 315), (200, 355)],
-        fill=(5, 8, 15, 255),
-        outline=(57, 255, 20, 90),
-    )
-    sdraw.rounded_rectangle((255, 152, 565, 758), radius=36, fill=(1, 3, 10, 255), outline=(57, 255, 20, 60), width=2)
-    preview.alpha_composite(shirt.filter(ImageFilter.GaussianBlur(0.2)), (80, 135))
+    for label, path, x in (("Front", front_art_path, 80), ("Back", back_art_path, 440)):
+        draw_garment(draw, kind, x, 185, 430, 650)
+        if label == "Back":
+            url_font = fit_font(draw, SITE_URL, 205, 46, bold=True, min_size=24)
+            draw_centered_glow_text(preview, SITE_URL, x + 215, 390 if promo else 440, url_font, WHITE, glow_fill=(255, 255, 255, 255))
+            if promo:
+                qr = Image.open(OUT / "smartsleeve-ai-qr.png").convert("RGBA").resize((108, 108), Image.Resampling.NEAREST)
+                centered_paste(preview, qr, x + 215, 510)
+        else:
+            art = Image.open(path).convert("RGBA")
+            bbox = art.getbbox()
+            if bbox:
+                art = art.crop(bbox)
+            target_w = 295
+            target_h = 390
+            ratio = min(target_w / art.width, target_h / art.height)
+            art = art.resize((max(1, int(art.width * ratio)), max(1, int(art.height * ratio))), Image.Resampling.LANCZOS)
+            centered_paste(preview, art, x + 215, 320)
+        draw.text((x + 170, 860), label, font=load_font(28, bold=True), fill=(167, 183, 200, 255))
 
-    crop = source.crop((240, 430, 4260, 3920))
-    art = crop.resize((520, int(crop.height * (520 / crop.width))), Image.Resampling.LANCZOS)
-    if art.height > 455:
-        art = art.resize((int(art.width * (455 / art.height)), 455), Image.Resampling.LANCZOS)
-    centered_paste(preview, art, 490, 320)
-
-    y = draw_wrapped_text(draw, (875, 210), "SmartSleeve SS Chip Tee", load_font(54, bold=True), TEXT_SOFT, 455, 6)
-    draw.text((875, y + 20), "$19.99 + shipping", font=load_font(46, bold=True), fill=GREEN)
+    y = draw_wrapped_text(draw, (850, 205), title, load_font(52, bold=True), TEXT_SOFT, 455, 6)
+    draw.text((850, y + 20), "$19.99 + shipping", font=load_font(44, bold=True), fill=GREEN)
+    draw_wrapped_text(draw, (850, y + 92), subtitle, load_font(30), (167, 183, 200, 255), 455, 5)
+    badge = "QR promo back" if promo else "Standard back"
+    draw.text((880, 754), badge, font=load_font(30, bold=True), fill=(57, 255, 20, 215))
     draw_wrapped_text(
         draw,
-        (875, y + 92),
-        "Black tee with the double-S silicon-chip mark and SQTS lockup.",
-        load_font(32),
+        (880, 802),
+        "Production art is split into front and back PNGs for Printful placement.",
+        load_font(23),
         (167, 183, 200, 255),
-        445,
-        5,
-    )
-    draw.text((905, 745), "Preview render", font=load_font(28, bold=True), fill=(57, 255, 20, 210))
-    draw_wrapped_text(
-        draw,
-        (905, 788),
-        "Upload the print PNG to Printful to generate exact production mockups.",
-        load_font(22),
-        (167, 183, 200, 255),
-        370,
+        390,
         4,
     )
-    preview.save(OUT / "smartsleeve-ss-tee-preview.png")
+    preview.save(OUT / filename)
 
 
-def make_ss_tank_preview() -> None:
-    source = Image.open(OUT / "smartsleeve-ss-front-print.png").convert("RGBA")
-    preview = Image.new("RGBA", (1400, 1100), (3, 9, 26, 255))
-    draw = ImageDraw.Draw(preview)
-
-    tank = Image.new("RGBA", (820, 820), (0, 0, 0, 0))
-    tdraw = ImageDraw.Draw(tank)
-    tdraw.polygon(
-        [
-            (250, 70),
-            (350, 70),
-            (382, 210),
-            (438, 210),
-            (470, 70),
-            (570, 70),
-            (642, 220),
-            (585, 760),
-            (235, 760),
-            (178, 220),
-        ],
-        fill=(5, 8, 15, 255),
-        outline=(57, 255, 20, 90),
+def make_all_previews() -> None:
+    standard_back = OUT / "smartsleeve-back-print.png"
+    promo_back = OUT / "smartsleeve-back-qr-print.png"
+    ss_front = OUT / "smartsleeve-ss-short-front-print.png"
+    sqts_front = OUT / "sqts-llc-front-print.png"
+    make_preview(
+        "smartsleeve-ss-tee-preview.png",
+        "SmartSleeve SS Tee",
+        ss_front,
+        standard_back,
+        kind="tee",
+        subtitle="Black tee with the SS chip mark, SmartSleeve lockup, slogan front, and site URL back.",
     )
-    tdraw.pieslice((275, 48, 545, 270), start=0, end=180, fill=(3, 9, 26, 255))
-    tdraw.arc((276, 48, 544, 270), start=0, end=180, fill=(57, 255, 20, 90), width=3)
-    tdraw.rounded_rectangle(
-        (236, 214, 584, 760),
-        radius=28,
-        fill=(1, 3, 10, 255),
-        outline=(57, 255, 20, 54),
-        width=2,
+    make_preview(
+        "smartsleeve-ss-tank-preview.png",
+        "SmartSleeve SS Tank",
+        ss_front,
+        standard_back,
+        kind="tank",
+        subtitle="Black tank with the SS chip mark, SmartSleeve lockup, slogan front, and site URL back.",
     )
-    preview.alpha_composite(tank.filter(ImageFilter.GaussianBlur(0.2)), (82, 135))
-
-    crop = source.crop((260, 470, 4240, 3890))
-    art = crop.resize((455, int(crop.height * (455 / crop.width))), Image.Resampling.LANCZOS)
-    if art.height > 395:
-        art = art.resize((int(art.width * (395 / art.height)), 395), Image.Resampling.LANCZOS)
-    centered_paste(preview, art, 492, 340)
-
-    y = draw_wrapped_text(
-        draw,
-        (875, 210),
-        "SmartSleeve SS Chip Tank",
-        load_font(54, bold=True),
-        TEXT_SOFT,
-        455,
-        6,
+    make_preview(
+        "sqts-llc-tee-preview.png",
+        "SQTS LLC Tee",
+        sqts_front,
+        standard_back,
+        kind="tee",
+        subtitle="Black tee with the official SQTS LLC banner, slogan front, and site URL back.",
     )
-    draw.text((875, y + 20), "$19.99 + shipping", font=load_font(46, bold=True), fill=GREEN)
-    draw_wrapped_text(
-        draw,
-        (875, y + 92),
-        "Black tank top with the double-S chip mark and SmartSleeve lockup.",
-        load_font(32),
-        (167, 183, 200, 255),
-        445,
-        5,
+    make_preview(
+        "sqts-llc-tank-preview.png",
+        "SQTS LLC Tank",
+        sqts_front,
+        standard_back,
+        kind="tank",
+        subtitle="Black tank with the official SQTS LLC banner, slogan front, and site URL back.",
     )
-    draw.text((905, 745), "Preview render", font=load_font(28, bold=True), fill=(57, 255, 20, 210))
-    draw_wrapped_text(
-        draw,
-        (905, 788),
-        "Use Printful's exact black tank mockups after the variants are selected.",
-        load_font(22),
-        (167, 183, 200, 255),
-        370,
-        4,
+    make_preview(
+        "smartsleeve-ss-tee-promo-preview.png",
+        "SS Tee QR Promo",
+        ss_front,
+        promo_back,
+        kind="tee",
+        subtitle="Same SS front design with a scan-ready QR code on the back for in-person promotion.",
+        promo=True,
     )
-    preview.save(OUT / "smartsleeve-ss-tank-preview.png")
+    make_preview(
+        "smartsleeve-ss-tank-promo-preview.png",
+        "SS Tank QR Promo",
+        ss_front,
+        promo_back,
+        kind="tank",
+        subtitle="Same SS tank design with a scan-ready QR code on the back for in-person promotion.",
+        promo=True,
+    )
+    make_preview(
+        "sqts-llc-tee-promo-preview.png",
+        "SQTS Tee QR Promo",
+        sqts_front,
+        promo_back,
+        kind="tee",
+        subtitle="Same SQTS LLC front design with a scan-ready QR code on the back for in-person promotion.",
+        promo=True,
+    )
+    make_preview(
+        "sqts-llc-tank-promo-preview.png",
+        "SQTS Tank QR Promo",
+        sqts_front,
+        promo_back,
+        kind="tank",
+        subtitle="Same SQTS LLC tank design with a scan-ready QR code on the back for in-person promotion.",
+        promo=True,
+    )
 
 
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
-    make_ss_front_art()
-    make_ss_preview()
-    make_ss_tank_preview()
+    make_sqts_llc_logo()
+    render_qr_png(OUT / "smartsleeve-ai-qr.png", SITE_QR_URL)
+    make_sqts_llc_front_art()
+    make_ss_short_front_art()
+    make_back_art()
+    make_legacy_ss_front_art()
+    make_all_previews()
 
 
 if __name__ == "__main__":

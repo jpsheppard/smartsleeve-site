@@ -61,10 +61,18 @@ MERCH_ALLOWED_ORIGINS = "https://smartsleeve.ai,https://www.smartsleeve.ai"
 
 ## Fulfillment
 
-The Worker supports a first Printful path for two live launch products:
+The Worker supports the first Printful path for the black tee/tank products:
 
-- `smartsleeve-ss-tee`: black SS chip tee
-- `smartsleeve-ss-tank`: black SS chip tank top
+- `smartsleeve-ss-tee`: SS front, standard back
+- `smartsleeve-ss-tank`: SS front, standard back
+- `sqts-llc-tee`: official SQTS LLC front, standard back
+- `sqts-llc-tank`: official SQTS LLC front, standard back
+- `smartsleeve-ss-tee-promo`: SS front, QR promo back
+- `smartsleeve-ss-tank-promo`: SS front, QR promo back
+- `sqts-llc-tee-promo`: official SQTS LLC front, QR promo back
+- `sqts-llc-tank-promo`: official SQTS LLC front, QR promo back
+
+The QR promo back art uses a deliberately understated 3.25 in x 3.25 in QR code, generated as 975 px x 975 px at 300 DPI, underneath a centered `smartsleeve.ai` wordmark.
 
 Keep `PRINTFUL_CONFIRM_ORDERS` unset or `false` while testing; that creates draft orders instead of immediately charging SmartSleeve for production.
 
@@ -82,20 +90,23 @@ wrangler secret put PRINTFUL_API_KEY
 
 ```toml
 [vars]
-PRINTFUL_FILE_URL_SMARTSLEEVE_SS = "https://smartsleeve.ai/merch/smartsleeve-ss-front-print.png"
-PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TEE_S = "<black-tee-size-s-variant-id>"
-PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TEE_M = "<black-tee-size-m-variant-id>"
-PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TEE_L = "<black-tee-size-l-variant-id>"
-PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TEE_XL = "<black-tee-size-xl-variant-id>"
-PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TEE_2XL = "<black-tee-size-2xl-variant-id>"
-PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TANK_S = "<black-tank-size-s-variant-id>"
-PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TANK_M = "<black-tank-size-m-variant-id>"
-PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TANK_L = "<black-tank-size-l-variant-id>"
-PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TANK_XL = "<black-tank-size-xl-variant-id>"
-PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TANK_2XL = "<black-tank-size-2xl-variant-id>"
+PRINTFUL_FILE_URL_SMARTSLEEVE_SS_FRONT = "https://smartsleeve.ai/merch/smartsleeve-ss-short-front-print.png"
+PRINTFUL_FILE_URL_SQTS_LLC_FRONT = "https://smartsleeve.ai/merch/sqts-llc-front-print.png"
+PRINTFUL_FILE_URL_SMARTSLEEVE_BACK = "https://smartsleeve.ai/merch/smartsleeve-back-print.png"
+PRINTFUL_FILE_URL_SMARTSLEEVE_BACK_QR = "https://smartsleeve.ai/merch/smartsleeve-back-qr-print.png"
+PRINTFUL_VARIANT_ID_BLACK_TEE_S = "<black-tee-size-s-variant-id>"
+PRINTFUL_VARIANT_ID_BLACK_TEE_M = "<black-tee-size-m-variant-id>"
+PRINTFUL_VARIANT_ID_BLACK_TEE_L = "<black-tee-size-l-variant-id>"
+PRINTFUL_VARIANT_ID_BLACK_TEE_XL = "<black-tee-size-xl-variant-id>"
+PRINTFUL_VARIANT_ID_BLACK_TEE_2XL = "<black-tee-size-2xl-variant-id>"
+PRINTFUL_VARIANT_ID_BLACK_TANK_S = "<black-tank-size-s-variant-id>"
+PRINTFUL_VARIANT_ID_BLACK_TANK_M = "<black-tank-size-m-variant-id>"
+PRINTFUL_VARIANT_ID_BLACK_TANK_L = "<black-tank-size-l-variant-id>"
+PRINTFUL_VARIANT_ID_BLACK_TANK_XL = "<black-tank-size-xl-variant-id>"
+PRINTFUL_VARIANT_ID_BLACK_TANK_2XL = "<black-tank-size-2xl-variant-id>"
 ```
 
-The size-specific ids matter: Printful uses different variant ids for different garments, colors, and sizes. The Worker asks the customer for size in Stripe Checkout, then maps that size to the matching Printful variant id and attaches `smartsleeve-ss-front-print.png` as the default print file.
+The size-specific ids matter: Printful uses different variant ids for different garments, colors, and sizes. The Worker asks the customer for size in Stripe Checkout, then maps that size to the matching black tee or black tank variant id and attaches the correct front/back print files for the selected design.
 
 If you choose Printify instead, keep `MERCH_FULFILLMENT_PROVIDER` unset initially. The Stripe checkout still works, and paid orders are stored in KV for manual fulfillment until a Printify-specific handoff is added.
 

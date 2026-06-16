@@ -4,7 +4,13 @@
   var MERCH_MERCHANT_OF_RECORD = "SmartSleeve Quantitative Trading Systems, LLC";
   var MERCH_PRODUCT_URLS = {
     "smartsleeve-ss-tee": "",
-    "smartsleeve-ss-tank": ""
+    "smartsleeve-ss-tank": "",
+    "sqts-llc-tee": "",
+    "sqts-llc-tank": "",
+    "smartsleeve-ss-tee-promo": "",
+    "smartsleeve-ss-tank-promo": "",
+    "sqts-llc-tee-promo": "",
+    "sqts-llc-tank-promo": ""
   };
 
   function all(selector, root) {

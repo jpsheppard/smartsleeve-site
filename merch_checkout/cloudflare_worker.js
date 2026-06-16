@@ -17,16 +17,20 @@
 //   MERCH_SHIPPING_USD
 //   MERCH_FULFILLMENT_PROVIDER=printful
 //   PRINTFUL_API_KEY
-//   PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TEE_S
-//   PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TEE_M
-//   PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TEE_L
-//   PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TEE_XL
-//   PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TEE_2XL
-//   PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TANK_S
-//   PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TANK_M
-//   PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TANK_L
-//   PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TANK_XL
-//   PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TANK_2XL
+//   PRINTFUL_VARIANT_ID_BLACK_TEE_S
+//   PRINTFUL_VARIANT_ID_BLACK_TEE_M
+//   PRINTFUL_VARIANT_ID_BLACK_TEE_L
+//   PRINTFUL_VARIANT_ID_BLACK_TEE_XL
+//   PRINTFUL_VARIANT_ID_BLACK_TEE_2XL
+//   PRINTFUL_VARIANT_ID_BLACK_TANK_S
+//   PRINTFUL_VARIANT_ID_BLACK_TANK_M
+//   PRINTFUL_VARIANT_ID_BLACK_TANK_L
+//   PRINTFUL_VARIANT_ID_BLACK_TANK_XL
+//   PRINTFUL_VARIANT_ID_BLACK_TANK_2XL
+//   PRINTFUL_FILE_URL_SMARTSLEEVE_SS_FRONT
+//   PRINTFUL_FILE_URL_SQTS_LLC_FRONT
+//   PRINTFUL_FILE_URL_SMARTSLEEVE_BACK
+//   PRINTFUL_FILE_URL_SMARTSLEEVE_BACK_QR
 //   PRINTFUL_CONFIRM_ORDERS=true
 //
 // Routes:
@@ -39,31 +43,116 @@ const DEFAULT_SUCCESS_PATH = "/app/#shop-success";
 const DEFAULT_CANCEL_PATH = "/app/#shop";
 const MAX_QUANTITY = 6;
 const SIZE_OPTIONS = ["S", "M", "L", "XL", "2XL"];
-const DEFAULT_SS_PRINT_FILE_URL = `${DEFAULT_SITE}/merch/smartsleeve-ss-front-print.png`;
+const DEFAULT_SS_FRONT_FILE_URL = `${DEFAULT_SITE}/merch/smartsleeve-ss-short-front-print.png`;
+const DEFAULT_SQTS_FRONT_FILE_URL = `${DEFAULT_SITE}/merch/sqts-llc-front-print.png`;
+const DEFAULT_BACK_FILE_URL = `${DEFAULT_SITE}/merch/smartsleeve-back-print.png`;
+const DEFAULT_BACK_QR_FILE_URL = `${DEFAULT_SITE}/merch/smartsleeve-back-qr-print.png`;
+
+function merchProduct({
+  name,
+  description,
+  sku,
+  garment,
+  frontFileUrlEnv,
+  defaultFrontFileUrl,
+  backFileUrlEnv = "PRINTFUL_FILE_URL_SMARTSLEEVE_BACK",
+  defaultBackFileUrl = DEFAULT_BACK_FILE_URL,
+}) {
+  const isTank = garment === "tank";
+  return {
+    name,
+    description,
+    unit_amount: 1999,
+    currency: "usd",
+    fulfillment_sku: sku,
+    variant_env_prefixes: [
+      isTank ? "PRINTFUL_VARIANT_ID_BLACK_TANK" : "PRINTFUL_VARIANT_ID_BLACK_TEE",
+      isTank ? "PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TANK" : "PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TEE",
+    ],
+    fallback_variant_envs: [
+      isTank ? "PRINTFUL_VARIANT_ID_BLACK_TANK" : "PRINTFUL_VARIANT_ID_BLACK_TEE",
+      isTank ? "PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TANK" : "PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TEE",
+    ],
+    front_file_url_env: frontFileUrlEnv,
+    default_front_file_url: defaultFrontFileUrl,
+    back_file_url_env: backFileUrlEnv,
+    default_back_file_url: defaultBackFileUrl,
+  };
+}
 
 const PRODUCT_CATALOG = {
-  "smartsleeve-ss-tee": {
-    name: "SmartSleeve SS Chip Tee",
-    description: "Black SmartSleeve tee with the double-S silicon-chip mark and SmartSleeve lockup.",
-    unit_amount: 1999,
-    currency: "usd",
-    fulfillment_sku: "smartsleeve-ss-tee",
-    variant_env_prefix: "PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TEE",
-    fallback_variant_env: "PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TEE",
-    print_file_url_env: "PRINTFUL_FILE_URL_SMARTSLEEVE_SS",
-    default_print_file_url: DEFAULT_SS_PRINT_FILE_URL,
-  },
-  "smartsleeve-ss-tank": {
-    name: "SmartSleeve SS Chip Tank",
-    description: "Black SmartSleeve tank top with the double-S silicon-chip mark and SmartSleeve lockup.",
-    unit_amount: 1999,
-    currency: "usd",
-    fulfillment_sku: "smartsleeve-ss-tank",
-    variant_env_prefix: "PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TANK",
-    fallback_variant_env: "PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TANK",
-    print_file_url_env: "PRINTFUL_FILE_URL_SMARTSLEEVE_SS",
-    default_print_file_url: DEFAULT_SS_PRINT_FILE_URL,
-  },
+  "smartsleeve-ss-tee": merchProduct({
+    name: "SmartSleeve SS Tee",
+    description: "Black tee with the SS chip mark, SmartSleeve lockup, slogan front, and site URL back.",
+    sku: "smartsleeve-ss-tee",
+    garment: "tee",
+    frontFileUrlEnv: "PRINTFUL_FILE_URL_SMARTSLEEVE_SS_FRONT",
+    defaultFrontFileUrl: DEFAULT_SS_FRONT_FILE_URL,
+  }),
+  "smartsleeve-ss-tank": merchProduct({
+    name: "SmartSleeve SS Tank",
+    description: "Black tank top with the SS chip mark, SmartSleeve lockup, slogan front, and site URL back.",
+    sku: "smartsleeve-ss-tank",
+    garment: "tank",
+    frontFileUrlEnv: "PRINTFUL_FILE_URL_SMARTSLEEVE_SS_FRONT",
+    defaultFrontFileUrl: DEFAULT_SS_FRONT_FILE_URL,
+  }),
+  "sqts-llc-tee": merchProduct({
+    name: "SQTS LLC Tee",
+    description: "Black tee with the official SQTS LLC banner, slogan front, and site URL back.",
+    sku: "sqts-llc-tee",
+    garment: "tee",
+    frontFileUrlEnv: "PRINTFUL_FILE_URL_SQTS_LLC_FRONT",
+    defaultFrontFileUrl: DEFAULT_SQTS_FRONT_FILE_URL,
+  }),
+  "sqts-llc-tank": merchProduct({
+    name: "SQTS LLC Tank",
+    description: "Black tank top with the official SQTS LLC banner, slogan front, and site URL back.",
+    sku: "sqts-llc-tank",
+    garment: "tank",
+    frontFileUrlEnv: "PRINTFUL_FILE_URL_SQTS_LLC_FRONT",
+    defaultFrontFileUrl: DEFAULT_SQTS_FRONT_FILE_URL,
+  }),
+  "smartsleeve-ss-tee-promo": merchProduct({
+    name: "SmartSleeve SS Tee QR Promo",
+    description: "Black promotional tee with the SS front design and a scan-ready QR code on the back.",
+    sku: "smartsleeve-ss-tee-promo",
+    garment: "tee",
+    frontFileUrlEnv: "PRINTFUL_FILE_URL_SMARTSLEEVE_SS_FRONT",
+    defaultFrontFileUrl: DEFAULT_SS_FRONT_FILE_URL,
+    backFileUrlEnv: "PRINTFUL_FILE_URL_SMARTSLEEVE_BACK_QR",
+    defaultBackFileUrl: DEFAULT_BACK_QR_FILE_URL,
+  }),
+  "smartsleeve-ss-tank-promo": merchProduct({
+    name: "SmartSleeve SS Tank QR Promo",
+    description: "Black promotional tank with the SS front design and a scan-ready QR code on the back.",
+    sku: "smartsleeve-ss-tank-promo",
+    garment: "tank",
+    frontFileUrlEnv: "PRINTFUL_FILE_URL_SMARTSLEEVE_SS_FRONT",
+    defaultFrontFileUrl: DEFAULT_SS_FRONT_FILE_URL,
+    backFileUrlEnv: "PRINTFUL_FILE_URL_SMARTSLEEVE_BACK_QR",
+    defaultBackFileUrl: DEFAULT_BACK_QR_FILE_URL,
+  }),
+  "sqts-llc-tee-promo": merchProduct({
+    name: "SQTS LLC Tee QR Promo",
+    description: "Black promotional tee with the SQTS LLC front design and a scan-ready QR code on the back.",
+    sku: "sqts-llc-tee-promo",
+    garment: "tee",
+    frontFileUrlEnv: "PRINTFUL_FILE_URL_SQTS_LLC_FRONT",
+    defaultFrontFileUrl: DEFAULT_SQTS_FRONT_FILE_URL,
+    backFileUrlEnv: "PRINTFUL_FILE_URL_SMARTSLEEVE_BACK_QR",
+    defaultBackFileUrl: DEFAULT_BACK_QR_FILE_URL,
+  }),
+  "sqts-llc-tank-promo": merchProduct({
+    name: "SQTS LLC Tank QR Promo",
+    description: "Black promotional tank with the SQTS LLC front design and a scan-ready QR code on the back.",
+    sku: "sqts-llc-tank-promo",
+    garment: "tank",
+    frontFileUrlEnv: "PRINTFUL_FILE_URL_SQTS_LLC_FRONT",
+    defaultFrontFileUrl: DEFAULT_SQTS_FRONT_FILE_URL,
+    backFileUrlEnv: "PRINTFUL_FILE_URL_SMARTSLEEVE_BACK_QR",
+    defaultBackFileUrl: DEFAULT_BACK_QR_FILE_URL,
+  }),
 };
 
 function siteUrl(env) {
@@ -119,19 +208,37 @@ function normalizeSize(value) {
 }
 
 function sizeVariantEnvName(product, size) {
-  return `${product.variant_env_prefix}_${normalizeSize(size)}`;
+  return `${product.variant_env_prefixes[0]}_${normalizeSize(size)}`;
 }
 
 function printfulVariantId(env, product, size) {
-  const sizeSpecific = Number(env[sizeVariantEnvName(product, size)] || 0);
-  if (sizeSpecific) {
-    return sizeSpecific;
+  const normalizedSize = normalizeSize(size);
+  for (const prefix of product.variant_env_prefixes) {
+    const sizeSpecific = Number(env[`${prefix}_${normalizedSize}`] || 0);
+    if (sizeSpecific) {
+      return sizeSpecific;
+    }
   }
-  return Number(env[product.fallback_variant_env] || 0);
+  for (const fallback of product.fallback_variant_envs) {
+    const fallbackId = Number(env[fallback] || 0);
+    if (fallbackId) {
+      return fallbackId;
+    }
+  }
+  return 0;
 }
 
-function printFileUrl(env, product) {
-  return String(env[product.print_file_url_env] || product.default_print_file_url || "").trim();
+function printfulFiles(env, product) {
+  const frontUrl = String(env[product.front_file_url_env] || product.default_front_file_url || "").trim();
+  const backUrl = String(env[product.back_file_url_env] || product.default_back_file_url || "").trim();
+  const files = [];
+  if (frontUrl) {
+    files.push({ type: "front", url: frontUrl });
+  }
+  if (backUrl) {
+    files.push({ type: "back", url: backUrl });
+  }
+  return files;
 }
 
 function orderKey(sessionId) {
@@ -314,9 +421,14 @@ async function submitPrintfulOrder(env, session) {
       size,
     };
   }
-  const fileUrl = printFileUrl(env, product);
-  if (!fileUrl) {
-    return { status: "skipped", reason: `${product.print_file_url_env} not configured`, product_key: productKey, size };
+  const files = printfulFiles(env, product);
+  if (files.length === 0) {
+    return {
+      status: "skipped",
+      reason: "Printful front/back print file URLs not configured",
+      product_key: productKey,
+      size,
+    };
   }
   const shipping = session.shipping_details || {};
   const address = shipping.address || {};
@@ -340,12 +452,7 @@ async function submitPrintfulOrder(env, session) {
         quantity,
         name: `${product.name} - ${size}`,
         retail_price: (product.unit_amount / 100).toFixed(2),
-        files: [
-          {
-            type: "default",
-            url: fileUrl,
-          },
-        ],
+        files,
       },
     ],
   };
@@ -365,7 +472,7 @@ async function submitPrintfulOrder(env, session) {
     confirm,
     product_key: productKey,
     size,
-    print_file_url: fileUrl,
+    print_files: files,
     http_status: response.status,
     provider_response: payload,
   };
