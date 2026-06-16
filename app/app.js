@@ -118,6 +118,8 @@
 
   var defaultUniverse = ["MU", "SNDK", "NBIS", "CRDO", "AMD", "NVDA", "TSM", "ALAB", "VRT", "SOXS"];
   var selectedUniverse = [];
+  var MERCH_MERCHANT_OF_RECORD = "SmartSleeve Quantitative Trading Systems, LLC";
+  var MERCH_STRIPE_CHECKOUT_ENDPOINT = "";
   var MERCH_PROVIDER_STORE_URL = "";
   var MERCH_PRODUCT_URLS = {
     "sqts-tee": "",
@@ -844,18 +846,62 @@
     return MERCH_PRODUCT_URLS[productKey] || MERCH_PROVIDER_STORE_URL || "";
   }
 
+  function startMerchantCheckout(productKey, fallbackUrl) {
+    if (!MERCH_STRIPE_CHECKOUT_ENDPOINT || !window.fetch) {
+      return Promise.resolve(false);
+    }
+    return window.fetch(MERCH_STRIPE_CHECKOUT_ENDPOINT, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        product_key: productKey,
+        quantity: 1,
+        merchant_of_record: MERCH_MERCHANT_OF_RECORD,
+        fallback_url: fallbackUrl || window.location.href
+      })
+    })
+      .then(function (response) {
+        if (!response.ok) {
+          throw new Error("Checkout endpoint returned " + response.status);
+        }
+        return response.json();
+      })
+      .then(function (payload) {
+        if (!payload || !payload.checkout_url) {
+          throw new Error("Checkout endpoint did not return checkout_url");
+        }
+        window.open(payload.checkout_url, "_blank", "noopener,noreferrer");
+        return true;
+      });
+  }
+
   function wireMerchStore() {
     all("[data-merch-checkout]").forEach(function (button) {
       button.addEventListener("click", function () {
         var productKey = button.getAttribute("data-merch-checkout") || "";
         var url = merchCheckoutUrl(productKey);
-        if (!url) {
-          showPrototypeToast(
-            "Merch storefront is ready, but checkout needs the Printify or Printful store URL configured in MERCH_PROVIDER_STORE_URL."
-          );
-          return;
-        }
-        window.open(url, "_blank", "noopener,noreferrer");
+        startMerchantCheckout(productKey, url)
+          .then(function (openedMerchantCheckout) {
+            if (openedMerchantCheckout) {
+              return;
+            }
+            if (url) {
+              window.open(url, "_blank", "noopener,noreferrer");
+              return;
+            }
+            showPrototypeToast(
+              "SmartSleeve LLC merch checkout is ready for wiring, but MERCH_STRIPE_CHECKOUT_ENDPOINT or legacy provider product URLs still need to be configured."
+            );
+          })
+          .catch(function () {
+            if (url) {
+              window.open(url, "_blank", "noopener,noreferrer");
+              return;
+            }
+            showPrototypeToast(
+              "SmartSleeve LLC merchant checkout could not start. Check the Stripe Checkout endpoint and fulfillment webhook configuration."
+            );
+          });
       });
     });
   }

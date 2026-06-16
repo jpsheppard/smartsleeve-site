@@ -261,7 +261,7 @@
         <div class="section-heading">
           <p class="eyebrow">SQTS Shop</p>
           <h2>SmartSleeve merch, starting with black tees</h2>
-          <p>Merch checkout should stay provider-hosted so production, tax, shipping, returns, and payment details never touch this static site. The shop is ready for a Printify Pop-Up Store or Printful Quick Store URL.</p>
+          <p>Merch checkout is designed for SmartSleeve Quantitative Trading Systems, LLC to be the merchant of record. Customers pay SmartSleeve through hosted Stripe Checkout; after payment clears, a server-side fulfillment webhook sends the order to Printify, Printful, or another print-on-demand vendor.</p>
         </div>
 
         <div class="merch-grid featured-merch">
@@ -331,16 +331,16 @@
           <article class="card">
             <h3>Fulfillment setup path</h3>
             <ol class="numbered-list">
-              <li>Create a Printify Pop-Up Store or Printful Quick Store.</li>
-              <li>Create the two tee products first, using the print PNGs above.</li>
-              <li>Generate provider mockups, set price to $19.99 + shipping where margins allow, then publish.</li>
-              <li>Paste the provider storefront or product URLs into <code>MERCH_PROVIDER_STORE_URL</code> / <code>MERCH_PRODUCT_URLS</code> in <code>/app/app.js</code>.</li>
+              <li>Create a Stripe account under SmartSleeve Quantitative Trading Systems, LLC and connect a SmartSleeve business bank account.</li>
+              <li>Create the two tee products in a print-on-demand vendor account owned or paid by SmartSleeve, using the print PNGs above.</li>
+              <li>Configure the server-side merch checkout endpoint to create hosted Stripe Checkout Sessions for each product.</li>
+              <li>Configure the Stripe payment-success webhook to submit the paid order to the fulfillment vendor and store the vendor order id.</li>
             </ol>
           </article>
           <article class="card">
             <h3>Quality note</h3>
             <p>For lowest friction, launch with direct-to-garment black tees. For a premium drop, use embroidered caps or embroidered chest marks where the provider supports it; large full-color art is usually better printed than embroidered.</p>
-            <p class="billing-note">Current checkout buttons are provider-ready but disabled until the external fulfillment store URL is configured.</p>
+            <p class="billing-note">Current checkout buttons are merchant-of-record ready but disabled until <code>MERCH_STRIPE_CHECKOUT_ENDPOINT</code> is configured. Card data must stay in Stripe-hosted checkout, never on this static site.</p>
           </article>
         </div>
       </section>
