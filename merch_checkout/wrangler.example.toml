@@ -1,0 +1,28 @@
+name = "smartsleeve-merch-checkout"
+main = "cloudflare_worker.js"
+compatibility_date = "2026-06-01"
+
+# Replace with your production Worker route after creating it in Cloudflare.
+# routes = [
+#   { pattern = "merch.smartsleeve.ai/*", zone_name = "smartsleeve.ai" }
+# ]
+
+[vars]
+MERCH_SITE_URL = "https://smartsleeve.ai"
+MERCH_SUCCESS_PATH = "/app/#shop-success"
+MERCH_CANCEL_PATH = "/app/#shop"
+MERCH_SHIPPING_USD = "4.99"
+MERCH_ALLOWED_ORIGINS = "https://smartsleeve.ai,https://www.smartsleeve.ai"
+
+# Leave fulfillment disabled until Stripe test checkout and webhook storage work.
+MERCH_FULFILLMENT_PROVIDER = "none"
+PRINTFUL_CONFIRM_ORDERS = "false"
+
+# Fill these after creating the exact shirt variants in Printful.
+# PRINTFUL_VARIANT_ID_SQTS_TEE = ""
+# PRINTFUL_VARIANT_ID_SEMISAGE_TEE = ""
+
+# Create a KV namespace and replace the id.
+# [[kv_namespaces]]
+# binding = "MERCH_ORDERS"
+# id = ""
