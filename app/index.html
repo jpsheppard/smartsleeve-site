@@ -38,8 +38,8 @@
         <div class="status-card">
           <span class="status-dot"></span>
           <div>
-            <strong>Shop preview</strong>
-            <span>Hosted checkout will activate after Stripe and fulfillment are wired.</span>
+            <strong>Checkout ready</strong>
+            <span>Cart checkout is hosted by Stripe; fulfillment is routed through SmartSleeve.</span>
           </div>
         </div>
       </header>
@@ -50,6 +50,26 @@
           <h2>Black SmartSleeve apparel, fulfilled from the published Printful catalog.</h2>
           <p>Merch checkout is designed for SmartSleeve Quantitative Trading Systems, LLC to be the merchant of record. Customers pay SmartSleeve through hosted Stripe Checkout; after payment clears, a server-side fulfillment webhook can send the paid order to the matching published Printful product. Website prices and checkout amounts are synced from the Printful product prices.</p>
         </div>
+
+        <aside class="merch-cart" data-merch-cart aria-label="SmartSleeve shopping cart">
+          <div class="merch-cart-header">
+            <div>
+              <span class="plan-kicker">Shopping cart</span>
+              <h3>Your SmartSleeve order</h3>
+            </div>
+            <strong data-merch-cart-count>0 items</strong>
+          </div>
+          <p class="merch-cart-empty" data-merch-cart-empty>Add a size and quantity from any product below. You can check out all selected items together.</p>
+          <div class="merch-cart-items" data-merch-cart-items></div>
+          <div class="merch-cart-footer">
+            <span>Subtotal before shipping/tax</span>
+            <strong data-merch-cart-subtotal>$0.00</strong>
+          </div>
+          <div class="action-row">
+            <button type="button" class="button primary" data-merch-cart-checkout disabled>Checkout cart</button>
+            <button type="button" class="button ghost" data-merch-cart-clear disabled>Clear cart</button>
+          </div>
+        </aside>
 
         <div class="merch-grid featured-merch" data-printful-catalog-grid>
           <article class="merch-card featured" data-merch-product-card="smartsleeve-ss-tee-brand">
@@ -199,7 +219,7 @@
           <article class="card">
             <h3>Pricing note</h3>
             <p>Prices shown here are generated from the published Printful product variants, not typed into the website by hand. If you adjust a product price in Printful, rerun the catalog sync before publishing the site.</p>
-            <p class="billing-note">Current checkout buttons are merchant-of-record ready but disabled until <code>smartsleeve-merch-checkout-endpoint</code> is configured. Card data stays in Stripe-hosted checkout, never on this static site.</p>
+            <p class="billing-note">Cart checkout opens a Stripe-hosted payment page. Card data stays in Stripe Checkout, never on this static site.</p>
           </article>
         </div>
       </section>

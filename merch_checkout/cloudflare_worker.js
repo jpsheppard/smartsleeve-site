@@ -47,6 +47,7 @@ const DEFAULT_SITE = "https://smartsleeve.ai";
 const DEFAULT_SUCCESS_PATH = "/app/#shop-success";
 const DEFAULT_CANCEL_PATH = "/app/#shop";
 const MAX_QUANTITY = 6;
+const MAX_CART_LINES = 30;
 const SIZE_OPTIONS = ["XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL"];
 const DEFAULT_SS_FRONT_FILE_URL = `${DEFAULT_SITE}/merch/smartsleeve-ss-short-front-print.png`;
 const DEFAULT_SQTS_FRONT_FILE_URL = `${DEFAULT_SITE}/merch/sqts-llc-front-print.png`;
@@ -413,20 +414,57 @@ function encodeForm(params, prefix = "") {
   return parts.join("&");
 }
 
+function normalizeCheckoutItems(env, body) {
+  const rawItems = Array.isArray(body.items) && body.items.length > 0
+    ? body.items
+    : [{
+        product_key: body.product_key,
+        quantity: body.quantity,
+        size: body.size,
+      }];
+  const merged = new Map();
+  rawItems.slice(0, MAX_CART_LINES).forEach((rawItem) => {
+    const productKey = normalizeProductKey(rawItem && rawItem.product_key);
+    const product = catalogProduct(env, productKey);
+    if (!product) {
+      return;
+    }
+    const size = normalizeSize(rawItem && rawItem.size);
+    const key = `${productKey}|${size}`;
+    const existing = merged.get(key);
+    const quantity = clampQuantity(rawItem && rawItem.quantity);
+    if (existing) {
+      existing.quantity = clampQuantity(existing.quantity + quantity);
+    } else {
+      merged.set(key, {
+        product_key: productKey,
+        product,
+        size,
+        quantity,
+        unit_amount: productUnitAmountForSize(env, product, size),
+      });
+    }
+  });
+  return Array.from(merged.values());
+}
+
+function stripeLineItemProductMetadata(item) {
+  return {
+    product_key: item.product_key,
+    fulfillment_sku: item.product.fulfillment_sku,
+    shirt_size: item.size,
+  };
+}
+
 async function createStripeCheckoutSession(request, env) {
   if (!env.STRIPE_SECRET_KEY) {
     return jsonResponse(request, env, { error: "Stripe secret is not configured" }, 503);
   }
   const body = await readJson(request);
-  const productKey = normalizeProductKey(body.product_key);
-  const product = catalogProduct(env, productKey);
-  if (!product) {
-    return jsonResponse(request, env, { error: "Unknown merch product" }, 400);
+  const items = normalizeCheckoutItems(env, body);
+  if (items.length === 0) {
+    return jsonResponse(request, env, { error: "Cart is empty or contains unknown merch products" }, 400);
   }
-  const requestedSize = normalizeSize(body.size);
-  const hasLockedSize = SIZE_OPTIONS.includes(String(body.size || "").trim().toUpperCase());
-  const unitAmount = productUnitAmountForSize(env, product, requestedSize);
-  const quantity = clampQuantity(body.quantity);
   const shippingCents = Math.max(0, Math.round(Number(env.MERCH_SHIPPING_USD || 4.99) * 100));
   const base = siteUrl(env);
   const successPath = String(env.MERCH_SUCCESS_PATH || DEFAULT_SUCCESS_PATH);
@@ -436,30 +474,30 @@ async function createStripeCheckoutSession(request, env) {
     success_url: `${base}${successPath}?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${base}${cancelPath}`,
     "shipping_address_collection[allowed_countries][0]": "US",
-    "line_items[0][quantity]": quantity,
-    "line_items[0][price_data][currency]": product.currency,
-    "line_items[0][price_data][unit_amount]": unitAmount,
-    "line_items[0][price_data][product_data][name]": hasLockedSize ? `${product.name} - ${requestedSize}` : product.name,
-    "line_items[0][price_data][product_data][description]": product.description,
-    "metadata[product_key]": productKey,
-    "metadata[fulfillment_sku]": product.fulfillment_sku,
-    "metadata[quantity]": String(quantity),
-    "metadata[unit_amount]": String(unitAmount),
-    "metadata[shirt_size]": requestedSize,
+    "metadata[cart_mode]": items.length > 1 ? "cart" : "single",
+    "metadata[item_count]": String(items.length),
   };
-  if (!hasLockedSize) {
-    params["custom_fields[0][key]"] = "shirt_size";
-    params["custom_fields[0][label][type]"] = "custom";
-    params["custom_fields[0][label][custom]"] = "Shirt size";
-    params["custom_fields[0][type]"] = "dropdown";
-    SIZE_OPTIONS.forEach((size, index) => {
-      params[`custom_fields[0][dropdown][options][${index}][label]`] = size;
-      params[`custom_fields[0][dropdown][options][${index}][value]`] = size;
+  items.forEach((item, index) => {
+    const metadata = stripeLineItemProductMetadata(item);
+    params[`line_items[${index}][quantity]`] = item.quantity;
+    params[`line_items[${index}][price_data][currency]`] = item.product.currency;
+    params[`line_items[${index}][price_data][unit_amount]`] = item.unit_amount;
+    params[`line_items[${index}][price_data][product_data][name]`] = `${item.product.name} - ${item.size}`;
+    params[`line_items[${index}][price_data][product_data][description]`] = item.product.description;
+    Object.entries(metadata).forEach(([key, value]) => {
+      params[`line_items[${index}][price_data][product_data][metadata][${key}]`] = value;
     });
+  });
+  if (items.length === 1) {
+    params["metadata[product_key]"] = items[0].product_key;
+    params["metadata[fulfillment_sku]"] = items[0].product.fulfillment_sku;
+    params["metadata[quantity]"] = String(items[0].quantity);
+    params["metadata[unit_amount]"] = String(items[0].unit_amount);
+    params["metadata[shirt_size]"] = items[0].size;
   }
   if (shippingCents > 0) {
     params["shipping_options[0][shipping_rate_data][type]"] = "fixed_amount";
-    params["shipping_options[0][shipping_rate_data][fixed_amount][currency]"] = product.currency;
+    params["shipping_options[0][shipping_rate_data][fixed_amount][currency]"] = "usd";
     params["shipping_options[0][shipping_rate_data][fixed_amount][amount]"] = shippingCents;
     params["shipping_options[0][shipping_rate_data][display_name]"] = "Standard shipping";
   }
@@ -487,7 +525,7 @@ async function createStripeCheckoutSession(request, env) {
   return jsonResponse(request, env, {
     checkout_url: payload.url,
     session_id: payload.id,
-    product_key: productKey,
+    item_count: items.length,
   });
 }
 
@@ -552,11 +590,73 @@ function customFieldValue(session, key) {
   return field.text && field.text.value ? field.text.value : "";
 }
 
+async function fetchStripeCheckoutLineItems(env, sessionId) {
+  if (!env.STRIPE_SECRET_KEY || !sessionId) {
+    return [];
+  }
+  const url = new URL(`https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sessionId)}/line_items`);
+  url.searchParams.set("limit", "100");
+  url.searchParams.append("expand[]", "data.price.product");
+  const response = await fetch(url.toString(), {
+    headers: {
+      Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
+    },
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || !Array.isArray(payload.data)) {
+    return [];
+  }
+  return payload.data;
+}
+
+async function checkoutItemsForFulfillment(env, session) {
+  const lineItems = await fetchStripeCheckoutLineItems(env, session.id);
+  const fromLineItems = lineItems
+    .map((lineItem) => {
+      const productData = lineItem.price && lineItem.price.product && typeof lineItem.price.product === "object"
+        ? lineItem.price.product
+        : {};
+      const metadata = productData.metadata || {};
+      const productKey = normalizeProductKey(metadata.product_key);
+      const product = catalogProduct(env, productKey);
+      if (!product) {
+        return null;
+      }
+      return {
+        product_key: productKey,
+        product,
+        size: normalizeSize(metadata.shirt_size),
+        quantity: clampQuantity(lineItem.quantity),
+        unit_amount: Math.max(0, Number(lineItem.price && lineItem.price.unit_amount) || productUnitAmountForSize(env, product, metadata.shirt_size)),
+      };
+    })
+    .filter(Boolean);
+  if (fromLineItems.length > 0) {
+    return fromLineItems;
+  }
+  const productKey = normalizeProductKey(session.metadata && session.metadata.product_key);
+  const product = catalogProduct(env, productKey);
+  if (!product) {
+    return [];
+  }
+  const size = normalizeSize(customFieldValue(session, "shirt_size"));
+  return [{
+    product_key: productKey,
+    product,
+    size,
+    quantity: clampQuantity(session.metadata && session.metadata.quantity),
+    unit_amount: Math.max(0, Number(session.metadata && session.metadata.unit_amount) || productUnitAmountForSize(env, product, size)),
+  }];
+}
+
 function publicCatalog(env) {
   const products = new Map();
-  Object.entries(PRODUCT_CATALOG).forEach(([key, product]) => {
-    products.set(key, product);
-  });
+  const hasSyncedPrintfulProducts = Object.keys(env).some((key) => key.startsWith("PRINTFUL_SYNC_PRODUCT_ID_"));
+  if (!hasSyncedPrintfulProducts) {
+    Object.entries(PRODUCT_CATALOG).forEach(([key, product]) => {
+      products.set(key, product);
+    });
+  }
   Object.keys(env).forEach((key) => {
     const match = key.match(/^PRINTFUL_SYNC_PRODUCT_ID_(.+)$/);
     if (!match) {
@@ -595,49 +695,65 @@ async function submitPrintfulOrder(env, session) {
   if (!env.PRINTFUL_API_KEY) {
     return { status: "skipped", reason: "PRINTFUL_API_KEY not configured" };
   }
-  const productKey = normalizeProductKey(session.metadata && session.metadata.product_key);
-  const product = catalogProduct(env, productKey);
-  if (!product) {
-    return { status: "skipped", reason: "unknown product metadata" };
+  const checkoutItems = await checkoutItemsForFulfillment(env, session);
+  if (checkoutItems.length === 0) {
+    return { status: "skipped", reason: "no fulfillable checkout line items" };
   }
-  const size = normalizeSize(customFieldValue(session, "shirt_size"));
   const shipping = session.shipping_details || {};
   const address = shipping.address || {};
   const customer = session.customer_details || {};
-  const quantity = clampQuantity(session.metadata && session.metadata.quantity);
-  const unitAmount = Math.max(0, Number(session.metadata && session.metadata.unit_amount) || product.unit_amount);
-  const syncVariantId = printfulSyncVariantId(env, product, size);
-  const item = {
-    quantity,
-    name: `${product.name} - ${size}`,
-    retail_price: (unitAmount / 100).toFixed(2),
-  };
-  let fulfillmentMode = "sync_variant";
-  let files = [];
-  if (syncVariantId) {
-    item.sync_variant_id = syncVariantId;
-  } else {
-    fulfillmentMode = "catalog_variant_files";
-    const variantId = printfulVariantId(env, product, size);
-    if (!variantId) {
-      return {
-        status: "skipped",
-        reason: `${sizeVariantEnvName(product, size)} or ${product.sync_variant_env_prefixes[0]}_${size} not configured`,
-        product_key: productKey,
-        size,
-      };
+  const printfulItems = [];
+  const itemSummaries = [];
+  for (const checkoutItem of checkoutItems) {
+    const { productKey, product, size, quantity, unitAmount } = {
+      productKey: checkoutItem.product_key,
+      product: checkoutItem.product,
+      size: checkoutItem.size,
+      quantity: checkoutItem.quantity,
+      unitAmount: checkoutItem.unit_amount,
+    };
+    const syncVariantId = printfulSyncVariantId(env, product, size);
+    const item = {
+      quantity,
+      name: `${product.name} - ${size}`,
+      retail_price: (unitAmount / 100).toFixed(2),
+    };
+    let fulfillmentMode = "sync_variant";
+    let files = [];
+    if (syncVariantId) {
+      item.sync_variant_id = syncVariantId;
+    } else {
+      fulfillmentMode = "catalog_variant_files";
+      const variantId = printfulVariantId(env, product, size);
+      if (!variantId) {
+        return {
+          status: "skipped",
+          reason: `${sizeVariantEnvName(product, size)} or ${product.sync_variant_env_prefixes[0]}_${size} not configured`,
+          product_key: productKey,
+          size,
+        };
+      }
+      files = printfulFiles(env, product);
+      if (files.length === 0) {
+        return {
+          status: "skipped",
+          reason: "Printful front/back print file URLs not configured",
+          product_key: productKey,
+          size,
+        };
+      }
+      item.variant_id = variantId;
+      item.files = files;
     }
-    files = printfulFiles(env, product);
-    if (files.length === 0) {
-      return {
-        status: "skipped",
-        reason: "Printful front/back print file URLs not configured",
-        product_key: productKey,
-        size,
-      };
-    }
-    item.variant_id = variantId;
-    item.files = files;
+    printfulItems.push(item);
+    itemSummaries.push({
+      product_key: productKey,
+      size,
+      quantity,
+      fulfillment_mode: fulfillmentMode,
+      sync_variant_id: syncVariantId || undefined,
+      print_files: files,
+    });
   }
   const order = {
     external_id: session.id,
@@ -651,14 +767,23 @@ async function submitPrintfulOrder(env, session) {
       country_code: address.country || "US",
       zip: address.postal_code || "",
     },
-    items: [item],
+    items: printfulItems,
   };
   const confirm = String(env.PRINTFUL_CONFIRM_ORDERS || "").toLowerCase() === "true";
+  const storeId = String(env.PRINTFUL_STORE_ID || "").trim();
+  if (!storeId) {
+    return {
+      status: "skipped",
+      reason: "PRINTFUL_STORE_ID not configured",
+      item_count: itemSummaries.length,
+    };
+  }
   const response = await fetch(`https://api.printful.com/orders?confirm=${confirm ? "1" : "0"}`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${env.PRINTFUL_API_KEY}`,
       "Content-Type": "application/json",
+      "X-PF-Store-Id": storeId,
     },
     body: JSON.stringify(order),
   });
@@ -667,11 +792,9 @@ async function submitPrintfulOrder(env, session) {
     status: response.ok ? "submitted" : "failed",
     provider: "printful",
     confirm,
-    product_key: productKey,
-    size,
-    fulfillment_mode: fulfillmentMode,
-    sync_variant_id: syncVariantId || undefined,
-    print_files: files,
+    item_count: itemSummaries.length,
+    items: itemSummaries,
+    store_id: storeId,
     http_status: response.status,
     provider_response: payload,
   };
