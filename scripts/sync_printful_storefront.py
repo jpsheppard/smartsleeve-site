@@ -13,6 +13,7 @@ import argparse
 import json
 import os
 import re
+import ssl
 import sys
 import time
 import urllib.error
@@ -31,6 +32,7 @@ DEFAULT_VARS_OUT = ROOT / "merch_checkout" / "printful-sync-variants.generated.t
 DEFAULT_MAP = ROOT / "merch" / "printful-product-map.json"
 API_BASE = "https://api.printful.com"
 SIZES = ("S", "M", "L", "XL", "2XL")
+MACOS_SYSTEM_CA_FILE = Path("/private/etc/ssl/cert.pem")
 
 
 @dataclass(frozen=True)
@@ -75,9 +77,10 @@ def load_targets(path: Path) -> list[ProductTarget]:
 
 
 class PrintfulClient:
-    def __init__(self, token: str, store_id: str | None = None) -> None:
+    def __init__(self, token: str, store_id: str | None = None, ca_file: Path | None = None) -> None:
         self.token = token
         self.store_id = store_id
+        self.ssl_context = ssl.create_default_context(cafile=str(ca_file)) if ca_file else None
 
     def request(self, path: str, params: dict[str, Any] | None = None) -> Any:
         url = f"{API_BASE}{path}"
@@ -91,11 +94,19 @@ class PrintfulClient:
             headers["X-PF-Store-Id"] = self.store_id
         request = urllib.request.Request(url, headers=headers)
         try:
-            with urllib.request.urlopen(request, timeout=30) as response:
+            with urllib.request.urlopen(request, timeout=30, context=self.ssl_context) as response:
                 return json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as err:
             body = err.read().decode("utf-8", errors="replace")
             raise RuntimeError(f"Printful API {err.code} for {path}: {body}") from err
+        except urllib.error.URLError as err:
+            reason = getattr(err, "reason", err)
+            if isinstance(reason, ssl.SSLCertVerificationError) or "CERTIFICATE_VERIFY_FAILED" in str(reason):
+                raise RuntimeError(
+                    "Printful TLS certificate verification failed. On macOS, rerun with "
+                    "`SSL_CERT_FILE=/private/etc/ssl/cert.pem`, or use Codex's bundled Python runtime."
+                ) from err
+            raise RuntimeError(f"Printful API request failed for {path}: {reason}") from err
 
     def sync_products(self) -> list[dict[str, Any]]:
         products: list[dict[str, Any]] = []
@@ -114,6 +125,15 @@ class PrintfulClient:
     def sync_product_detail(self, product_id: int) -> dict[str, Any]:
         payload = self.request(f"/sync/products/{product_id}")
         return payload.get("result") or {}
+
+
+def default_ca_file() -> Path | None:
+    configured = os.environ.get("PRINTFUL_CA_FILE") or os.environ.get("SSL_CERT_FILE")
+    if configured:
+        return Path(configured)
+    if sys.platform == "darwin" and MACOS_SYSTEM_CA_FILE.exists():
+        return MACOS_SYSTEM_CA_FILE
+    return None
 
 
 def map_entry(mapping: dict[str, Any], key: str) -> dict[str, Any]:
@@ -272,6 +292,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--vars-out", type=Path, default=DEFAULT_VARS_OUT)
     parser.add_argument("--token-env", default="PRINTFUL_API_KEY")
     parser.add_argument("--store-id-env", default="PRINTFUL_STORE_ID")
+    parser.add_argument("--ca-file", type=Path, default=default_ca_file())
     parser.add_argument("--fail-on-warning", action="store_true")
     args = parser.parse_args(argv)
 
@@ -281,7 +302,7 @@ def main(argv: list[str] | None = None) -> int:
     store_id = os.environ.get(args.store_id_env, "").strip() or None
     targets = load_targets(args.manifest)
     mapping = load_json(args.map, {})
-    client = PrintfulClient(token=token, store_id=store_id)
+    client = PrintfulClient(token=token, store_id=store_id, ca_file=args.ca_file)
     products = client.sync_products()
     catalog, vars_text, warnings = build_catalog_and_vars(targets, products, client, mapping)
 
