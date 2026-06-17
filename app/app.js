@@ -95,6 +95,85 @@
     return product.prices[size] || product.prices.M || "";
   }
 
+  function createMerchCard(product) {
+    var article = document.createElement("article");
+    article.className = "merch-card featured";
+    article.setAttribute("data-merch-product-card", product.key);
+
+    var image = document.createElement("img");
+    image.src = product.preview || "/smartsleeve-ss-banner.png";
+    image.alt = "Preview of " + product.name;
+    article.appendChild(image);
+
+    var copy = document.createElement("div");
+    copy.className = "merch-copy";
+
+    var kicker = document.createElement("span");
+    kicker.className = "plan-kicker";
+    kicker.textContent = product.printful_product_id ? "Printful product " + product.printful_product_id : "Printful product";
+    copy.appendChild(kicker);
+
+    var title = document.createElement("h3");
+    title.textContent = product.name;
+    copy.appendChild(title);
+
+    var price = document.createElement("strong");
+    var priceValue = document.createElement("span");
+    priceValue.setAttribute("data-merch-price", "");
+    priceValue.textContent = product.price_label || "$19.99";
+    var shipping = document.createElement("span");
+    shipping.textContent = " + shipping";
+    price.appendChild(priceValue);
+    price.appendChild(shipping);
+    copy.appendChild(price);
+
+    var description = document.createElement("p");
+    description.textContent = "Published Printful product synced into SmartSleeve checkout. Price and size options come from Printful.";
+    copy.appendChild(description);
+
+    var label = document.createElement("label");
+    label.className = "merch-size-picker";
+    label.textContent = "Size ";
+    var select = document.createElement("select");
+    select.setAttribute("data-merch-size", "");
+    select.setAttribute("aria-label", product.name + " size");
+    label.appendChild(select);
+    copy.appendChild(label);
+
+    var actions = document.createElement("div");
+    actions.className = "action-row";
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = "button primary";
+    button.setAttribute("data-merch-checkout", product.key);
+    button.textContent = "Order";
+    actions.appendChild(button);
+    copy.appendChild(actions);
+
+    article.appendChild(copy);
+    return article;
+  }
+
+  function renderPrintfulCatalog(catalog) {
+    if (!catalog || !Array.isArray(catalog.products) || catalog.products.length === 0) {
+      return;
+    }
+    var grid = document.querySelector("[data-printful-catalog-grid]");
+    if (!grid) {
+      return;
+    }
+    grid.innerHTML = "";
+    catalog.products.forEach(function (product) {
+      if (product && product.key) {
+        grid.appendChild(createMerchCard(product));
+      }
+    });
+    var compact = document.querySelector("[data-static-merch-extras]");
+    if (compact) {
+      compact.hidden = true;
+    }
+  }
+
   function updateCardPrice(root, productKey, size) {
     var product = merchProduct(productKey);
     all("[data-merch-checkout]", root).forEach(function (button) {
@@ -131,6 +210,7 @@
         MERCH_CATALOG[product.key] = product;
       }
     });
+    renderPrintfulCatalog(catalog);
     all("[data-merch-product-card]").forEach(function (card) {
       var productKey = card.getAttribute("data-merch-product-card") || "";
       var product = merchProduct(productKey);

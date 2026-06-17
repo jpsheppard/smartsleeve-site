@@ -47,7 +47,7 @@ const DEFAULT_SITE = "https://smartsleeve.ai";
 const DEFAULT_SUCCESS_PATH = "/app/#shop-success";
 const DEFAULT_CANCEL_PATH = "/app/#shop";
 const MAX_QUANTITY = 6;
-const SIZE_OPTIONS = ["S", "M", "L", "XL", "2XL"];
+const SIZE_OPTIONS = ["XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL"];
 const DEFAULT_SS_FRONT_FILE_URL = `${DEFAULT_SITE}/merch/smartsleeve-ss-short-front-print.png`;
 const DEFAULT_SQTS_FRONT_FILE_URL = `${DEFAULT_SITE}/merch/sqts-llc-front-print.png`;
 const DEFAULT_TEE_BACK_FILE_URL = `${DEFAULT_SITE}/merch/ss_and_sqts_tee_back_print.png`;
@@ -215,6 +215,38 @@ const PRODUCT_CATALOG = {
   }),
 };
 
+function dynamicProductFromEnv(env, productKey) {
+  const sku = normalizeProductKey(productKey);
+  if (!sku) {
+    return null;
+  }
+  const slug = envSlug(sku);
+  const hasSyncVariant = SIZE_OPTIONS.some((size) => Number(env[`PRINTFUL_SYNC_VARIANT_ID_${slug}_${size}`] || 0));
+  const configuredName = String(env[`MERCH_PRODUCT_NAME_${slug}`] || "").trim();
+  if (!configuredName && !hasSyncVariant) {
+    return null;
+  }
+  return {
+    name: configuredName || sku,
+    description: String(env[`MERCH_PRODUCT_DESCRIPTION_${slug}`] || "Published Printful product synced for SmartSleeve checkout."),
+    unit_amount: 1999,
+    currency: "usd",
+    fulfillment_sku: sku,
+    sync_variant_env_prefixes: [`PRINTFUL_SYNC_VARIANT_ID_${slug}`],
+    variant_env_prefixes: [`PRINTFUL_VARIANT_ID_${slug}`],
+    fallback_variant_envs: [],
+    front_file_url_env: "",
+    default_front_file_url: "",
+    has_back_print: false,
+    back_file_url_env: "",
+    default_back_file_url: "",
+  };
+}
+
+function catalogProduct(env, productKey) {
+  return PRODUCT_CATALOG[productKey] || dynamicProductFromEnv(env, productKey);
+}
+
 function siteUrl(env) {
   return String(env.MERCH_SITE_URL || DEFAULT_SITE).replace(/\/$/, "");
 }
@@ -333,8 +365,16 @@ function productUnitAmountForSize(env, product, size) {
   return product.unit_amount;
 }
 
+function availableSizesForProduct(env, product) {
+  const slug = envSlug(product.fulfillment_sku);
+  const sizes = SIZE_OPTIONS.filter((size) => (
+    env[`MERCH_PRICE_USD_${slug}_${size}`] || env[`PRINTFUL_SYNC_VARIANT_ID_${slug}_${size}`]
+  ));
+  return sizes.length > 0 ? sizes : SIZE_OPTIONS;
+}
+
 function priceLabelForProduct(env, product) {
-  const amounts = SIZE_OPTIONS.map((size) => productUnitAmountForSize(env, product, size));
+  const amounts = availableSizesForProduct(env, product).map((size) => productUnitAmountForSize(env, product, size));
   const min = Math.min(...amounts);
   const max = Math.max(...amounts);
   const format = (cents) => `$${(cents / 100).toFixed(2)}`;
@@ -379,7 +419,7 @@ async function createStripeCheckoutSession(request, env) {
   }
   const body = await readJson(request);
   const productKey = normalizeProductKey(body.product_key);
-  const product = PRODUCT_CATALOG[productKey];
+  const product = catalogProduct(env, productKey);
   if (!product) {
     return jsonResponse(request, env, { error: "Unknown merch product" }, 400);
   }
@@ -513,21 +553,41 @@ function customFieldValue(session, key) {
 }
 
 function publicCatalog(env) {
+  const products = new Map();
+  Object.entries(PRODUCT_CATALOG).forEach(([key, product]) => {
+    products.set(key, product);
+  });
+  Object.keys(env).forEach((key) => {
+    const match = key.match(/^PRINTFUL_SYNC_PRODUCT_ID_(.+)$/);
+    if (!match) {
+      return;
+    }
+    const slug = match[1];
+    const productKey = normalizeProductKey(env[`MERCH_PRODUCT_KEY_${slug}`] || slug.toLowerCase().replace(/_/g, "-"));
+    const product = dynamicProductFromEnv(env, productKey);
+    if (product) {
+      products.set(productKey, product);
+    }
+  });
   return {
     generated_at: new Date().toISOString(),
     source: "worker_env",
     currency: "USD",
     sizes: SIZE_OPTIONS,
-    products: Object.entries(PRODUCT_CATALOG).map(([key, product]) => ({
+    products: Array.from(products.entries()).map(([key, product]) => {
+      const sizes = availableSizesForProduct(env, product);
+      return {
       key,
       name: product.name,
       description: product.description,
       price_label: priceLabelForProduct(env, product),
-      prices: SIZE_OPTIONS.reduce((acc, size) => {
+      sizes,
+      prices: sizes.reduce((acc, size) => {
         acc[size] = (productUnitAmountForSize(env, product, size) / 100).toFixed(2);
         return acc;
       }, {}),
-    })),
+      };
+    }),
   };
 }
 
@@ -536,7 +596,7 @@ async function submitPrintfulOrder(env, session) {
     return { status: "skipped", reason: "PRINTFUL_API_KEY not configured" };
   }
   const productKey = normalizeProductKey(session.metadata && session.metadata.product_key);
-  const product = PRODUCT_CATALOG[productKey];
+  const product = catalogProduct(env, productKey);
   if (!product) {
     return { status: "skipped", reason: "unknown product metadata" };
   }
@@ -682,7 +742,7 @@ export default {
         stripe_configured: Boolean(env.STRIPE_SECRET_KEY),
         webhook_configured: Boolean(env.STRIPE_WEBHOOK_SECRET),
         fulfillment_provider: env.MERCH_FULFILLMENT_PROVIDER || "none",
-        products: Object.keys(PRODUCT_CATALOG),
+        products: publicCatalog(env).products.map((product) => product.key),
       });
     }
     if (request.method === "GET" && url.pathname === "/catalog") {
