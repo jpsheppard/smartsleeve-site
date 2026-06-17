@@ -173,6 +173,19 @@ def print_stores(stores: list[dict[str, Any]]) -> None:
         print(f"- {store_id}: {store_display_name(store)}")
 
 
+def print_sync_products(products: list[dict[str, Any]]) -> None:
+    if not products:
+        print("No synced Printful products were returned for this store.")
+        return
+    print("Printful sync products available to this store:")
+    for product in products:
+        product_id = product.get("id") or "UNKNOWN"
+        name = product.get("name") or "(unnamed product)"
+        variants = product.get("variants")
+        variant_count = f", variants={variants}" if variants is not None else ""
+        print(f"- {product_id}: {name}{variant_count}")
+
+
 def resolve_store_id(client: PrintfulClient, configured_store_id: str | None, list_stores: bool) -> str | None:
     if configured_store_id:
         return configured_store_id
@@ -350,6 +363,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--store-id-env", default="PRINTFUL_STORE_ID")
     parser.add_argument("--ca-file", type=Path, default=default_ca_file())
     parser.add_argument("--list-stores", action="store_true", help="List Printful stores visible to the token and exit.")
+    parser.add_argument("--list-products", action="store_true", help="List synced Printful products for the selected store and exit.")
     parser.add_argument("--fail-on-warning", action="store_true")
     args = parser.parse_args(argv)
 
@@ -365,6 +379,9 @@ def main(argv: list[str] | None = None) -> int:
     mapping = load_json(args.map, {})
     client = PrintfulClient(token=token, store_id=store_id, ca_file=args.ca_file)
     products = client.sync_products()
+    if args.list_products:
+        print_sync_products(products)
+        return 0
     catalog, vars_text, warnings = build_catalog_and_vars(targets, products, client, mapping)
 
     args.catalog_out.parent.mkdir(parents=True, exist_ok=True)
