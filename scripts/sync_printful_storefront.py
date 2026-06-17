@@ -82,7 +82,7 @@ class PrintfulClient:
         self.store_id = store_id
         self.ssl_context = ssl.create_default_context(cafile=str(ca_file)) if ca_file else None
 
-    def request(self, path: str, params: dict[str, Any] | None = None) -> Any:
+    def request(self, path: str, params: dict[str, Any] | None = None, include_store_id: bool = True) -> Any:
         url = f"{API_BASE}{path}"
         if params:
             url = f"{url}?{urllib.parse.urlencode(params)}"
@@ -90,7 +90,7 @@ class PrintfulClient:
             "Authorization": f"Bearer {self.token}",
             "User-Agent": "SmartSleeve storefront sync",
         }
-        if self.store_id:
+        if include_store_id and self.store_id:
             headers["X-PF-Store-Id"] = self.store_id
         request = urllib.request.Request(url, headers=headers)
         try:
@@ -107,6 +107,17 @@ class PrintfulClient:
                     "`SSL_CERT_FILE=/private/etc/ssl/cert.pem`, or use Codex's bundled Python runtime."
                 ) from err
             raise RuntimeError(f"Printful API request failed for {path}: {reason}") from err
+
+    def stores(self) -> list[dict[str, Any]]:
+        payload = self.request("/stores", include_store_id=False)
+        result = payload.get("result") or []
+        if isinstance(result, list):
+            return result
+        if isinstance(result, dict):
+            stores = result.get("stores")
+            if isinstance(stores, list):
+                return stores
+        return []
 
     def sync_products(self) -> list[dict[str, Any]]:
         products: list[dict[str, Any]] = []
@@ -134,6 +145,51 @@ def default_ca_file() -> Path | None:
     if sys.platform == "darwin" and MACOS_SYSTEM_CA_FILE.exists():
         return MACOS_SYSTEM_CA_FILE
     return None
+
+
+def store_display_name(store: dict[str, Any]) -> str:
+    for key in ("name", "store_name", "display_name"):
+        value = store.get(key)
+        if value:
+            return str(value)
+    return "(unnamed store)"
+
+
+def store_identifier(store: dict[str, Any]) -> str | None:
+    for key in ("id", "store_id"):
+        value = store.get(key)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    return None
+
+
+def print_stores(stores: list[dict[str, Any]]) -> None:
+    if not stores:
+        print("No stores were returned for this Printful token.")
+        return
+    print("Printful stores available to this token:")
+    for store in stores:
+        store_id = store_identifier(store) or "UNKNOWN"
+        print(f"- {store_id}: {store_display_name(store)}")
+
+
+def resolve_store_id(client: PrintfulClient, configured_store_id: str | None, list_stores: bool) -> str | None:
+    if configured_store_id:
+        return configured_store_id
+    stores = client.stores()
+    if list_stores:
+        print_stores(stores)
+        return None
+    if len(stores) == 1:
+        store_id = store_identifier(stores[0])
+        if store_id:
+            print(f"Using only available Printful store {store_id}: {store_display_name(stores[0])}")
+            return store_id
+    print_stores(stores)
+    raise SystemExit(
+        "Set PRINTFUL_STORE_ID to the SmartSleeve store id above, then rerun the sync. "
+        "Example: export PRINTFUL_STORE_ID=12345678"
+    )
 
 
 def map_entry(mapping: dict[str, Any], key: str) -> dict[str, Any]:
@@ -293,6 +349,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--token-env", default="PRINTFUL_API_KEY")
     parser.add_argument("--store-id-env", default="PRINTFUL_STORE_ID")
     parser.add_argument("--ca-file", type=Path, default=default_ca_file())
+    parser.add_argument("--list-stores", action="store_true", help="List Printful stores visible to the token and exit.")
     parser.add_argument("--fail-on-warning", action="store_true")
     args = parser.parse_args(argv)
 
@@ -300,6 +357,10 @@ def main(argv: list[str] | None = None) -> int:
     if not token:
         raise SystemExit(f"Set {args.token_env} to a Printful private token before running this script.")
     store_id = os.environ.get(args.store_id_env, "").strip() or None
+    store_probe = PrintfulClient(token=token, ca_file=args.ca_file)
+    store_id = resolve_store_id(store_probe, store_id, args.list_stores)
+    if args.list_stores:
+        return 0
     targets = load_targets(args.manifest)
     mapping = load_json(args.map, {})
     client = PrintfulClient(token=token, store_id=store_id, ca_file=args.ca_file)
