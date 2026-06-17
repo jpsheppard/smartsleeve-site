@@ -13,6 +13,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import ssl
 import sys
 import time
@@ -30,6 +31,7 @@ DEFAULT_MANIFEST = ROOT / "merch" / "printful-launch-manifest.json"
 DEFAULT_CATALOG_OUT = ROOT / "merch" / "printful-storefront-catalog.json"
 DEFAULT_VARS_OUT = ROOT / "merch_checkout" / "printful-sync-variants.generated.toml"
 DEFAULT_MAP = ROOT / "merch" / "printful-product-map.json"
+DEFAULT_ENV_FILE = ROOT / ".env.printful.local"
 API_BASE = "https://api.printful.com"
 SIZES = ("XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL")
 MACOS_SYSTEM_CA_FILE = Path("/private/etc/ssl/cert.pem")
@@ -70,6 +72,28 @@ def load_json(path: Path, default: Any) -> Any:
     if not path.exists():
         return default
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_env_file(path: Path) -> None:
+    if not path.exists():
+        return
+    for line_number, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export "):].strip()
+        if "=" not in line:
+            raise SystemExit(f"Invalid env line in {path}:{line_number}; expected KEY=value.")
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+            raise SystemExit(f"Invalid env key in {path}:{line_number}: {key!r}")
+        try:
+            parsed = shlex.split(value, comments=False, posix=True)
+        except ValueError as exc:
+            raise SystemExit(f"Invalid env value in {path}:{line_number}: {exc}") from exc
+        os.environ.setdefault(key, parsed[0] if parsed else "")
 
 
 def load_targets(path: Path) -> list[ProductTarget]:
@@ -470,12 +494,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--token-env", default="PRINTFUL_API_KEY")
     parser.add_argument("--store-id-env", default="PRINTFUL_STORE_ID")
     parser.add_argument("--ca-file", type=Path, default=default_ca_file())
+    parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE, help="Optional gitignored env file with PRINTFUL_API_KEY/PRINTFUL_STORE_ID.")
     parser.add_argument("--list-stores", action="store_true", help="List Printful stores visible to the token and exit.")
     parser.add_argument("--list-products", action="store_true", help="List synced Printful products for the selected store and exit.")
     parser.add_argument("--manifest-only", action="store_true", help="Only sync products listed in the launch manifest.")
     parser.add_argument("--fail-on-warning", action="store_true")
     args = parser.parse_args(argv)
 
+    load_env_file(args.env_file)
     token = os.environ.get(args.token_env, "").strip()
     if not token:
         raise SystemExit(f"Set {args.token_env} to a Printful private token before running this script.")
