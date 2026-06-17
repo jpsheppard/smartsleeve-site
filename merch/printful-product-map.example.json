@@ -1,0 +1,39 @@
+{
+  "smartsleeve-ss-tee-brand": {
+    "printful_product_id": 0,
+    "note": "Replace 0 with the Printful published product id if fuzzy name matching picks the wrong product."
+  },
+  "smartsleeve-ss-tee": {
+    "printful_product_id": 0
+  },
+  "smartsleeve-ss-tee-promo": {
+    "printful_product_id": 0
+  },
+  "smartsleeve-ss-tank-brand": {
+    "printful_product_id": 0
+  },
+  "smartsleeve-ss-tank": {
+    "printful_product_id": 0
+  },
+  "smartsleeve-ss-tank-promo": {
+    "printful_product_id": 0
+  },
+  "sqts-llc-tee-brand": {
+    "printful_product_id": 0
+  },
+  "sqts-llc-tee": {
+    "printful_product_id": 0
+  },
+  "sqts-llc-tee-promo": {
+    "printful_product_id": 0
+  },
+  "sqts-llc-tank-brand": {
+    "printful_product_id": 0
+  },
+  "sqts-llc-tank": {
+    "printful_product_id": 0
+  },
+  "sqts-llc-tank-promo": {
+    "printful_product_id": 0
+  }
+}

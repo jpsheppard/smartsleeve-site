@@ -1,0 +1,6 @@
+.DS_Store
+.env
+.env.*
+merch_checkout/printful-sync-variants.generated.toml
+merch_checkout/.dev.vars
+merch/smartsleeve-printful-launch-kit.zip

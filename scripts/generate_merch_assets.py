@@ -23,6 +23,7 @@ SITE_QR_URL = "https://smartsleeve.ai"
 PRINT_DPI = 300
 QR_PRINT_INCHES = 3.25
 QR_PRINT_PX = round(PRINT_DPI * QR_PRINT_INCHES)
+BACK_URL_SIZE_MULTIPLIER = 1.18
 
 
 def load_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
@@ -58,6 +59,50 @@ def fit_font(
 
 def centered_paste(base: Image.Image, overlay: Image.Image, center_x: int, top: int) -> None:
     base.alpha_composite(overlay.convert("RGBA"), (round(center_x - overlay.width / 2), top))
+
+
+def crop_green_subject(image: Image.Image, margin: int = 28) -> Image.Image:
+    """Crop source artwork to the actual neon-green subject, not its padded canvas."""
+    rgba = image.convert("RGBA")
+    pixels = rgba.load()
+    width, height = rgba.size
+    xs: list[int] = []
+    ys: list[int] = []
+    for y in range(height):
+        for x in range(width):
+            r, g, b, a = pixels[x, y]
+            if a > 20 and g > 80 and g > r * 1.2 and g > b * 1.2:
+                xs.append(x)
+                ys.append(y)
+    if not xs:
+        return rgba
+    left = max(0, min(xs) - margin)
+    top = max(0, min(ys) - margin)
+    right = min(width, max(xs) + margin + 1)
+    bottom = min(height, max(ys) + margin + 1)
+    return rgba.crop((left, top, right, bottom))
+
+
+def transparentize_dark_background(image: Image.Image, *, threshold: int = 38, green_floor: int = 24) -> Image.Image:
+    """Drop near-black logo backplates while preserving neon glow pixels."""
+    rgba = image.convert("RGBA")
+    pixels = rgba.load()
+    for y in range(rgba.height):
+        for x in range(rgba.width):
+            r, g, b, a = pixels[x, y]
+            if a == 0:
+                continue
+            max_channel = max(r, g, b)
+            is_green_glow = g > green_floor and g > r * 1.25 and g > b * 1.15
+            is_light_detail = max_channel > 120
+            if is_green_glow or is_light_detail:
+                continue
+            if max_channel <= threshold:
+                pixels[x, y] = (r, g, b, 0)
+            elif max_channel < threshold + 54:
+                fade = (max_channel - threshold) / 54
+                pixels[x, y] = (r, g, b, round(a * fade * 0.45))
+    return rgba
 
 
 def glow_line(base: Image.Image, xy: tuple[int, int, int, int], fill: tuple[int, int, int, int], width: int) -> None:
@@ -108,16 +153,20 @@ def draw_neon_lockup_text(
     start_size: int,
     line_left: int,
     line_right: int,
+    top_line_offset: int = 210,
+    bottom_line_offset: int = 335,
 ) -> tuple[int, int, int, int]:
     draw = ImageDraw.Draw(image)
     font = fit_font(draw, text, max_width, start_size, min_size=36)
     bbox = draw_centered_glow_text(image, text, image.width // 2, y, font, GREEN, glow_fill=GREEN)
-    glow_line(image, (line_left, y - 210, line_right, y - 210), GREEN_DIM, 10)
-    glow_line(image, (line_left, y + 335, line_right, y + 335), GREEN_DIM, 10)
+    top_line_y = y - top_line_offset
+    bottom_line_y = y + bottom_line_offset
+    glow_line(image, (line_left, top_line_y, line_right, top_line_y), GREEN_DIM, 10)
+    glow_line(image, (line_left, bottom_line_y, line_right, bottom_line_y), GREEN_DIM, 10)
     draw = ImageDraw.Draw(image)
     for cx in (line_left + (line_right - line_left) // 4, image.width // 2, line_right - (line_right - line_left) // 4):
-        draw.ellipse((cx - 24, y - 234, cx + 24, y - 186), fill=GREEN)
-        draw.ellipse((cx - 24, y + 311, cx + 24, y + 359), fill=GREEN)
+        draw.ellipse((cx - 24, top_line_y - 24, cx + 24, top_line_y + 24), fill=GREEN)
+        draw.ellipse((cx - 24, bottom_line_y - 24, cx + 24, bottom_line_y + 24), fill=GREEN)
     return bbox
 
 
@@ -436,19 +485,18 @@ def render_qr_png(path: Path, payload: str, size_px: int = 1200) -> Image.Image:
 
 def make_sqts_llc_logo() -> None:
     source = Image.open(ROOT / "sqts-logo-green.png").convert("RGBA")
-    logo = Image.new("RGBA", (1200, 512), BLACK)
-    logo.alpha_composite(source.crop((0, 0, 1200, 342)), (0, 0))
+    logo = Image.new("RGBA", (1200, 512), TRANSPARENT)
+    logo.alpha_composite(transparentize_dark_background(source.crop((0, 0, 1200, 342))), (0, 0))
 
     draw = ImageDraw.Draw(logo)
-    draw.rectangle((0, 342, 1200, 512), fill=BLACK)
     text = "SmartSleeve Quantitative Trading Systems, LLC"
     font = fit_font(draw, text, 1010, 42, min_size=28)
-    draw_centered_glow_text(logo, text, 600, 360, font, GREEN, glow_fill=GREEN)
-    glow_line(logo, (138, 414, 1062, 414), GREEN_DIM, 4)
-    glow_line(logo, (138, 450, 1062, 450), GREEN_DIM, 4)
+    draw_centered_glow_text(logo, text, 600, 340, font, GREEN, glow_fill=GREEN)
+    glow_line(logo, (138, 394, 1062, 394), GREEN_DIM, 4)
+    glow_line(logo, (138, 430, 1062, 430), GREEN_DIM, 4)
     for cx in (285, 600, 915):
-        draw.ellipse((cx - 8, 406, cx + 8, 422), fill=GREEN)
-        draw.ellipse((cx - 8, 442, cx + 8, 458), fill=GREEN)
+        draw.ellipse((cx - 8, 386, cx + 8, 402), fill=GREEN)
+        draw.ellipse((cx - 8, 422, cx + 8, 438), fill=GREEN)
     logo.save(ROOT / "sqts-logo-green-llc.png")
     logo.save(ROOT / "sqts-logo-green.png")
 
@@ -456,49 +504,86 @@ def make_sqts_llc_logo() -> None:
 def make_sqts_llc_front_art() -> None:
     logo = Image.open(ROOT / "sqts-logo-green-llc.png").convert("RGBA")
     art = Image.new("RGBA", (4500, 5400), TRANSPARENT)
-    logo = logo.resize((3600, 1536), Image.Resampling.LANCZOS)
-    centered_paste(art, logo, 2250, 870)
-    slogan_font = fit_font(ImageDraw.Draw(art), SLOGAN, 3520, 190, min_size=88)
-    draw_centered_glow_text(art, SLOGAN, 2250, 3010, slogan_font, WHITE, glow_fill=(255, 255, 255, 255))
+    logo = logo.resize((4000, 1707), Image.Resampling.LANCZOS)
+    centered_paste(art, logo, 2250, 500)
+    slogan_font = fit_font(ImageDraw.Draw(art), SLOGAN, 4100, 235, min_size=100)
+    draw_centered_glow_text(art, SLOGAN, 2250, 2145, slogan_font, WHITE, glow_fill=(255, 255, 255, 255))
     art.save(OUT / "sqts-llc-front-print.png")
 
 
 def make_ss_short_front_art() -> None:
-    icon = Image.open(ROOT / "favicon-512x512.png").convert("RGBA")
-    art = Image.new("RGBA", (4500, 5400), TRANSPARENT)
-    icon = icon.resize((1880, 1880), Image.Resampling.LANCZOS)
-    centered_paste(art, icon, 2250, 470)
-    draw_neon_lockup_text(
-        art,
-        "SmartSleeve",
-        2570,
-        max_width=3320,
-        start_size=310,
-        line_left=760,
-        line_right=3740,
+    icon_source = transparentize_dark_background(
+        Image.open(ROOT / "favicon-512x512.png").convert("RGBA"),
+        threshold=72,
+        green_floor=76,
     )
-    slogan_font = fit_font(ImageDraw.Draw(art), SLOGAN, 3520, 190, min_size=88)
-    draw_centered_glow_text(art, SLOGAN, 2250, 3515, slogan_font, WHITE, glow_fill=(255, 255, 255, 255))
-    art.save(OUT / "smartsleeve-ss-short-front-print.png")
+    icon = crop_green_subject(icon_source)
+    for filename, vertical_shift, lockup_lift in (
+        ("smartsleeve-ss-short-front-print.png", 0, 0),
+        ("smartsleeve-ss-tank-front-print.png", 320, 95),
+    ):
+        art = Image.new("RGBA", (4500, 5400), TRANSPARENT)
+        icon_width = 2350
+        placed_icon = icon.resize((icon_width, round(icon.height * (icon_width / icon.width))), Image.Resampling.LANCZOS)
+        centered_paste(art, placed_icon, 2250, 360 + vertical_shift)
+        draw_neon_lockup_text(
+            art,
+            "SmartSleeve",
+            1815 + vertical_shift - lockup_lift,
+            max_width=4000,
+            start_size=395,
+            line_left=430,
+            line_right=4070,
+            top_line_offset=140,
+            bottom_line_offset=350,
+        )
+        slogan_font = fit_font(ImageDraw.Draw(art), SLOGAN, 4100, 230, min_size=100)
+        draw_centered_glow_text(
+            art,
+            SLOGAN,
+            2250,
+            2350 + vertical_shift - lockup_lift,
+            slogan_font,
+            WHITE,
+            glow_fill=(255, 255, 255, 255),
+        )
+        art.save(OUT / filename)
 
 
 def make_back_art() -> None:
-    for filename, qr in (
-        ("smartsleeve-back-print.png", False),
-        ("smartsleeve-back-qr-print.png", True),
-    ):
+    blank = Image.new("RGBA", (4500, 5400), TRANSPARENT)
+    blank.save(OUT / "smartsleeve-back-blank-print.png")
+
+    def save_back_variant(filename: str, *, qr: bool, url_y: int, qr_top: int) -> Image.Image:
         art = Image.new("RGBA", (4500, 5400), TRANSPARENT)
-        # Keep the back URL prominent but not shoulder-to-shoulder.
-        url_font = fit_font(ImageDraw.Draw(art), SITE_URL, 2700, 340, bold=True, min_size=120)
-        url_y = 2180 if not qr else 1420
+        # Keep the back URL at upper-back / chest-print height, visually aligned
+        # with the SS chip centers on the front design.
+        url_font = fit_font(
+            ImageDraw.Draw(art),
+            SITE_URL,
+            round(2700 * BACK_URL_SIZE_MULTIPLIER),
+            round(340 * BACK_URL_SIZE_MULTIPLIER),
+            bold=True,
+            min_size=120,
+        )
         draw_centered_glow_text(art, SITE_URL, 2250, url_y, url_font, WHITE, glow_fill=(255, 255, 255, 255))
         if qr:
             qr_image = Image.open(OUT / "smartsleeve-ai-qr.png").convert("RGBA").resize(
                 (QR_PRINT_PX, QR_PRINT_PX),
                 Image.Resampling.NEAREST,
             )
-            centered_paste(art, qr_image, 2250, 2360)
+            centered_paste(art, qr_image, 2250, qr_top)
         art.save(OUT / filename)
+        return art
+
+    tee_back = save_back_variant("ss_and_sqts_tee_back_print.png", qr=False, url_y=960, qr_top=1590)
+    tee_back.save(OUT / "smartsleeve-back-print.png")
+    tee_back_qr = save_back_variant("ss_and_sqts_tee_back_qr_print.png", qr=True, url_y=960, qr_top=1590)
+    tee_back_qr.save(OUT / "smartsleeve-back-qr-print.png")
+    tank_back = save_back_variant("ss_and_sqts_tank_back_print.png", qr=False, url_y=1280, qr_top=1910)
+    tank_back.save(OUT / "smartsleeve-tank-back-print.png")
+    tank_back_qr = save_back_variant("ss_and_sqts_tank_back_qr_print.png", qr=True, url_y=1280, qr_top=1910)
+    tank_back_qr.save(OUT / "smartsleeve-tank-back-qr-print.png")
 
 
 def make_legacy_ss_front_art() -> None:
@@ -556,6 +641,10 @@ def make_preview(
     kind: str,
     subtitle: str,
     promo: bool = False,
+    back_style: str = "url",
+    front_top: int = 320,
+    back_url_y: int = 382,
+    back_qr_top: int = 500,
 ) -> None:
     preview = Image.new("RGBA", (1400, 1100), (3, 9, 26, 255))
     draw = ImageDraw.Draw(preview)
@@ -563,11 +652,12 @@ def make_preview(
     for label, path, x in (("Front", front_art_path, 80), ("Back", back_art_path, 440)):
         draw_garment(draw, kind, x, 185, 430, 650)
         if label == "Back":
-            url_font = fit_font(draw, SITE_URL, 205, 46, bold=True, min_size=24)
-            draw_centered_glow_text(preview, SITE_URL, x + 215, 390 if promo else 440, url_font, WHITE, glow_fill=(255, 255, 255, 255))
-            if promo:
+            if back_style != "blank":
+                url_font = fit_font(draw, SITE_URL, 205, 46, bold=True, min_size=24)
+                draw_centered_glow_text(preview, SITE_URL, x + 215, back_url_y, url_font, WHITE, glow_fill=(255, 255, 255, 255))
+            if promo or back_style == "qr":
                 qr = Image.open(OUT / "smartsleeve-ai-qr.png").convert("RGBA").resize((108, 108), Image.Resampling.NEAREST)
-                centered_paste(preview, qr, x + 215, 510)
+                centered_paste(preview, qr, x + 215, back_qr_top)
         else:
             art = Image.open(path).convert("RGBA")
             bbox = art.getbbox()
@@ -577,13 +667,19 @@ def make_preview(
             target_h = 390
             ratio = min(target_w / art.width, target_h / art.height)
             art = art.resize((max(1, int(art.width * ratio)), max(1, int(art.height * ratio))), Image.Resampling.LANCZOS)
-            centered_paste(preview, art, x + 215, 320)
+            centered_paste(preview, art, x + 215, front_top)
         draw.text((x + 170, 860), label, font=load_font(28, bold=True), fill=(167, 183, 200, 255))
 
     y = draw_wrapped_text(draw, (850, 205), title, load_font(52, bold=True), TEXT_SOFT, 455, 6)
     draw.text((850, y + 20), "$19.99 + shipping", font=load_font(44, bold=True), fill=GREEN)
     draw_wrapped_text(draw, (850, y + 92), subtitle, load_font(30), (167, 183, 200, 255), 455, 5)
-    badge = "QR promo back" if promo else "Standard back"
+    badge = (
+        "Brand blank back"
+        if back_style == "blank"
+        else "QR promo back"
+        if promo or back_style == "qr"
+        else "Website promo back"
+    )
     draw.text((880, 754), badge, font=load_font(30, bold=True), fill=(57, 255, 20, 215))
     draw_wrapped_text(
         draw,
@@ -598,41 +694,127 @@ def make_preview(
 
 
 def make_all_previews() -> None:
-    standard_back = OUT / "smartsleeve-back-print.png"
-    promo_back = OUT / "smartsleeve-back-qr-print.png"
+    blank_back = OUT / "smartsleeve-back-blank-print.png"
+    standard_back = OUT / "ss_and_sqts_tee_back_print.png"
+    promo_back = OUT / "ss_and_sqts_tee_back_qr_print.png"
+    tank_back = OUT / "ss_and_sqts_tank_back_print.png"
+    tank_promo_back = OUT / "ss_and_sqts_tank_back_qr_print.png"
     ss_front = OUT / "smartsleeve-ss-short-front-print.png"
+    ss_tank_front = OUT / "smartsleeve-ss-tank-front-print.png"
     sqts_front = OUT / "sqts-llc-front-print.png"
     make_preview(
+        "smartsleeve-ss-tee-brand-preview.png",
+        "SmartSleeve SS Tee Brand",
+        ss_front,
+        blank_back,
+        kind="tee",
+        subtitle="Black tee with the SS chip mark, SmartSleeve lockup, and slogan front. Blank back.",
+        back_style="blank",
+    )
+    make_preview(
         "smartsleeve-ss-tee-preview.png",
-        "SmartSleeve SS Tee",
+        "SmartSleeve SS Tee Website",
         ss_front,
         standard_back,
         kind="tee",
         subtitle="Black tee with the SS chip mark, SmartSleeve lockup, slogan front, and site URL back.",
+        back_url_y=346,
+    )
+    make_preview(
+        "smartsleeve-ss-tee-website-preview.png",
+        "SmartSleeve SS Tee Website",
+        ss_front,
+        standard_back,
+        kind="tee",
+        subtitle="Black tee with the SS chip mark, SmartSleeve lockup, slogan front, and site URL back.",
+        back_url_y=346,
+    )
+    make_preview(
+        "smartsleeve-ss-tank-brand-preview.png",
+        "SmartSleeve SS Tank Brand",
+        ss_tank_front,
+        blank_back,
+        kind="tank",
+        subtitle="Black tank with the SS chip mark, SmartSleeve lockup, and slogan front. Blank back.",
+        back_style="blank",
+        front_top=369,
     )
     make_preview(
         "smartsleeve-ss-tank-preview.png",
-        "SmartSleeve SS Tank",
-        ss_front,
-        standard_back,
+        "SmartSleeve SS Tank Website",
+        ss_tank_front,
+        tank_back,
         kind="tank",
         subtitle="Black tank with the SS chip mark, SmartSleeve lockup, slogan front, and site URL back.",
+        front_top=369,
+        back_url_y=430,
+    )
+    make_preview(
+        "smartsleeve-ss-tank-website-preview.png",
+        "SmartSleeve SS Tank Website",
+        ss_tank_front,
+        tank_back,
+        kind="tank",
+        subtitle="Black tank with the SS chip mark, SmartSleeve lockup, slogan front, and site URL back.",
+        front_top=369,
+        back_url_y=430,
+    )
+    make_preview(
+        "sqts-llc-tee-brand-preview.png",
+        "SQTS LLC Tee Brand",
+        sqts_front,
+        blank_back,
+        kind="tee",
+        subtitle="Black tee with the official SQTS LLC banner and slogan front. Blank back.",
+        back_style="blank",
     )
     make_preview(
         "sqts-llc-tee-preview.png",
-        "SQTS LLC Tee",
+        "SQTS LLC Tee Website",
         sqts_front,
         standard_back,
         kind="tee",
         subtitle="Black tee with the official SQTS LLC banner, slogan front, and site URL back.",
+        back_url_y=316,
+    )
+    make_preview(
+        "sqts-llc-tee-website-preview.png",
+        "SQTS LLC Tee Website",
+        sqts_front,
+        standard_back,
+        kind="tee",
+        subtitle="Black tee with the official SQTS LLC banner, slogan front, and site URL back.",
+        back_url_y=316,
+    )
+    make_preview(
+        "sqts-llc-tank-brand-preview.png",
+        "SQTS LLC Tank Brand",
+        sqts_front,
+        blank_back,
+        kind="tank",
+        subtitle="Black tank with the official SQTS LLC banner and slogan front. Blank back.",
+        back_style="blank",
+        front_top=372,
     )
     make_preview(
         "sqts-llc-tank-preview.png",
-        "SQTS LLC Tank",
+        "SQTS LLC Tank Website",
         sqts_front,
-        standard_back,
+        tank_back,
         kind="tank",
         subtitle="Black tank with the official SQTS LLC banner, slogan front, and site URL back.",
+        front_top=372,
+        back_url_y=430,
+    )
+    make_preview(
+        "sqts-llc-tank-website-preview.png",
+        "SQTS LLC Tank Website",
+        sqts_front,
+        tank_back,
+        kind="tank",
+        subtitle="Black tank with the official SQTS LLC banner, slogan front, and site URL back.",
+        front_top=372,
+        back_url_y=430,
     )
     make_preview(
         "smartsleeve-ss-tee-promo-preview.png",
@@ -642,15 +824,22 @@ def make_all_previews() -> None:
         kind="tee",
         subtitle="Same SS front design with a scan-ready QR code on the back for in-person promotion.",
         promo=True,
+        back_style="qr",
+        back_url_y=346,
+        back_qr_top=452,
     )
     make_preview(
         "smartsleeve-ss-tank-promo-preview.png",
         "SS Tank QR Promo",
-        ss_front,
-        promo_back,
+        ss_tank_front,
+        tank_promo_back,
         kind="tank",
         subtitle="Same SS tank design with a scan-ready QR code on the back for in-person promotion.",
         promo=True,
+        back_style="qr",
+        front_top=369,
+        back_url_y=430,
+        back_qr_top=548,
     )
     make_preview(
         "sqts-llc-tee-promo-preview.png",
@@ -660,15 +849,22 @@ def make_all_previews() -> None:
         kind="tee",
         subtitle="Same SQTS LLC front design with a scan-ready QR code on the back for in-person promotion.",
         promo=True,
+        back_style="qr",
+        back_url_y=316,
+        back_qr_top=422,
     )
     make_preview(
         "sqts-llc-tank-promo-preview.png",
         "SQTS Tank QR Promo",
         sqts_front,
-        promo_back,
+        tank_promo_back,
         kind="tank",
         subtitle="Same SQTS LLC tank design with a scan-ready QR code on the back for in-person promotion.",
         promo=True,
+        back_style="qr",
+        front_top=372,
+        back_url_y=430,
+        back_qr_top=548,
     )
 
 

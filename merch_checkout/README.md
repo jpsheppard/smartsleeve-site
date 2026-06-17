@@ -14,6 +14,7 @@ Do not put the LLC EIN, bank details, Stripe keys, Printful/Printify keys, or cu
 ## Routes
 
 - `GET /health`: lightweight configuration check.
+- `GET /catalog`: returns the Worker-visible product keys and price config.
 - `POST /checkout`: creates a hosted Stripe Checkout Session.
 - `POST /stripe-webhook`: receives Stripe `checkout.session.completed` events and optionally submits a fulfillment order.
 
@@ -59,17 +60,48 @@ MERCH_SHIPPING_USD = "4.99"
 MERCH_ALLOWED_ORIGINS = "https://smartsleeve.ai,https://www.smartsleeve.ai"
 ```
 
+## Printful Catalog Sync
+
+Because the launch products are now published in Printful, use Printful as the price and fulfillment source of truth. The static website reads a generated public storefront catalog:
+
+```text
+merch/printful-storefront-catalog.json
+```
+
+The Worker reads private sync variant ids and per-size prices from Worker vars. Generate both from Printful:
+
+```bash
+PRINTFUL_API_KEY=... python3 scripts/sync_printful_storefront.py
+```
+
+This writes:
+
+- `merch/printful-storefront-catalog.json`: public product names, sizes, and prices for the website.
+- `merch_checkout/printful-sync-variants.generated.toml`: private Worker vars mapping product/size to Printful sync variant ids and Printful retail prices.
+
+If the script cannot confidently match your product names, copy:
+
+```bash
+cp merch/printful-product-map.example.json merch/printful-product-map.json
+```
+
+Then fill `printful_product_id` for each published product from Printful and rerun the sync. Printful’s help docs note that product IDs appear in **Stores/My products**, and variant IDs appear inside each product’s variants.
+
 ## Fulfillment
 
-The Worker supports the first Printful path for the black tee/tank products:
+The Worker supports these published Printful product keys:
 
+- `smartsleeve-ss-tee-brand`: SS front, blank back
 - `smartsleeve-ss-tee`: SS front, standard back
-- `smartsleeve-ss-tank`: SS front, standard back
-- `sqts-llc-tee`: official SQTS LLC front, standard back
-- `sqts-llc-tank`: official SQTS LLC front, standard back
 - `smartsleeve-ss-tee-promo`: SS front, QR promo back
+- `smartsleeve-ss-tank-brand`: SS front, blank back
+- `smartsleeve-ss-tank`: SS front, standard back
 - `smartsleeve-ss-tank-promo`: SS front, QR promo back
+- `sqts-llc-tee-brand`: official SQTS LLC front, blank back
+- `sqts-llc-tee`: official SQTS LLC front, standard back
 - `sqts-llc-tee-promo`: official SQTS LLC front, QR promo back
+- `sqts-llc-tank-brand`: official SQTS LLC front, blank back
+- `sqts-llc-tank`: official SQTS LLC front, standard back
 - `sqts-llc-tank-promo`: official SQTS LLC front, QR promo back
 
 The QR promo back art uses a deliberately understated 3.25 in x 3.25 in QR code, generated as 975 px x 975 px at 300 DPI, underneath a centered `smartsleeve.ai` wordmark.
@@ -88,25 +120,9 @@ Secrets/vars:
 wrangler secret put PRINTFUL_API_KEY
 ```
 
-```toml
-[vars]
-PRINTFUL_FILE_URL_SMARTSLEEVE_SS_FRONT = "https://smartsleeve.ai/merch/smartsleeve-ss-short-front-print.png"
-PRINTFUL_FILE_URL_SQTS_LLC_FRONT = "https://smartsleeve.ai/merch/sqts-llc-front-print.png"
-PRINTFUL_FILE_URL_SMARTSLEEVE_BACK = "https://smartsleeve.ai/merch/smartsleeve-back-print.png"
-PRINTFUL_FILE_URL_SMARTSLEEVE_BACK_QR = "https://smartsleeve.ai/merch/smartsleeve-back-qr-print.png"
-PRINTFUL_VARIANT_ID_BLACK_TEE_S = "<black-tee-size-s-variant-id>"
-PRINTFUL_VARIANT_ID_BLACK_TEE_M = "<black-tee-size-m-variant-id>"
-PRINTFUL_VARIANT_ID_BLACK_TEE_L = "<black-tee-size-l-variant-id>"
-PRINTFUL_VARIANT_ID_BLACK_TEE_XL = "<black-tee-size-xl-variant-id>"
-PRINTFUL_VARIANT_ID_BLACK_TEE_2XL = "<black-tee-size-2xl-variant-id>"
-PRINTFUL_VARIANT_ID_BLACK_TANK_S = "<black-tank-size-s-variant-id>"
-PRINTFUL_VARIANT_ID_BLACK_TANK_M = "<black-tank-size-m-variant-id>"
-PRINTFUL_VARIANT_ID_BLACK_TANK_L = "<black-tank-size-l-variant-id>"
-PRINTFUL_VARIANT_ID_BLACK_TANK_XL = "<black-tank-size-xl-variant-id>"
-PRINTFUL_VARIANT_ID_BLACK_TANK_2XL = "<black-tank-size-2xl-variant-id>"
-```
+Then paste the generated `[vars]` values from `merch_checkout/printful-sync-variants.generated.toml` into `wrangler.toml` or Cloudflare Worker variables. The size-specific sync variant ids matter: Printful uses a different sync variant for each published product/size combination, and that sync variant preserves the print files, placement, print method, and product price you configured in Printful.
 
-The size-specific ids matter: Printful uses different variant ids for different garments, colors, and sizes. The Worker asks the customer for size in Stripe Checkout, then maps that size to the matching black tee or black tank variant id and attaches the correct front/back print files for the selected design.
+The Worker still has a raw catalog variant + print-file fallback for future custom products, but published Printful sync variants are the preferred launch path.
 
 If you choose Printify instead, keep `MERCH_FULFILLMENT_PROVIDER` unset initially. The Stripe checkout still works, and paid orders are stored in KV for manual fulfillment until a Printify-specific handoff is added.
 
@@ -122,12 +138,13 @@ The public site currently keeps this blank until the Worker is deployed and test
 
 ## Test Plan
 
-1. Deploy the Worker with Stripe test-mode keys.
-2. Visit `GET /health`.
-3. Set the frontend endpoint to `/checkout`.
-4. Click a shop button and confirm Stripe Checkout opens.
-5. Complete checkout with Stripe test card `4242 4242 4242 4242`.
-6. Confirm the Stripe webhook records an order in `MERCH_ORDERS`.
-7. Confirm Printful order creation stays draft while `PRINTFUL_CONFIRM_ORDERS=false`.
-8. Review the draft order in Printful and confirm the black garment, size, front art, shipping address, and cost are correct.
-9. Switch to live Stripe and live fulfillment only after one end-to-end test order is correct.
+1. Run `scripts/sync_printful_storefront.py` and confirm the public catalog shows the prices you set in Printful.
+2. Deploy the Worker with Stripe test-mode keys and `PRINTFUL_CONFIRM_ORDERS=false`.
+3. Visit `GET /health` and `GET /catalog`.
+4. Set the frontend endpoint to `/checkout`.
+5. Pick a product and size on the shop page; confirm the button price matches Printful.
+6. Complete checkout with Stripe test card `4242 4242 4242 4242`.
+7. Confirm the Stripe webhook records an order in `MERCH_ORDERS`.
+8. Confirm Printful order creation stays draft while `PRINTFUL_CONFIRM_ORDERS=false`.
+9. Review the draft order in Printful and confirm garment, size, design, address, and cost.
+10. Switch to live Stripe and live fulfillment only after one end-to-end test order is correct.

@@ -18,7 +18,7 @@
   <div class="shell">
     <aside class="sidebar" aria-label="SmartSleeve shop navigation">
       <a class="brand-lockup" href="/" aria-label="SmartSleeve home">
-        <img src="/sqts-logo-green.png" alt="SQTS - SmartSleeve Quantitative Trading Systems">
+        <img src="/smartsleeve-ss-banner.png" alt="SmartSleeve SS logo">
       </a>
       <div class="prototype-pill">Official shop</div>
       <nav>
@@ -46,83 +46,103 @@
 
       <section id="shop" class="panel active" data-section="shop">
         <div class="section-heading">
-          <p class="eyebrow">SQTS Shop</p>
-          <h2>Black SmartSleeve merch with SS and SQTS logo systems.</h2>
-          <p>Merch checkout is designed for SmartSleeve Quantitative Trading Systems, LLC to be the merchant of record. Customers pay SmartSleeve through hosted Stripe Checkout; after payment clears, a server-side fulfillment webhook can send the paid order to Printful while SmartSleeve keeps the margin.</p>
+          <p class="eyebrow">SmartSleeve Shop</p>
+          <h2>Black SmartSleeve apparel, fulfilled from the published Printful catalog.</h2>
+          <p>Merch checkout is designed for SmartSleeve Quantitative Trading Systems, LLC to be the merchant of record. Customers pay SmartSleeve through hosted Stripe Checkout; after payment clears, a server-side fulfillment webhook can send the paid order to the matching published Printful product. Website prices and checkout amounts are synced from the Printful product prices.</p>
         </div>
 
         <div class="merch-grid featured-merch">
-          <article class="merch-card featured">
+          <article class="merch-card featured" data-merch-product-card="smartsleeve-ss-tee-brand">
             <img src="/merch/smartsleeve-ss-tee-preview.png" alt="Preview of the SmartSleeve SS black tee">
             <div class="merch-copy">
               <span class="plan-kicker">Launch tee</span>
               <h3>SmartSleeve SS Tee</h3>
-              <strong>$19.99 <span>+ shipping</span></strong>
-              <p>Black tee with the SS chip mark, short SmartSleeve lockup, white slogan front, and <code>smartsleeve.ai</code> on the back.</p>
+              <strong><span data-merch-price>$19.99</span> <span>+ shipping</span></strong>
+              <p>Black tee with the SS chip mark, short SmartSleeve lockup, and white slogan front. Choose front-only brand, <code>smartsleeve.ai</code> back, or URL plus QR back.</p>
+              <label class="merch-size-picker">Size
+                <select data-merch-size aria-label="SmartSleeve SS tee size"></select>
+              </label>
               <ul class="check-list">
-                <li>Launch target: $19.99 before shipping when Printful base cost allows.</li>
-                <li>Front art: <code>/merch/smartsleeve-ss-short-front-print.png</code></li>
-                <li>Back art: <code>/merch/smartsleeve-back-print.png</code></li>
+                <li>Pricing is loaded from the synced Printful product catalog.</li>
+                <li>Each button opens Stripe Checkout for the matching published Printful product.</li>
+                <li>Start with this SS tee as the cleanest public launch item.</li>
               </ul>
               <div class="action-row">
-                <button type="button" class="button primary" data-merch-checkout="smartsleeve-ss-tee">Order SS tee</button>
+                <button type="button" class="button primary" data-merch-checkout="smartsleeve-ss-tee-brand">Brand tee</button>
+                <button type="button" class="button ghost" data-merch-checkout="smartsleeve-ss-tee">Website tee</button>
+                <button type="button" class="button ghost" data-merch-checkout="smartsleeve-ss-tee-promo">QR tee</button>
                 <a class="button ghost" href="/merch/smartsleeve-ss-short-front-print.png">Open front art</a>
               </div>
             </div>
           </article>
 
-          <article class="merch-card featured">
+          <article class="merch-card featured" data-merch-product-card="smartsleeve-ss-tank-brand">
             <img src="/merch/smartsleeve-ss-tank-preview.png" alt="Preview of the SmartSleeve SS black tank top">
             <div class="merch-copy">
               <span class="plan-kicker">Launch tank</span>
               <h3>SmartSleeve SS Tank</h3>
-              <strong>$19.99 <span>+ shipping</span></strong>
-              <p>Black tank top with the same SS chip front design and the standard <code>smartsleeve.ai</code> back print.</p>
+              <strong><span data-merch-price>$19.99</span> <span>+ shipping</span></strong>
+              <p>Black tank top with the SS chip front design. Choose blank back, <code>smartsleeve.ai</code> back, or URL plus QR back.</p>
+              <label class="merch-size-picker">Size
+                <select data-merch-size aria-label="SmartSleeve SS tank size"></select>
+              </label>
               <ul class="check-list">
-                <li>Designed for the same launch flow as the tee, with a separate Printful variant map.</li>
-                <li>Front art: <code>/merch/smartsleeve-ss-short-front-print.png</code></li>
-                <li>Back art: <code>/merch/smartsleeve-back-print.png</code></li>
+                <li>Pricing is loaded from the synced Printful product catalog.</li>
+                <li>Checkout locks the selected size before opening Stripe so the charged price matches Printful.</li>
+                <li>Good companion item for the first self-order.</li>
               </ul>
               <div class="action-row">
-                <button type="button" class="button primary" data-merch-checkout="smartsleeve-ss-tank">Order SS tank</button>
+                <button type="button" class="button primary" data-merch-checkout="smartsleeve-ss-tank-brand">Brand tank</button>
+                <button type="button" class="button ghost" data-merch-checkout="smartsleeve-ss-tank">Website tank</button>
+                <button type="button" class="button ghost" data-merch-checkout="smartsleeve-ss-tank-promo">QR tank</button>
                 <a class="button ghost" href="/merch/smartsleeve-ss-tank-preview.png">Open preview</a>
               </div>
             </div>
           </article>
 
-          <article class="merch-card featured">
+          <article class="merch-card featured" data-merch-product-card="sqts-llc-tee-brand">
             <img src="/merch/sqts-llc-tee-preview.png" alt="Preview of the SQTS LLC black tee">
             <div class="merch-copy">
-              <span class="plan-kicker">LLC banner tee</span>
+              <span class="plan-kicker">Optional LLC tee</span>
               <h3>SQTS LLC Tee</h3>
-              <strong>$19.99 <span>+ shipping</span></strong>
-              <p>Black tee with the official SQTS LLC banner logo, white slogan front, and <code>smartsleeve.ai</code> on the back.</p>
+              <strong><span data-merch-price>$19.99</span> <span>+ shipping</span></strong>
+              <p>Black tee with the official SQTS LLC banner logo and white slogan front. Keep this as an optional company-identity variant while SS leads the shop.</p>
+              <label class="merch-size-picker">Size
+                <select data-merch-size aria-label="SQTS LLC tee size"></select>
+              </label>
               <ul class="check-list">
-                <li>Front art: <code>/merch/sqts-llc-front-print.png</code></li>
-                <li>Back art: <code>/merch/smartsleeve-back-print.png</code></li>
-                <li>Same core layout can be reused for hoodies after blank selection.</li>
+                <li>Optional variant for full legal/company branding.</li>
+                <li>Pricing and fulfillment mapping are synced from Printful.</li>
+                <li>Can be hidden from public launch later without removing the backend support.</li>
               </ul>
               <div class="action-row">
-                <button type="button" class="button primary" data-merch-checkout="sqts-llc-tee">Order SQTS tee</button>
+                <button type="button" class="button primary" data-merch-checkout="sqts-llc-tee-brand">Brand tee</button>
+                <button type="button" class="button ghost" data-merch-checkout="sqts-llc-tee">Website tee</button>
+                <button type="button" class="button ghost" data-merch-checkout="sqts-llc-tee-promo">QR tee</button>
                 <a class="button ghost" href="/merch/sqts-llc-front-print.png">Open front art</a>
               </div>
             </div>
           </article>
 
-          <article class="merch-card featured">
+          <article class="merch-card featured" data-merch-product-card="sqts-llc-tank-brand">
             <img src="/merch/sqts-llc-tank-preview.png" alt="Preview of the SQTS LLC black tank top">
             <div class="merch-copy">
-              <span class="plan-kicker">LLC banner tank</span>
+              <span class="plan-kicker">Optional LLC tank</span>
               <h3>SQTS LLC Tank</h3>
-              <strong>$19.99 <span>+ shipping</span></strong>
-              <p>Black tank top with the official SQTS LLC banner logo and the same standard website back print.</p>
+              <strong><span data-merch-price>$19.99</span> <span>+ shipping</span></strong>
+              <p>Black tank top with the official SQTS LLC banner logo. This can stay available for founder/internal orders even if the public page emphasizes SS.</p>
+              <label class="merch-size-picker">Size
+                <select data-merch-size aria-label="SQTS LLC tank size"></select>
+              </label>
               <ul class="check-list">
-                <li>Front art: <code>/merch/sqts-llc-front-print.png</code></li>
-                <li>Back art: <code>/merch/smartsleeve-back-print.png</code></li>
-                <li>Good alternate to the compact SS design if you want the full company identity up front.</li>
+                <li>Optional variant for full legal/company branding.</li>
+                <li>Pricing and fulfillment mapping are synced from Printful.</li>
+                <li>Same checkout path as the SS tank.</li>
               </ul>
               <div class="action-row">
-                <button type="button" class="button primary" data-merch-checkout="sqts-llc-tank">Order SQTS tank</button>
+                <button type="button" class="button primary" data-merch-checkout="sqts-llc-tank-brand">Brand tank</button>
+                <button type="button" class="button ghost" data-merch-checkout="sqts-llc-tank">Website tank</button>
+                <button type="button" class="button ghost" data-merch-checkout="sqts-llc-tank-promo">QR tank</button>
                 <a class="button ghost" href="/merch/sqts-llc-tank-preview.png">Open preview</a>
               </div>
             </div>
@@ -130,19 +150,25 @@
         </div>
 
         <div class="merch-grid compact-merch">
-          <article class="merch-mini-card">
+          <article class="merch-mini-card" data-merch-product-card="smartsleeve-ss-tee-promo">
             <span>Founder promo</span>
             <h3>SS QR promo tee/tank</h3>
             <p>Same SS front design with a subtle 3.25-inch back QR code pointing to <code>smartsleeve.ai</code>.</p>
+            <label class="merch-size-picker">Size
+              <select data-merch-size aria-label="SmartSleeve SS QR promo size"></select>
+            </label>
             <div class="action-row">
               <button type="button" class="button ghost" data-merch-checkout="smartsleeve-ss-tee-promo">SS promo tee</button>
               <button type="button" class="button ghost" data-merch-checkout="smartsleeve-ss-tank-promo">SS promo tank</button>
             </div>
           </article>
-          <article class="merch-mini-card">
+          <article class="merch-mini-card" data-merch-product-card="sqts-llc-tee-promo">
             <span>Founder promo</span>
             <h3>SQTS QR promo tee/tank</h3>
             <p>Same SQTS LLC front design with the subtle scan-ready back QR code for in-person advertising.</p>
+            <label class="merch-size-picker">Size
+              <select data-merch-size aria-label="SQTS QR promo size"></select>
+            </label>
             <div class="action-row">
               <button type="button" class="button ghost" data-merch-checkout="sqts-llc-tee-promo">SQTS promo tee</button>
               <button type="button" class="button ghost" data-merch-checkout="sqts-llc-tank-promo">SQTS promo tank</button>
@@ -164,16 +190,16 @@
           <article class="card">
             <h3>Fulfillment setup path</h3>
             <ol class="numbered-list">
-              <li>Create a Stripe account under SmartSleeve Quantitative Trading Systems, LLC and connect a SmartSleeve business bank account.</li>
-              <li>Create the tee products in a print-on-demand vendor account owned or paid by SmartSleeve, using the print PNGs above.</li>
-              <li>Deploy the SmartSleeve Merch Checkout Worker and configure this page's merch checkout endpoint.</li>
-              <li>Configure the Stripe payment-success webhook to submit paid orders to the fulfillment vendor and store Stripe/vendor order ids.</li>
+              <li>Sync the published Printful products into <code>/merch/printful-storefront-catalog.json</code>.</li>
+              <li>Deploy the SmartSleeve Merch Checkout Worker with Stripe test keys and Printful draft-order fulfillment.</li>
+              <li>Set this page's merch checkout endpoint to the Worker <code>/checkout</code> route.</li>
+              <li>Complete one Stripe test checkout and review the draft order in Printful before turning on live order confirmation.</li>
             </ol>
           </article>
           <article class="card">
-            <h3>Quality note</h3>
-            <p>For lowest friction, launch with direct-to-garment black tees. For a premium drop, use embroidered caps or embroidered chest marks where the provider supports it; large full-color art is usually better printed than embroidered.</p>
-            <p class="billing-note">Current checkout buttons are merchant-of-record ready but disabled until <code>smartsleeve-merch-checkout-endpoint</code> is configured. Card data must stay in Stripe-hosted checkout, never on this static site.</p>
+            <h3>Pricing note</h3>
+            <p>Prices shown here are generated from the published Printful product variants, not typed into the website by hand. If you adjust a product price in Printful, rerun the catalog sync before publishing the site.</p>
+            <p class="billing-note">Current checkout buttons are merchant-of-record ready but disabled until <code>smartsleeve-merch-checkout-endpoint</code> is configured. Card data stays in Stripe-hosted checkout, never on this static site.</p>
           </article>
         </div>
       </section>

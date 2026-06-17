@@ -18,23 +18,17 @@ MERCH_ALLOWED_ORIGINS = "https://smartsleeve.ai,https://www.smartsleeve.ai"
 MERCH_FULFILLMENT_PROVIDER = "none"
 PRINTFUL_CONFIRM_ORDERS = "false"
 
-# Fill these after selecting the exact black shirt/tank variants in Printful.
-# The same black tee ids are reused across SS/SQTS and regular/promo tee designs.
-# The same black tank ids are reused across SS/SQTS and regular/promo tank designs.
-# PRINTFUL_VARIANT_ID_BLACK_TEE_S = ""
-# PRINTFUL_VARIANT_ID_BLACK_TEE_M = ""
-# PRINTFUL_VARIANT_ID_BLACK_TEE_L = ""
-# PRINTFUL_VARIANT_ID_BLACK_TEE_XL = ""
-# PRINTFUL_VARIANT_ID_BLACK_TEE_2XL = ""
-# PRINTFUL_VARIANT_ID_BLACK_TANK_S = ""
-# PRINTFUL_VARIANT_ID_BLACK_TANK_M = ""
-# PRINTFUL_VARIANT_ID_BLACK_TANK_L = ""
-# PRINTFUL_VARIANT_ID_BLACK_TANK_XL = ""
-# PRINTFUL_VARIANT_ID_BLACK_TANK_2XL = ""
-# PRINTFUL_FILE_URL_SMARTSLEEVE_SS_FRONT = "https://smartsleeve.ai/merch/smartsleeve-ss-short-front-print.png"
-# PRINTFUL_FILE_URL_SQTS_LLC_FRONT = "https://smartsleeve.ai/merch/sqts-llc-front-print.png"
-# PRINTFUL_FILE_URL_SMARTSLEEVE_BACK = "https://smartsleeve.ai/merch/smartsleeve-back-print.png"
-# PRINTFUL_FILE_URL_SMARTSLEEVE_BACK_QR = "https://smartsleeve.ai/merch/smartsleeve-back-qr-print.png"
+# Prefer Printful sync variant ids from your already-published products.
+# Generate these with:
+#   PRINTFUL_API_KEY=... python3 scripts/sync_printful_storefront.py
+# Then paste the [vars] from merch_checkout/printful-sync-variants.generated.toml here
+# or set them in the Cloudflare Worker dashboard. Example:
+# MERCH_PRICE_USD_SMARTSLEEVE_SS_TEE_BRAND_M = "19.99"
+# PRINTFUL_SYNC_VARIANT_ID_SMARTSLEEVE_SS_TEE_BRAND_M = "123456789"
+#
+# The Worker still supports raw catalog variant ids + print file URLs as fallback,
+# but sync variant ids are safer because they preserve the exact Printful product,
+# print placement, print method, and prices you published in Printful.
 
 # Create a KV namespace and replace the id.
 # [[kv_namespaces]]

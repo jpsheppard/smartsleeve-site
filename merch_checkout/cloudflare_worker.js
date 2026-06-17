@@ -15,8 +15,10 @@
 //   MERCH_SUCCESS_PATH
 //   MERCH_CANCEL_PATH
 //   MERCH_SHIPPING_USD
+//   MERCH_PRICE_USD_<PRODUCT_KEY>
 //   MERCH_FULFILLMENT_PROVIDER=printful
 //   PRINTFUL_API_KEY
+//   PRINTFUL_SYNC_VARIANT_ID_<PRODUCT_KEY>_<SIZE>
 //   PRINTFUL_VARIANT_ID_BLACK_TEE_S
 //   PRINTFUL_VARIANT_ID_BLACK_TEE_M
 //   PRINTFUL_VARIANT_ID_BLACK_TEE_L
@@ -29,12 +31,15 @@
 //   PRINTFUL_VARIANT_ID_BLACK_TANK_2XL
 //   PRINTFUL_FILE_URL_SMARTSLEEVE_SS_FRONT
 //   PRINTFUL_FILE_URL_SQTS_LLC_FRONT
-//   PRINTFUL_FILE_URL_SMARTSLEEVE_BACK
-//   PRINTFUL_FILE_URL_SMARTSLEEVE_BACK_QR
+//   PRINTFUL_FILE_URL_SHARED_TEE_BACK
+//   PRINTFUL_FILE_URL_SHARED_TEE_BACK_QR
+//   PRINTFUL_FILE_URL_SHARED_TANK_BACK
+//   PRINTFUL_FILE_URL_SHARED_TANK_BACK_QR
 //   PRINTFUL_CONFIRM_ORDERS=true
 //
 // Routes:
 //   GET  /health
+//   GET  /catalog
 //   POST /checkout
 //   POST /stripe-webhook
 
@@ -45,8 +50,18 @@ const MAX_QUANTITY = 6;
 const SIZE_OPTIONS = ["S", "M", "L", "XL", "2XL"];
 const DEFAULT_SS_FRONT_FILE_URL = `${DEFAULT_SITE}/merch/smartsleeve-ss-short-front-print.png`;
 const DEFAULT_SQTS_FRONT_FILE_URL = `${DEFAULT_SITE}/merch/sqts-llc-front-print.png`;
-const DEFAULT_BACK_FILE_URL = `${DEFAULT_SITE}/merch/smartsleeve-back-print.png`;
-const DEFAULT_BACK_QR_FILE_URL = `${DEFAULT_SITE}/merch/smartsleeve-back-qr-print.png`;
+const DEFAULT_TEE_BACK_FILE_URL = `${DEFAULT_SITE}/merch/ss_and_sqts_tee_back_print.png`;
+const DEFAULT_TEE_BACK_QR_FILE_URL = `${DEFAULT_SITE}/merch/ss_and_sqts_tee_back_qr_print.png`;
+const DEFAULT_TANK_BACK_FILE_URL = `${DEFAULT_SITE}/merch/ss_and_sqts_tank_back_print.png`;
+const DEFAULT_TANK_BACK_QR_FILE_URL = `${DEFAULT_SITE}/merch/ss_and_sqts_tank_back_qr_print.png`;
+
+function envSlug(value) {
+  return String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
 
 function merchProduct({
   name,
@@ -55,16 +70,20 @@ function merchProduct({
   garment,
   frontFileUrlEnv,
   defaultFrontFileUrl,
-  backFileUrlEnv = "PRINTFUL_FILE_URL_SMARTSLEEVE_BACK",
-  defaultBackFileUrl = DEFAULT_BACK_FILE_URL,
+  backFileUrlEnv,
+  defaultBackFileUrl,
+  hasBackPrint = true,
+  unitAmount = 1999,
 }) {
   const isTank = garment === "tank";
+  const syncVariantPrefix = `PRINTFUL_SYNC_VARIANT_ID_${envSlug(sku)}`;
   return {
     name,
     description,
-    unit_amount: 1999,
+    unit_amount: unitAmount,
     currency: "usd",
     fulfillment_sku: sku,
+    sync_variant_env_prefixes: [syncVariantPrefix],
     variant_env_prefixes: [
       isTank ? "PRINTFUL_VARIANT_ID_BLACK_TANK" : "PRINTFUL_VARIANT_ID_BLACK_TEE",
       isTank ? "PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TANK" : "PRINTFUL_VARIANT_ID_SMARTSLEEVE_SS_TEE",
@@ -75,12 +94,26 @@ function merchProduct({
     ],
     front_file_url_env: frontFileUrlEnv,
     default_front_file_url: defaultFrontFileUrl,
-    back_file_url_env: backFileUrlEnv,
-    default_back_file_url: defaultBackFileUrl,
+    has_back_print: hasBackPrint,
+    back_file_url_env: hasBackPrint
+      ? (backFileUrlEnv || (isTank ? "PRINTFUL_FILE_URL_SHARED_TANK_BACK" : "PRINTFUL_FILE_URL_SHARED_TEE_BACK"))
+      : "",
+    default_back_file_url: hasBackPrint
+      ? (defaultBackFileUrl || (isTank ? DEFAULT_TANK_BACK_FILE_URL : DEFAULT_TEE_BACK_FILE_URL))
+      : "",
   };
 }
 
 const PRODUCT_CATALOG = {
+  "smartsleeve-ss-tee-brand": merchProduct({
+    name: "SmartSleeve SS Tee",
+    description: "Black tee with the SS chip mark, SmartSleeve lockup, and slogan front.",
+    sku: "smartsleeve-ss-tee-brand",
+    garment: "tee",
+    frontFileUrlEnv: "PRINTFUL_FILE_URL_SMARTSLEEVE_SS_FRONT",
+    defaultFrontFileUrl: DEFAULT_SS_FRONT_FILE_URL,
+    hasBackPrint: false,
+  }),
   "smartsleeve-ss-tee": merchProduct({
     name: "SmartSleeve SS Tee",
     description: "Black tee with the SS chip mark, SmartSleeve lockup, slogan front, and site URL back.",
@@ -88,6 +121,15 @@ const PRODUCT_CATALOG = {
     garment: "tee",
     frontFileUrlEnv: "PRINTFUL_FILE_URL_SMARTSLEEVE_SS_FRONT",
     defaultFrontFileUrl: DEFAULT_SS_FRONT_FILE_URL,
+  }),
+  "smartsleeve-ss-tank-brand": merchProduct({
+    name: "SmartSleeve SS Tank",
+    description: "Black tank top with the SS chip mark, SmartSleeve lockup, and slogan front.",
+    sku: "smartsleeve-ss-tank-brand",
+    garment: "tank",
+    frontFileUrlEnv: "PRINTFUL_FILE_URL_SMARTSLEEVE_SS_FRONT",
+    defaultFrontFileUrl: DEFAULT_SS_FRONT_FILE_URL,
+    hasBackPrint: false,
   }),
   "smartsleeve-ss-tank": merchProduct({
     name: "SmartSleeve SS Tank",
@@ -97,6 +139,15 @@ const PRODUCT_CATALOG = {
     frontFileUrlEnv: "PRINTFUL_FILE_URL_SMARTSLEEVE_SS_FRONT",
     defaultFrontFileUrl: DEFAULT_SS_FRONT_FILE_URL,
   }),
+  "sqts-llc-tee-brand": merchProduct({
+    name: "SQTS LLC Tee",
+    description: "Black tee with the official SQTS LLC banner and slogan front.",
+    sku: "sqts-llc-tee-brand",
+    garment: "tee",
+    frontFileUrlEnv: "PRINTFUL_FILE_URL_SQTS_LLC_FRONT",
+    defaultFrontFileUrl: DEFAULT_SQTS_FRONT_FILE_URL,
+    hasBackPrint: false,
+  }),
   "sqts-llc-tee": merchProduct({
     name: "SQTS LLC Tee",
     description: "Black tee with the official SQTS LLC banner, slogan front, and site URL back.",
@@ -104,6 +155,15 @@ const PRODUCT_CATALOG = {
     garment: "tee",
     frontFileUrlEnv: "PRINTFUL_FILE_URL_SQTS_LLC_FRONT",
     defaultFrontFileUrl: DEFAULT_SQTS_FRONT_FILE_URL,
+  }),
+  "sqts-llc-tank-brand": merchProduct({
+    name: "SQTS LLC Tank",
+    description: "Black tank top with the official SQTS LLC banner and slogan front.",
+    sku: "sqts-llc-tank-brand",
+    garment: "tank",
+    frontFileUrlEnv: "PRINTFUL_FILE_URL_SQTS_LLC_FRONT",
+    defaultFrontFileUrl: DEFAULT_SQTS_FRONT_FILE_URL,
+    hasBackPrint: false,
   }),
   "sqts-llc-tank": merchProduct({
     name: "SQTS LLC Tank",
@@ -120,8 +180,8 @@ const PRODUCT_CATALOG = {
     garment: "tee",
     frontFileUrlEnv: "PRINTFUL_FILE_URL_SMARTSLEEVE_SS_FRONT",
     defaultFrontFileUrl: DEFAULT_SS_FRONT_FILE_URL,
-    backFileUrlEnv: "PRINTFUL_FILE_URL_SMARTSLEEVE_BACK_QR",
-    defaultBackFileUrl: DEFAULT_BACK_QR_FILE_URL,
+    backFileUrlEnv: "PRINTFUL_FILE_URL_SHARED_TEE_BACK_QR",
+    defaultBackFileUrl: DEFAULT_TEE_BACK_QR_FILE_URL,
   }),
   "smartsleeve-ss-tank-promo": merchProduct({
     name: "SmartSleeve SS Tank QR Promo",
@@ -130,8 +190,8 @@ const PRODUCT_CATALOG = {
     garment: "tank",
     frontFileUrlEnv: "PRINTFUL_FILE_URL_SMARTSLEEVE_SS_FRONT",
     defaultFrontFileUrl: DEFAULT_SS_FRONT_FILE_URL,
-    backFileUrlEnv: "PRINTFUL_FILE_URL_SMARTSLEEVE_BACK_QR",
-    defaultBackFileUrl: DEFAULT_BACK_QR_FILE_URL,
+    backFileUrlEnv: "PRINTFUL_FILE_URL_SHARED_TANK_BACK_QR",
+    defaultBackFileUrl: DEFAULT_TANK_BACK_QR_FILE_URL,
   }),
   "sqts-llc-tee-promo": merchProduct({
     name: "SQTS LLC Tee QR Promo",
@@ -140,8 +200,8 @@ const PRODUCT_CATALOG = {
     garment: "tee",
     frontFileUrlEnv: "PRINTFUL_FILE_URL_SQTS_LLC_FRONT",
     defaultFrontFileUrl: DEFAULT_SQTS_FRONT_FILE_URL,
-    backFileUrlEnv: "PRINTFUL_FILE_URL_SMARTSLEEVE_BACK_QR",
-    defaultBackFileUrl: DEFAULT_BACK_QR_FILE_URL,
+    backFileUrlEnv: "PRINTFUL_FILE_URL_SHARED_TEE_BACK_QR",
+    defaultBackFileUrl: DEFAULT_TEE_BACK_QR_FILE_URL,
   }),
   "sqts-llc-tank-promo": merchProduct({
     name: "SQTS LLC Tank QR Promo",
@@ -150,8 +210,8 @@ const PRODUCT_CATALOG = {
     garment: "tank",
     frontFileUrlEnv: "PRINTFUL_FILE_URL_SQTS_LLC_FRONT",
     defaultFrontFileUrl: DEFAULT_SQTS_FRONT_FILE_URL,
-    backFileUrlEnv: "PRINTFUL_FILE_URL_SMARTSLEEVE_BACK_QR",
-    defaultBackFileUrl: DEFAULT_BACK_QR_FILE_URL,
+    backFileUrlEnv: "PRINTFUL_FILE_URL_SHARED_TANK_BACK_QR",
+    defaultBackFileUrl: DEFAULT_TANK_BACK_QR_FILE_URL,
   }),
 };
 
@@ -228,9 +288,22 @@ function printfulVariantId(env, product, size) {
   return 0;
 }
 
+function printfulSyncVariantId(env, product, size) {
+  const normalizedSize = normalizeSize(size);
+  for (const prefix of product.sync_variant_env_prefixes || []) {
+    const sizeSpecific = Number(env[`${prefix}_${normalizedSize}`] || 0);
+    if (sizeSpecific) {
+      return sizeSpecific;
+    }
+  }
+  return 0;
+}
+
 function printfulFiles(env, product) {
   const frontUrl = String(env[product.front_file_url_env] || product.default_front_file_url || "").trim();
-  const backUrl = String(env[product.back_file_url_env] || product.default_back_file_url || "").trim();
+  const backUrl = product.has_back_print === false
+    ? ""
+    : String(env[product.back_file_url_env] || product.default_back_file_url || "").trim();
   const files = [];
   if (frontUrl) {
     files.push({ type: "front", url: frontUrl });
@@ -239,6 +312,33 @@ function printfulFiles(env, product) {
     files.push({ type: "back", url: backUrl });
   }
   return files;
+}
+
+function productUnitAmount(env, product) {
+  return productUnitAmountForSize(env, product, "M");
+}
+
+function productUnitAmountForSize(env, product, size) {
+  const normalizedSize = normalizeSize(size);
+  const sizePriceEnv = `MERCH_PRICE_USD_${envSlug(product.fulfillment_sku)}_${normalizedSize}`;
+  const sizePriceUsd = Number(env[sizePriceEnv] || 0);
+  if (Number.isFinite(sizePriceUsd) && sizePriceUsd > 0) {
+    return Math.round(sizePriceUsd * 100);
+  }
+  const priceEnv = `MERCH_PRICE_USD_${envSlug(product.fulfillment_sku)}`;
+  const priceUsd = Number(env[priceEnv] || 0);
+  if (Number.isFinite(priceUsd) && priceUsd > 0) {
+    return Math.round(priceUsd * 100);
+  }
+  return product.unit_amount;
+}
+
+function priceLabelForProduct(env, product) {
+  const amounts = SIZE_OPTIONS.map((size) => productUnitAmountForSize(env, product, size));
+  const min = Math.min(...amounts);
+  const max = Math.max(...amounts);
+  const format = (cents) => `$${(cents / 100).toFixed(2)}`;
+  return min === max ? format(min) : `${format(min)}-${format(max)}`;
 }
 
 function orderKey(sessionId) {
@@ -283,6 +383,9 @@ async function createStripeCheckoutSession(request, env) {
   if (!product) {
     return jsonResponse(request, env, { error: "Unknown merch product" }, 400);
   }
+  const requestedSize = normalizeSize(body.size);
+  const hasLockedSize = SIZE_OPTIONS.includes(String(body.size || "").trim().toUpperCase());
+  const unitAmount = productUnitAmountForSize(env, product, requestedSize);
   const quantity = clampQuantity(body.quantity);
   const shippingCents = Math.max(0, Math.round(Number(env.MERCH_SHIPPING_USD || 4.99) * 100));
   const base = siteUrl(env);
@@ -293,23 +396,27 @@ async function createStripeCheckoutSession(request, env) {
     success_url: `${base}${successPath}?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${base}${cancelPath}`,
     "shipping_address_collection[allowed_countries][0]": "US",
-    "custom_fields[0][key]": "shirt_size",
-    "custom_fields[0][label][type]": "custom",
-    "custom_fields[0][label][custom]": "Shirt size",
-    "custom_fields[0][type]": "dropdown",
     "line_items[0][quantity]": quantity,
     "line_items[0][price_data][currency]": product.currency,
-    "line_items[0][price_data][unit_amount]": product.unit_amount,
-    "line_items[0][price_data][product_data][name]": product.name,
+    "line_items[0][price_data][unit_amount]": unitAmount,
+    "line_items[0][price_data][product_data][name]": hasLockedSize ? `${product.name} - ${requestedSize}` : product.name,
     "line_items[0][price_data][product_data][description]": product.description,
     "metadata[product_key]": productKey,
     "metadata[fulfillment_sku]": product.fulfillment_sku,
     "metadata[quantity]": String(quantity),
+    "metadata[unit_amount]": String(unitAmount),
+    "metadata[shirt_size]": requestedSize,
   };
-  SIZE_OPTIONS.forEach((size, index) => {
-    params[`custom_fields[0][dropdown][options][${index}][label]`] = size;
-    params[`custom_fields[0][dropdown][options][${index}][value]`] = size;
-  });
+  if (!hasLockedSize) {
+    params["custom_fields[0][key]"] = "shirt_size";
+    params["custom_fields[0][label][type]"] = "custom";
+    params["custom_fields[0][label][custom]"] = "Shirt size";
+    params["custom_fields[0][type]"] = "dropdown";
+    SIZE_OPTIONS.forEach((size, index) => {
+      params[`custom_fields[0][dropdown][options][${index}][label]`] = size;
+      params[`custom_fields[0][dropdown][options][${index}][value]`] = size;
+    });
+  }
   if (shippingCents > 0) {
     params["shipping_options[0][shipping_rate_data][type]"] = "fixed_amount";
     params["shipping_options[0][shipping_rate_data][fixed_amount][currency]"] = product.currency;
@@ -392,6 +499,9 @@ async function verifyStripeSignature(request, env, rawBody) {
 }
 
 function customFieldValue(session, key) {
+  if (session.metadata && session.metadata[key]) {
+    return session.metadata[key];
+  }
   const field = (session.custom_fields || []).find((item) => item.key === key);
   if (!field) {
     return "";
@@ -400,6 +510,25 @@ function customFieldValue(session, key) {
     return field.dropdown.value;
   }
   return field.text && field.text.value ? field.text.value : "";
+}
+
+function publicCatalog(env) {
+  return {
+    generated_at: new Date().toISOString(),
+    source: "worker_env",
+    currency: "USD",
+    sizes: SIZE_OPTIONS,
+    products: Object.entries(PRODUCT_CATALOG).map(([key, product]) => ({
+      key,
+      name: product.name,
+      description: product.description,
+      price_label: priceLabelForProduct(env, product),
+      prices: SIZE_OPTIONS.reduce((acc, size) => {
+        acc[size] = (productUnitAmountForSize(env, product, size) / 100).toFixed(2);
+        return acc;
+      }, {}),
+    })),
+  };
 }
 
 async function submitPrintfulOrder(env, session) {
@@ -412,28 +541,44 @@ async function submitPrintfulOrder(env, session) {
     return { status: "skipped", reason: "unknown product metadata" };
   }
   const size = normalizeSize(customFieldValue(session, "shirt_size"));
-  const variantId = printfulVariantId(env, product, size);
-  if (!variantId) {
-    return {
-      status: "skipped",
-      reason: `${sizeVariantEnvName(product, size)} not configured`,
-      product_key: productKey,
-      size,
-    };
-  }
-  const files = printfulFiles(env, product);
-  if (files.length === 0) {
-    return {
-      status: "skipped",
-      reason: "Printful front/back print file URLs not configured",
-      product_key: productKey,
-      size,
-    };
-  }
   const shipping = session.shipping_details || {};
   const address = shipping.address || {};
   const customer = session.customer_details || {};
   const quantity = clampQuantity(session.metadata && session.metadata.quantity);
+  const unitAmount = Math.max(0, Number(session.metadata && session.metadata.unit_amount) || product.unit_amount);
+  const syncVariantId = printfulSyncVariantId(env, product, size);
+  const item = {
+    quantity,
+    name: `${product.name} - ${size}`,
+    retail_price: (unitAmount / 100).toFixed(2),
+  };
+  let fulfillmentMode = "sync_variant";
+  let files = [];
+  if (syncVariantId) {
+    item.sync_variant_id = syncVariantId;
+  } else {
+    fulfillmentMode = "catalog_variant_files";
+    const variantId = printfulVariantId(env, product, size);
+    if (!variantId) {
+      return {
+        status: "skipped",
+        reason: `${sizeVariantEnvName(product, size)} or ${product.sync_variant_env_prefixes[0]}_${size} not configured`,
+        product_key: productKey,
+        size,
+      };
+    }
+    files = printfulFiles(env, product);
+    if (files.length === 0) {
+      return {
+        status: "skipped",
+        reason: "Printful front/back print file URLs not configured",
+        product_key: productKey,
+        size,
+      };
+    }
+    item.variant_id = variantId;
+    item.files = files;
+  }
   const order = {
     external_id: session.id,
     recipient: {
@@ -446,15 +591,7 @@ async function submitPrintfulOrder(env, session) {
       country_code: address.country || "US",
       zip: address.postal_code || "",
     },
-    items: [
-      {
-        variant_id: variantId,
-        quantity,
-        name: `${product.name} - ${size}`,
-        retail_price: (product.unit_amount / 100).toFixed(2),
-        files,
-      },
-    ],
+    items: [item],
   };
   const confirm = String(env.PRINTFUL_CONFIRM_ORDERS || "").toLowerCase() === "true";
   const response = await fetch(`https://api.printful.com/orders?confirm=${confirm ? "1" : "0"}`, {
@@ -472,6 +609,8 @@ async function submitPrintfulOrder(env, session) {
     confirm,
     product_key: productKey,
     size,
+    fulfillment_mode: fulfillmentMode,
+    sync_variant_id: syncVariantId || undefined,
     print_files: files,
     http_status: response.status,
     provider_response: payload,
@@ -545,6 +684,9 @@ export default {
         fulfillment_provider: env.MERCH_FULFILLMENT_PROVIDER || "none",
         products: Object.keys(PRODUCT_CATALOG),
       });
+    }
+    if (request.method === "GET" && url.pathname === "/catalog") {
+      return jsonResponse(request, env, publicCatalog(env));
     }
     if (request.method === "POST" && url.pathname === "/checkout") {
       return createStripeCheckoutSession(request, env);

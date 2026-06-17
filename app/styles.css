@@ -686,6 +686,31 @@ textarea:disabled {
   line-height: 1.55;
 }
 
+.merch-size-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  width: fit-content;
+  margin: 8px 0 12px;
+  padding: 8px 10px;
+  border: 1px solid rgba(57, 255, 20, 0.24);
+  border-radius: 999px;
+  color: var(--muted);
+  background: rgba(15, 23, 42, 0.58);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.merch-size-picker select {
+  min-width: 74px;
+  padding: 6px 26px 6px 10px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 999px;
+  color: var(--text);
+  background: #07111f;
+  font-weight: 900;
+}
+
 .merch-mini-card {
   padding: 20px;
   background:

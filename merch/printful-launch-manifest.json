@@ -1,0 +1,125 @@
+{
+  "brand": "SmartSleeve Quantitative Trading Systems, LLC",
+  "site_url": "https://smartsleeve.ai",
+  "target_launch_price_usd": "19.99",
+  "currency": "USD",
+  "notes": [
+    "Use black garment blanks for every launch product.",
+    "Brand variants are front-only with no back print placement.",
+    "Website variants add smartsleeve.ai on the back.",
+    "Website QR variants add smartsleeve.ai plus a 3.25 in x 3.25 in QR code on the back.",
+    "Run sample/test orders before accepting public payments."
+  ],
+  "art_files": {
+    "ss_tee_front": "merch/smartsleeve-ss-short-front-print.png",
+    "ss_tank_front": "merch/smartsleeve-ss-tank-front-print.png",
+    "sqts_front": "merch/sqts-llc-front-print.png",
+    "shared_tee_back_url": "merch/ss_and_sqts_tee_back_print.png",
+    "shared_tee_back_qr": "merch/ss_and_sqts_tee_back_qr_print.png",
+    "shared_tank_back_url": "merch/ss_and_sqts_tank_back_print.png",
+    "shared_tank_back_qr": "merch/ss_and_sqts_tank_back_qr_print.png",
+    "standard_back_url": "merch/smartsleeve-back-print.png",
+    "standard_back_qr": "merch/smartsleeve-back-qr-print.png",
+    "ss_tank_back_url": "merch/smartsleeve-tank-back-print.png",
+    "ss_tank_back_qr": "merch/smartsleeve-tank-back-qr-print.png",
+    "qr_standalone": "merch/smartsleeve-ai-qr.png"
+  },
+  "products": [
+    {
+      "key": "smartsleeve-ss-tee-brand",
+      "name": "SmartSleeve SS Tee - Brand",
+      "garment": "black tee",
+      "front_art": "merch/smartsleeve-ss-short-front-print.png",
+      "back_art": null,
+      "preview": "merch/smartsleeve-ss-tee-brand-preview.png"
+    },
+    {
+      "key": "smartsleeve-ss-tee",
+      "name": "SmartSleeve SS Tee - Website",
+      "garment": "black tee",
+      "front_art": "merch/smartsleeve-ss-short-front-print.png",
+      "back_art": "merch/ss_and_sqts_tee_back_print.png",
+      "preview": "merch/smartsleeve-ss-tee-preview.png"
+    },
+    {
+      "key": "smartsleeve-ss-tee-promo",
+      "name": "SmartSleeve SS Tee - Website QR",
+      "garment": "black tee",
+      "front_art": "merch/smartsleeve-ss-short-front-print.png",
+      "back_art": "merch/ss_and_sqts_tee_back_qr_print.png",
+      "preview": "merch/smartsleeve-ss-tee-promo-preview.png"
+    },
+    {
+      "key": "smartsleeve-ss-tank-brand",
+      "name": "SmartSleeve SS Tank - Brand",
+      "garment": "black tank top",
+      "front_art": "merch/smartsleeve-ss-tank-front-print.png",
+      "back_art": null,
+      "preview": "merch/smartsleeve-ss-tank-brand-preview.png"
+    },
+    {
+      "key": "smartsleeve-ss-tank",
+      "name": "SmartSleeve SS Tank - Website",
+      "garment": "black tank top",
+      "front_art": "merch/smartsleeve-ss-tank-front-print.png",
+      "back_art": "merch/ss_and_sqts_tank_back_print.png",
+      "preview": "merch/smartsleeve-ss-tank-preview.png"
+    },
+    {
+      "key": "smartsleeve-ss-tank-promo",
+      "name": "SmartSleeve SS Tank - Website QR",
+      "garment": "black tank top",
+      "front_art": "merch/smartsleeve-ss-tank-front-print.png",
+      "back_art": "merch/ss_and_sqts_tank_back_qr_print.png",
+      "preview": "merch/smartsleeve-ss-tank-promo-preview.png"
+    },
+    {
+      "key": "sqts-llc-tee-brand",
+      "name": "SQTS LLC Tee - Brand",
+      "garment": "black tee",
+      "front_art": "merch/sqts-llc-front-print.png",
+      "back_art": null,
+      "preview": "merch/sqts-llc-tee-brand-preview.png"
+    },
+    {
+      "key": "sqts-llc-tee",
+      "name": "SQTS LLC Tee - Website",
+      "garment": "black tee",
+      "front_art": "merch/sqts-llc-front-print.png",
+      "back_art": "merch/ss_and_sqts_tee_back_print.png",
+      "preview": "merch/sqts-llc-tee-preview.png"
+    },
+    {
+      "key": "sqts-llc-tee-promo",
+      "name": "SQTS LLC Tee - Website QR",
+      "garment": "black tee",
+      "front_art": "merch/sqts-llc-front-print.png",
+      "back_art": "merch/ss_and_sqts_tee_back_qr_print.png",
+      "preview": "merch/sqts-llc-tee-promo-preview.png"
+    },
+    {
+      "key": "sqts-llc-tank-brand",
+      "name": "SQTS LLC Tank - Brand",
+      "garment": "black tank top",
+      "front_art": "merch/sqts-llc-front-print.png",
+      "back_art": null,
+      "preview": "merch/sqts-llc-tank-brand-preview.png"
+    },
+    {
+      "key": "sqts-llc-tank",
+      "name": "SQTS LLC Tank - Website",
+      "garment": "black tank top",
+      "front_art": "merch/sqts-llc-front-print.png",
+      "back_art": "merch/ss_and_sqts_tank_back_print.png",
+      "preview": "merch/sqts-llc-tank-preview.png"
+    },
+    {
+      "key": "sqts-llc-tank-promo",
+      "name": "SQTS LLC Tank - Website QR",
+      "garment": "black tank top",
+      "front_art": "merch/sqts-llc-front-print.png",
+      "back_art": "merch/ss_and_sqts_tank_back_qr_print.png",
+      "preview": "merch/sqts-llc-tank-promo-preview.png"
+    }
+  ]
+}
