@@ -1,12 +1,12 @@
 # SmartSleeve Static Site
 
-This folder contains the public placeholder page for `smartsleeve.ai` plus a
+This folder contains the public placeholder site for `smartsleeve.ai` plus a
 private static product-console prototype under `/app/`.
 
-The page is intentionally minimal: a dark SQTS-themed background, the same
-green SQTS banner used by the report assets, the platform tagline, and a
-prominent "Coming soon..." message. It does not expose trading internals,
-performance claims, account details, or broker integration status.
+The public pages are intentionally minimal: a dark SQTS-themed background,
+a SmartSleeve hero mark, sparse About and Contact pages, and a prominent
+"Coming soon..." message. They do not expose trading internals, performance
+claims, account details, broker integration status, or the operating plan.
 
 The `/app/` prototype is a static-first UI for account onboarding, plans,
 funding, sleeve limits, trading behaviors, Custom Sage universe selection,

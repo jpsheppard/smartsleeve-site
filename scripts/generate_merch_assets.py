@@ -501,6 +501,46 @@ def make_sqts_llc_logo() -> None:
     logo.save(ROOT / "sqts-logo-green.png")
 
 
+def make_ss_web_banner() -> None:
+    icon_source = transparentize_dark_background(
+        Image.open(ROOT / "favicon-512x512.png").convert("RGBA"),
+        threshold=72,
+        green_floor=76,
+    )
+    icon = crop_green_subject(icon_source, margin=18)
+    banner = Image.new("RGBA", (1200, 512), TRANSPARENT)
+
+    icon_width = 520
+    icon = icon.resize((icon_width, round(icon.height * (icon_width / icon.width))), Image.Resampling.LANCZOS)
+    centered_paste(banner, icon, 600, 8)
+
+    draw = ImageDraw.Draw(banner)
+    line_left = 250
+    line_right = 950
+    top_line_y = 328
+    bottom_line_y = 436
+    glow_line(banner, (line_left, top_line_y, line_right, top_line_y), GREEN_DIM, 4)
+    glow_line(banner, (line_left, bottom_line_y, line_right, bottom_line_y), GREEN_DIM, 4)
+    for cx in (380, 600, 820):
+        draw.ellipse((cx - 8, top_line_y - 8, cx + 8, top_line_y + 8), fill=GREEN)
+        draw.ellipse((cx - 8, bottom_line_y - 8, cx + 8, bottom_line_y + 8), fill=GREEN)
+
+    wordmark_font = fit_font(draw, "SmartSleeve", 700, 76, min_size=54)
+    draw_centered_glow_text(banner, "SmartSleeve", 600, 336, wordmark_font, GREEN, glow_fill=GREEN)
+
+    slogan_font = fit_font(draw, SLOGAN, 780, 36, min_size=30)
+    draw_centered_glow_text(
+        banner,
+        SLOGAN,
+        600,
+        462,
+        slogan_font,
+        WHITE,
+        glow_fill=(255, 255, 255, 255),
+    )
+    banner.save(ROOT / "smartsleeve-ss-banner.png")
+
+
 def make_sqts_llc_front_art() -> None:
     logo = Image.open(ROOT / "sqts-logo-green-llc.png").convert("RGBA")
     art = Image.new("RGBA", (4500, 5400), TRANSPARENT)
@@ -871,6 +911,7 @@ def make_all_previews() -> None:
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     make_sqts_llc_logo()
+    make_ss_web_banner()
     render_qr_png(OUT / "smartsleeve-ai-qr.png", SITE_QR_URL)
     make_sqts_llc_front_art()
     make_ss_short_front_art()
