@@ -7,6 +7,7 @@
 // Required Worker secrets:
 //   STRIPE_SECRET_KEY
 //   STRIPE_WEBHOOK_SECRET
+//   MERCH_ADMIN_TOKEN, for manual fulfillment recovery
 //
 // Optional Worker bindings/secrets:
 //   MERCH_ORDERS KV binding
@@ -42,6 +43,7 @@
 //   GET  /catalog
 //   POST /checkout
 //   POST /stripe-webhook
+//   POST /admin/retry-printful
 
 const DEFAULT_SITE = "https://smartsleeve.ai";
 const DEFAULT_SUCCESS_PATH = "/app/#shop-success";
@@ -267,7 +269,7 @@ function corsHeaders(request, env) {
   return {
     "Access-Control-Allow-Origin": allowOrigin,
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type,Stripe-Signature",
+    "Access-Control-Allow-Headers": "Authorization,Content-Type,Stripe-Signature",
     "Vary": "Origin",
   };
 }
@@ -384,6 +386,14 @@ function priceLabelForProduct(env, product) {
 
 function orderKey(sessionId) {
   return `stripe:session:${sessionId}`;
+}
+
+function printfulExternalId(sessionId) {
+  const clean = String(sessionId || "smartsleeve-order").replace(/[^A-Za-z0-9-]/g, "-");
+  if (clean.length <= 32) {
+    return clean;
+  }
+  return `ss-${clean.slice(-24)}`;
 }
 
 async function readJson(request) {
@@ -552,6 +562,23 @@ function timingSafeEqual(a, b) {
   return diff === 0;
 }
 
+function timingSafeStringEqual(left, right) {
+  const encoder = new TextEncoder();
+  return timingSafeEqual(encoder.encode(String(left || "")), encoder.encode(String(right || "")));
+}
+
+function bearerToken(request) {
+  const header = request.headers.get("Authorization") || "";
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  return match ? match[1].trim() : "";
+}
+
+function isAdminAuthorized(request, env) {
+  const expected = String(env.MERCH_ADMIN_TOKEN || "").trim();
+  const actual = bearerToken(request);
+  return Boolean(expected && actual && timingSafeStringEqual(actual, expected));
+}
+
 async function hmacSha256Hex(secret, value) {
   const key = await crypto.subtle.importKey(
     "raw",
@@ -607,6 +634,25 @@ async function fetchStripeCheckoutLineItems(env, sessionId) {
     return [];
   }
   return payload.data;
+}
+
+async function fetchStripeCheckoutSession(env, sessionId) {
+  if (!env.STRIPE_SECRET_KEY || !sessionId) {
+    return null;
+  }
+  const response = await fetch(
+    `https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sessionId)}`,
+    {
+      headers: {
+        Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
+      },
+    },
+  );
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    return { error: payload.error || payload, http_status: response.status };
+  }
+  return payload;
 }
 
 async function checkoutItemsForFulfillment(env, session) {
@@ -699,9 +745,12 @@ async function submitPrintfulOrder(env, session) {
   if (checkoutItems.length === 0) {
     return { status: "skipped", reason: "no fulfillable checkout line items" };
   }
-  const shipping = session.shipping_details || {};
+  const shipping = session.shipping_details
+    || (session.collected_information && session.collected_information.shipping_details)
+    || {};
   const address = shipping.address || {};
   const customer = session.customer_details || {};
+  const collectedInformation = session.collected_information || {};
   const printfulItems = [];
   const itemSummaries = [];
   for (const checkoutItem of checkoutItems) {
@@ -756,9 +805,13 @@ async function submitPrintfulOrder(env, session) {
     });
   }
   const order = {
-    external_id: session.id,
+    external_id: printfulExternalId(session.id),
     recipient: {
-      name: shipping.name || customer.name || "SmartSleeve customer",
+      name: shipping.name
+        || customer.name
+        || collectedInformation.individual_name
+        || collectedInformation.business_name
+        || "SmartSleeve customer",
       email: customer.email || "",
       address1: address.line1 || "",
       address2: address.line2 || "",
@@ -849,7 +902,49 @@ async function handleStripeWebhook(request, env) {
     ? await maybeFulfill(env, session)
     : { status: "skipped", reason: `payment_status=${paymentStatus || "unknown"}` };
   await storeOrder(env, session, fulfillment);
+  const fulfillmentFailed = paymentStatus === "paid"
+    && String(env.MERCH_FULFILLMENT_PROVIDER || "none").toLowerCase() === "printful"
+    && fulfillment.status !== "submitted";
+  if (fulfillmentFailed) {
+    console.error("SmartSleeve Printful fulfillment failed", JSON.stringify({
+      stripe_session_id: session.id,
+      fulfillment_status: fulfillment.status,
+      reason: fulfillment.reason,
+      http_status: fulfillment.http_status,
+      item_count: fulfillment.item_count,
+    }));
+    return jsonResponse(request, env, { received: true, fulfillment }, 502);
+  }
   return jsonResponse(request, env, { received: true, fulfillment });
+}
+
+async function retryPrintfulOrder(request, env) {
+  if (!isAdminAuthorized(request, env)) {
+    return jsonResponse(request, env, { error: "Unauthorized" }, 401);
+  }
+  const body = await readJson(request);
+  const sessionId = String(body.session_id || "").trim();
+  if (!/^cs_(test|live)_[A-Za-z0-9]+/.test(sessionId)) {
+    return jsonResponse(request, env, { error: "A valid Stripe Checkout session_id is required" }, 400);
+  }
+  const session = await fetchStripeCheckoutSession(env, sessionId);
+  if (!session || session.error) {
+    return jsonResponse(request, env, {
+      error: "Stripe Checkout session lookup failed",
+      stripe_error: session && session.error,
+    }, 502);
+  }
+  const paymentStatus = String(session.payment_status || "").toLowerCase();
+  if (paymentStatus !== "paid") {
+    return jsonResponse(request, env, {
+      error: "Stripe session is not paid",
+      payment_status: paymentStatus || "unknown",
+    }, 409);
+  }
+  const fulfillment = await maybeFulfill(env, session);
+  await storeOrder(env, session, fulfillment);
+  const status = fulfillment.status === "submitted" ? 200 : 502;
+  return jsonResponse(request, env, { retried: true, session_id: sessionId, fulfillment }, status);
 }
 
 export default {
@@ -864,7 +959,11 @@ export default {
         merchant_of_record: "SmartSleeve Quantitative Trading Systems, LLC",
         stripe_configured: Boolean(env.STRIPE_SECRET_KEY),
         webhook_configured: Boolean(env.STRIPE_WEBHOOK_SECRET),
+        printful_api_configured: Boolean(env.PRINTFUL_API_KEY),
+        printful_store_configured: Boolean(env.PRINTFUL_STORE_ID),
+        admin_retry_configured: Boolean(env.MERCH_ADMIN_TOKEN),
         fulfillment_provider: env.MERCH_FULFILLMENT_PROVIDER || "none",
+        printful_confirm_orders: String(env.PRINTFUL_CONFIRM_ORDERS || "").toLowerCase() === "true",
         products: publicCatalog(env).products.map((product) => product.key),
       });
     }
@@ -876,6 +975,9 @@ export default {
     }
     if (request.method === "POST" && url.pathname === "/stripe-webhook") {
       return handleStripeWebhook(request, env);
+    }
+    if (request.method === "POST" && url.pathname === "/admin/retry-printful") {
+      return retryPrintfulOrder(request, env);
     }
     return jsonResponse(request, env, { error: "Not found" }, 404);
   },
