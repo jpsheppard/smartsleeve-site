@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from collections import deque
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
@@ -83,6 +84,60 @@ def crop_green_subject(image: Image.Image, margin: int = 28) -> Image.Image:
     return rgba.crop((left, top, right, bottom))
 
 
+def largest_neon_component(image: Image.Image, *, halo: int = 4) -> Image.Image:
+    """Keep the dominant connected neon-green component and discard crop debris."""
+    rgba = image.convert("RGBA")
+    pixels = rgba.load()
+    width, height = rgba.size
+    mask = [[False] * width for _ in range(height)]
+    for y in range(height):
+        for x in range(width):
+            r, g, b, a = pixels[x, y]
+            if a > 10 and g > 45 and g > r * 1.15 and g > b * 1.05:
+                mask[y][x] = True
+
+    seen = [[False] * width for _ in range(height)]
+    components: list[list[tuple[int, int]]] = []
+    for y in range(height):
+        for x in range(width):
+            if not mask[y][x] or seen[y][x]:
+                continue
+            queue: deque[tuple[int, int]] = deque([(x, y)])
+            seen[y][x] = True
+            component: list[tuple[int, int]] = []
+            while queue:
+                current_x, current_y = queue.popleft()
+                component.append((current_x, current_y))
+                for next_y in range(current_y - 1, current_y + 2):
+                    for next_x in range(current_x - 1, current_x + 2):
+                        if not (0 <= next_x < width and 0 <= next_y < height):
+                            continue
+                        if seen[next_y][next_x] or not mask[next_y][next_x]:
+                            continue
+                        seen[next_y][next_x] = True
+                        queue.append((next_x, next_y))
+            components.append(component)
+
+    if not components:
+        return rgba
+
+    keep = set(max(components, key=len))
+    output = Image.new("RGBA", rgba.size, TRANSPARENT)
+    out_pixels = output.load()
+    for x, y in keep:
+        for dy in range(-halo, halo + 1):
+            for dx in range(-halo, halo + 1):
+                xx = x + dx
+                yy = y + dy
+                if not (0 <= xx < width and 0 <= yy < height):
+                    continue
+                r, g, b, a = pixels[xx, yy]
+                is_neon_halo = a > 0 and g > 20 and g > r * 1.02 and g > b * 0.95
+                if is_neon_halo and a > out_pixels[xx, yy][3]:
+                    out_pixels[xx, yy] = (r, g, b, a)
+    return crop_green_subject(output, margin=6)
+
+
 def transparentize_dark_background(image: Image.Image, *, threshold: int = 38, green_floor: int = 24) -> Image.Image:
     """Drop near-black logo backplates while preserving neon glow pixels."""
     rgba = image.convert("RGBA")
@@ -111,6 +166,20 @@ def glow_line(base: Image.Image, xy: tuple[int, int, int, int], fill: tuple[int,
     gdraw.line(xy, fill=fill, width=width * 4)
     base.alpha_composite(glow.filter(ImageFilter.GaussianBlur(width * 2)))
     ImageDraw.Draw(base).line(xy, fill=fill, width=width)
+
+
+def draw_smooth_lockup_lines(
+    image: Image.Image,
+    *,
+    line_left: int,
+    line_right: int,
+    top_line_y: int,
+    bottom_line_y: int,
+    width: int,
+) -> None:
+    """Draw clean horizontal neon rails without circuit-node dots."""
+    glow_line(image, (line_left, top_line_y, line_right, top_line_y), GREEN_DIM, width)
+    glow_line(image, (line_left, bottom_line_y, line_right, bottom_line_y), GREEN_DIM, width)
 
 
 def draw_centered_glow_text(
@@ -153,21 +222,22 @@ def draw_neon_lockup_text(
     start_size: int,
     line_left: int,
     line_right: int,
-    top_line_offset: int = 210,
-    bottom_line_offset: int = 335,
+    top_line_gap: int = 130,
+    bottom_line_gap: int = 90,
 ) -> tuple[int, int, int, int]:
     draw = ImageDraw.Draw(image)
     font = fit_font(draw, text, max_width, start_size, min_size=36)
-    bbox = draw_centered_glow_text(image, text, image.width // 2, y, font, GREEN, glow_fill=GREEN)
-    top_line_y = y - top_line_offset
-    bottom_line_y = y + bottom_line_offset
-    glow_line(image, (line_left, top_line_y, line_right, top_line_y), GREEN_DIM, 10)
-    glow_line(image, (line_left, bottom_line_y, line_right, bottom_line_y), GREEN_DIM, 10)
-    draw = ImageDraw.Draw(image)
-    for cx in (line_left + (line_right - line_left) // 4, image.width // 2, line_right - (line_right - line_left) // 4):
-        draw.ellipse((cx - 24, top_line_y - 24, cx + 24, top_line_y + 24), fill=GREEN)
-        draw.ellipse((cx - 24, bottom_line_y - 24, cx + 24, bottom_line_y + 24), fill=GREEN)
-    return bbox
+    raw_bbox = draw.textbbox((0, 0), text, font=font)
+    text_height = raw_bbox[3] - raw_bbox[1]
+    draw_smooth_lockup_lines(
+        image,
+        line_left=line_left,
+        line_right=line_right,
+        top_line_y=y - top_line_gap,
+        bottom_line_y=y + text_height + bottom_line_gap,
+        width=10,
+    )
+    return draw_centered_glow_text(image, text, image.width // 2, y, font, GREEN, glow_fill=GREEN)
 
 
 def draw_wrapped_text(
@@ -502,43 +572,84 @@ def make_sqts_llc_logo() -> None:
 
 
 def make_ss_web_banner() -> None:
-    icon_source = transparentize_dark_background(
-        Image.open(ROOT / "favicon-512x512.png").convert("RGBA"),
-        threshold=72,
-        green_floor=76,
-    )
-    icon = crop_green_subject(icon_source, margin=18)
+    icon = make_ss_v2_mark()
     banner = Image.new("RGBA", (1200, 512), TRANSPARENT)
 
-    icon_width = 520
+    icon_width = 760
     icon = icon.resize((icon_width, round(icon.height * (icon_width / icon.width))), Image.Resampling.LANCZOS)
-    centered_paste(banner, icon, 600, 8)
+    centered_paste(banner, icon, 600, 34)
 
     draw = ImageDraw.Draw(banner)
     line_left = 250
     line_right = 950
-    top_line_y = 328
-    bottom_line_y = 436
-    glow_line(banner, (line_left, top_line_y, line_right, top_line_y), GREEN_DIM, 4)
-    glow_line(banner, (line_left, bottom_line_y, line_right, bottom_line_y), GREEN_DIM, 4)
-    for cx in (380, 600, 820):
-        draw.ellipse((cx - 8, top_line_y - 8, cx + 8, top_line_y + 8), fill=GREEN)
-        draw.ellipse((cx - 8, bottom_line_y - 8, cx + 8, bottom_line_y + 8), fill=GREEN)
+    wordmark_font = fit_font(draw, "SmartSleeve", 640, 68, min_size=50)
+    wordmark_y = 326
+    wordmark_bbox = draw.textbbox((0, 0), "SmartSleeve", font=wordmark_font)
+    wordmark_height = wordmark_bbox[3] - wordmark_bbox[1]
+    draw_smooth_lockup_lines(
+        banner,
+        line_left=line_left,
+        line_right=line_right,
+        top_line_y=306,
+        bottom_line_y=wordmark_y + wordmark_height + 54,
+        width=4,
+    )
+    draw_centered_glow_text(banner, "SmartSleeve", 600, wordmark_y, wordmark_font, GREEN, glow_fill=GREEN)
 
-    wordmark_font = fit_font(draw, "SmartSleeve", 700, 76, min_size=54)
-    draw_centered_glow_text(banner, "SmartSleeve", 600, 336, wordmark_font, GREEN, glow_fill=GREEN)
-
-    slogan_font = fit_font(draw, SLOGAN, 780, 36, min_size=30)
+    slogan_font = fit_font(draw, SLOGAN, 760, 32, min_size=26)
     draw_centered_glow_text(
         banner,
         SLOGAN,
         600,
-        462,
+        452,
         slogan_font,
         WHITE,
         glow_fill=(255, 255, 255, 255),
     )
     banner.save(ROOT / "smartsleeve-ss-banner.png")
+
+
+def make_ss_v2_mark() -> Image.Image:
+    """Build the SS v2 mark from the original SQTS semiconductor and S artwork."""
+    source = transparentize_dark_background(
+        Image.open(ROOT / "sqts-logo-green-original.png").convert("RGBA"),
+        threshold=48,
+        green_floor=24,
+    )
+    left_semiconductor = crop_green_subject(source.crop((24, 118, 232, 300)), margin=10)
+    s_shape = largest_neon_component(
+        crop_green_subject(source.crop((790, 80, 1005, 292)), margin=4),
+        halo=4,
+    )
+
+    s_target_height = 206
+    s_shape = s_shape.resize(
+        (round(s_shape.width * s_target_height / s_shape.height), s_target_height),
+        Image.Resampling.LANCZOS,
+    )
+    semiconductor_height = 182
+    left_semiconductor = left_semiconductor.resize(
+        (
+            round(left_semiconductor.width * semiconductor_height / left_semiconductor.height),
+            semiconductor_height,
+        ),
+        Image.Resampling.LANCZOS,
+    )
+    right_semiconductor = left_semiconductor.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+
+    parts = [left_semiconductor, s_shape, s_shape.copy(), right_semiconductor]
+    gaps = [26, 12, 26]
+    mark = Image.new("RGBA", (sum(part.width for part in parts) + sum(gaps) + 80, 270), TRANSPARENT)
+    x = 40
+    for index, part in enumerate(parts):
+        y = 32 + (s_target_height - part.height) // 2
+        mark.alpha_composite(part, (x, y))
+        x += part.width + (gaps[index] if index < len(gaps) else 0)
+
+    mark = crop_green_subject(mark, margin=18)
+    mark.save(ROOT / "smartsleeve-ss-v2-mark.png")
+    mark.save(OUT / "smartsleeve-ss-v2-mark.png")
+    return mark
 
 
 def make_sqts_llc_front_art() -> None:
@@ -552,18 +663,13 @@ def make_sqts_llc_front_art() -> None:
 
 
 def make_ss_short_front_art() -> None:
-    icon_source = transparentize_dark_background(
-        Image.open(ROOT / "favicon-512x512.png").convert("RGBA"),
-        threshold=72,
-        green_floor=76,
-    )
-    icon = crop_green_subject(icon_source)
+    icon = make_ss_v2_mark()
     for filename, vertical_shift, lockup_lift in (
         ("smartsleeve-ss-short-front-print.png", 0, 0),
         ("smartsleeve-ss-tank-front-print.png", 320, 95),
     ):
         art = Image.new("RGBA", (4500, 5400), TRANSPARENT)
-        icon_width = 2350
+        icon_width = 3500
         placed_icon = icon.resize((icon_width, round(icon.height * (icon_width / icon.width))), Image.Resampling.LANCZOS)
         centered_paste(art, placed_icon, 2250, 360 + vertical_shift)
         draw_neon_lockup_text(
@@ -574,15 +680,15 @@ def make_ss_short_front_art() -> None:
             start_size=395,
             line_left=430,
             line_right=4070,
-            top_line_offset=140,
-            bottom_line_offset=350,
+            top_line_gap=55,
+            bottom_line_gap=145,
         )
         slogan_font = fit_font(ImageDraw.Draw(art), SLOGAN, 4100, 230, min_size=100)
         draw_centered_glow_text(
             art,
             SLOGAN,
             2250,
-            2350 + vertical_shift - lockup_lift,
+            2420 + vertical_shift - lockup_lift,
             slogan_font,
             WHITE,
             glow_fill=(255, 255, 255, 255),
