@@ -30,7 +30,6 @@
 //   PRINTFUL_VARIANT_ID_BLACK_TANK_L
 //   PRINTFUL_VARIANT_ID_BLACK_TANK_XL
 //   PRINTFUL_VARIANT_ID_BLACK_TANK_2XL
-//   PRINTFUL_FILE_URL_SMARTSLEEVE_SS_FRONT
 //   PRINTFUL_FILE_URL_SQTS_LLC_FRONT
 //   PRINTFUL_FILE_URL_SHARED_TEE_BACK
 //   PRINTFUL_FILE_URL_SHARED_TEE_BACK_QR
@@ -51,7 +50,6 @@ const DEFAULT_CANCEL_PATH = "/app/#shop";
 const MAX_QUANTITY = 6;
 const MAX_CART_LINES = 30;
 const SIZE_OPTIONS = ["XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL"];
-const DEFAULT_SS_FRONT_FILE_URL = `${DEFAULT_SITE}/merch/smartsleeve-ss-short-front-print.png`;
 const DEFAULT_SQTS_FRONT_FILE_URL = `${DEFAULT_SITE}/merch/sqts-llc-front-print.png`;
 const DEFAULT_TEE_BACK_FILE_URL = `${DEFAULT_SITE}/merch/ss_and_sqts_tee_back_print.png`;
 const DEFAULT_TEE_BACK_QR_FILE_URL = `${DEFAULT_SITE}/merch/ss_and_sqts_tee_back_qr_print.png`;
@@ -108,40 +106,6 @@ function merchProduct({
 }
 
 const PRODUCT_CATALOG = {
-  "smartsleeve-ss-tee-brand": merchProduct({
-    name: "SmartSleeve SS Tee",
-    description: "Black tee with the SS chip mark, SmartSleeve lockup, and slogan front.",
-    sku: "smartsleeve-ss-tee-brand",
-    garment: "tee",
-    frontFileUrlEnv: "PRINTFUL_FILE_URL_SMARTSLEEVE_SS_FRONT",
-    defaultFrontFileUrl: DEFAULT_SS_FRONT_FILE_URL,
-    hasBackPrint: false,
-  }),
-  "smartsleeve-ss-tee": merchProduct({
-    name: "SmartSleeve SS Tee",
-    description: "Black tee with the SS chip mark, SmartSleeve lockup, slogan front, and site URL back.",
-    sku: "smartsleeve-ss-tee",
-    garment: "tee",
-    frontFileUrlEnv: "PRINTFUL_FILE_URL_SMARTSLEEVE_SS_FRONT",
-    defaultFrontFileUrl: DEFAULT_SS_FRONT_FILE_URL,
-  }),
-  "smartsleeve-ss-tank-brand": merchProduct({
-    name: "SmartSleeve SS Tank",
-    description: "Black tank top with the SS chip mark, SmartSleeve lockup, and slogan front.",
-    sku: "smartsleeve-ss-tank-brand",
-    garment: "tank",
-    frontFileUrlEnv: "PRINTFUL_FILE_URL_SMARTSLEEVE_SS_FRONT",
-    defaultFrontFileUrl: DEFAULT_SS_FRONT_FILE_URL,
-    hasBackPrint: false,
-  }),
-  "smartsleeve-ss-tank": merchProduct({
-    name: "SmartSleeve SS Tank",
-    description: "Black tank top with the SS chip mark, SmartSleeve lockup, slogan front, and site URL back.",
-    sku: "smartsleeve-ss-tank",
-    garment: "tank",
-    frontFileUrlEnv: "PRINTFUL_FILE_URL_SMARTSLEEVE_SS_FRONT",
-    defaultFrontFileUrl: DEFAULT_SS_FRONT_FILE_URL,
-  }),
   "sqts-llc-tee-brand": merchProduct({
     name: "SQTS LLC Tee",
     description: "Black tee with the official SQTS LLC banner and slogan front.",
@@ -175,26 +139,6 @@ const PRODUCT_CATALOG = {
     garment: "tank",
     frontFileUrlEnv: "PRINTFUL_FILE_URL_SQTS_LLC_FRONT",
     defaultFrontFileUrl: DEFAULT_SQTS_FRONT_FILE_URL,
-  }),
-  "smartsleeve-ss-tee-promo": merchProduct({
-    name: "SmartSleeve SS Tee QR Promo",
-    description: "Black promotional tee with the SS front design and a scan-ready QR code on the back.",
-    sku: "smartsleeve-ss-tee-promo",
-    garment: "tee",
-    frontFileUrlEnv: "PRINTFUL_FILE_URL_SMARTSLEEVE_SS_FRONT",
-    defaultFrontFileUrl: DEFAULT_SS_FRONT_FILE_URL,
-    backFileUrlEnv: "PRINTFUL_FILE_URL_SHARED_TEE_BACK_QR",
-    defaultBackFileUrl: DEFAULT_TEE_BACK_QR_FILE_URL,
-  }),
-  "smartsleeve-ss-tank-promo": merchProduct({
-    name: "SmartSleeve SS Tank QR Promo",
-    description: "Black promotional tank with the SS front design and a scan-ready QR code on the back.",
-    sku: "smartsleeve-ss-tank-promo",
-    garment: "tank",
-    frontFileUrlEnv: "PRINTFUL_FILE_URL_SMARTSLEEVE_SS_FRONT",
-    defaultFrontFileUrl: DEFAULT_SS_FRONT_FILE_URL,
-    backFileUrlEnv: "PRINTFUL_FILE_URL_SHARED_TANK_BACK_QR",
-    defaultBackFileUrl: DEFAULT_TANK_BACK_QR_FILE_URL,
   }),
   "sqts-llc-tee-promo": merchProduct({
     name: "SQTS LLC Tee QR Promo",
@@ -246,8 +190,22 @@ function dynamicProductFromEnv(env, productKey) {
   };
 }
 
+function isPublicSqtsProduct(productKey, product) {
+  const key = normalizeProductKey(productKey);
+  const name = String(product && product.name || "").toLowerCase();
+  if (!key || key.includes("smartsleeve-ss") || name.includes("smartsleeve ss") || name.includes(" ss -") || name.includes(" ss ")) {
+    return false;
+  }
+  if (key.includes("muscle-tee") || name.includes("muscle tee")) {
+    return false;
+  }
+  return key.includes("sqts") || name.includes("sqts");
+}
+
 function catalogProduct(env, productKey) {
-  return PRODUCT_CATALOG[productKey] || dynamicProductFromEnv(env, productKey);
+  const normalized = normalizeProductKey(productKey);
+  const product = PRODUCT_CATALOG[normalized] || dynamicProductFromEnv(env, normalized);
+  return isPublicSqtsProduct(normalized, product) ? product : null;
 }
 
 function siteUrl(env) {
@@ -700,7 +658,9 @@ function publicCatalog(env) {
   const hasSyncedPrintfulProducts = Object.keys(env).some((key) => key.startsWith("PRINTFUL_SYNC_PRODUCT_ID_"));
   if (!hasSyncedPrintfulProducts) {
     Object.entries(PRODUCT_CATALOG).forEach(([key, product]) => {
-      products.set(key, product);
+      if (isPublicSqtsProduct(key, product)) {
+        products.set(key, product);
+      }
     });
   }
   Object.keys(env).forEach((key) => {
@@ -711,7 +671,7 @@ function publicCatalog(env) {
     const slug = match[1];
     const productKey = normalizeProductKey(env[`MERCH_PRODUCT_KEY_${slug}`] || slug.toLowerCase().replace(/_/g, "-"));
     const product = dynamicProductFromEnv(env, productKey);
-    if (product) {
+    if (product && isPublicSqtsProduct(productKey, product)) {
       products.set(productKey, product);
     }
   });
