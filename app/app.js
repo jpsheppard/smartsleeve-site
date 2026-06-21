@@ -25,6 +25,7 @@
     serverTrades: [],
     brain: [],
     reports: [],
+    history: {accounts: [], positions: []},
     sageMode: "recommend",
     feedSource: "loading"
   };
@@ -406,6 +407,12 @@
         shares: numeric(position.shares != null ? position.shares : position.quantity),
         price: numeric(position.price != null ? position.price : position.current_price),
         value: numeric(position.value != null ? position.value : position.market_value_usd),
+        averageCost: numeric(position.averageCost != null ? position.averageCost : position.average_cost),
+        costBasis: numeric(position.costBasis != null ? position.costBasis : position.cost_basis),
+        dailyPnl: numeric(position.dailyPnl != null ? position.dailyPnl : position.daily_pnl),
+        unrealizedPnl: numeric(position.unrealizedPnl != null ? position.unrealizedPnl : position.unrealized_pnl),
+        realizedPnl: numeric(position.realizedPnl != null ? position.realizedPnl : position.realized_pnl),
+        totalPnl: numeric(position.totalPnl != null ? position.totalPnl : position.total_pnl),
         currency: position.currency || "USD"
       };
     });
@@ -443,6 +450,45 @@
     }, 0);
   }
 
+  function nullableSum(rows, key) {
+    var found = false;
+    var sum = rows.reduce(function (total, row) {
+      var value = numeric(row[key]);
+      if (value == null) return total;
+      found = true;
+      return total + value;
+    }, 0);
+    return found ? sum : null;
+  }
+
+  function signedMoney(value, missingText) {
+    var number = numeric(value);
+    if (number == null) {
+      return missingText || "Needs sync";
+    }
+    if (Math.abs(number) < 0.005) {
+      return "$0.00";
+    }
+    return (number > 0 ? "+" : "-") + money(Math.abs(number));
+  }
+
+  function valueClass(value) {
+    var number = numeric(value);
+    if (number == null) return "needs-sync";
+    if (number > 0.004) return "positive";
+    if (number < -0.004) return "negative";
+    return "neutral";
+  }
+
+  function setMetric(id, value, formatter, missingText) {
+    var element = $(id);
+    if (!element) return;
+    var number = numeric(value);
+    element.classList.remove("positive", "negative", "neutral", "needs-sync");
+    element.classList.add(valueClass(number));
+    element.textContent = number == null ? (missingText || "Needs sync") : formatter(number);
+  }
+
   function marginUsed() {
     return state.accounts.reduce(function (sum, account) {
       var cash = numeric(account.cash) || 0;
@@ -472,14 +518,35 @@
             name: position.name || tickerNames[symbol] || symbol,
             shares: 0,
             value: 0,
-            weightedPriceValue: 0,
+            priceValue: 0,
+            costBasis: null,
+            costShares: 0,
+            dailyPnl: null,
+            unrealizedPnl: null,
+            realizedPnl: null,
+            totalPnl: null,
             accounts: [],
             sleeves: []
           };
         }
         grouped[symbol].shares += shares;
         grouped[symbol].value += value;
-        grouped[symbol].weightedPriceValue += price * value;
+        grouped[symbol].priceValue += price * shares;
+        var averageCost = numeric(position.averageCost);
+        var costBasis = numeric(position.costBasis);
+        if (costBasis == null && averageCost != null && shares) {
+          costBasis = averageCost * shares;
+        }
+        if (costBasis != null) {
+          grouped[symbol].costBasis = (grouped[symbol].costBasis || 0) + costBasis;
+          grouped[symbol].costShares += shares;
+        }
+        ["dailyPnl", "unrealizedPnl", "realizedPnl", "totalPnl"].forEach(function (key) {
+          var pnl = numeric(position[key]);
+          if (pnl != null) {
+            grouped[symbol][key] = (grouped[symbol][key] || 0) + pnl;
+          }
+        });
         if (grouped[symbol].accounts.indexOf(account.account) === -1) {
           grouped[symbol].accounts.push(account.account);
         }
@@ -492,7 +559,9 @@
     });
     var holdings = Object.keys(grouped).map(function (symbol) {
       var row = grouped[symbol];
-      row.avgPrice = row.value ? row.weightedPriceValue / row.value : 0;
+      row.price = row.shares ? (row.value ? row.value / row.shares : row.priceValue / row.shares) : null;
+      row.avgPrice = row.price;
+      row.averageCost = row.costBasis != null && row.costShares ? row.costBasis / row.costShares : null;
       return row;
     }).sort(function (a, b) { return b.value - a.value; });
     return {holdings: holdings, foreign: foreign};
@@ -622,19 +691,28 @@
 
   function renderDashboard() {
     var total = accountTotal("equity");
+    var dailyPnl = nullableSum(state.holdings, "dailyPnl");
+    var unrealizedPnl = nullableSum(state.holdings, "unrealizedPnl");
+    var realizedPnl = nullableSum(state.holdings, "realizedPnl");
+    var totalPnl = nullableSum(state.holdings, "totalPnl");
+    if (totalPnl == null && (unrealizedPnl != null || realizedPnl != null)) {
+      totalPnl = (unrealizedPnl || 0) + (realizedPnl || 0);
+    }
+    var totalCostBasis = nullableSum(state.holdings, "costBasis");
     text("portfolio-value", money(total));
     text("portfolio-scope", appEdition === "developer" ? "All visible SmartSleeve accounts in the current live feed." : "Accounts tied to " + (principalEmail || "the signed-in user") + ".");
     text("cash-value", money(accountTotal("cash")));
     text("buying-power", money(accountTotal("buyPower")));
     text("margin-usage", marginUsed() ? money(marginUsed()) : "$0");
-    text("daily-pl", "Needs P/L sync");
-    text("total-pl", "Needs cost basis");
-    text("portfolio-return", "Needs history");
+    setMetric("daily-pl", dailyPnl, function (value) { return signedMoney(value); }, "Needs daily P/L sync");
+    setMetric("total-pl", totalPnl, function (value) { return signedMoney(value); }, "Needs basis sync");
+    setMetric("portfolio-return", totalPnl != null && totalCostBasis ? totalPnl / totalCostBasis * 100 : null, function (value) { return (value >= 0 ? "+" : "") + value.toFixed(2) + "%"; }, "Needs basis sync");
     text("sage-review-count", String(state.recommendations.length));
     renderTopHoldings(total);
     renderReviewQueue();
     renderAccounts();
     renderSleeveSummary(total);
+    renderPerformanceCharts();
     renderReports();
     renderHoldingsTable();
   }
@@ -664,9 +742,45 @@
         + "<div class=\"stack-item-head\"><b>" + html(account.account) + "</b><span>" + html(account.broker) + "</span></div>"
         + "<p>Equity: <b>" + money(account.equity) + "</b></p>"
         + "<p>Cash: <span class=\"" + (cash < 0 ? "negative" : "positive") + "\">" + money(cash) + "</span> / buying power " + money(account.buyPower) + "</p>"
+        + "<p>Holdings: " + money((account.positions || []).reduce(function (sum, position) { return sum + (numeric(position.value) || 0); }, 0)) + " / positions " + (account.positions || []).length + "</p>"
         + "<p>Status: " + html(account.status) + "</p>"
         + "</article>";
     }).join("") || emptyItem("No visible accounts", "Sign in with an email that has SmartSleeve account access.");
+  }
+
+  function renderPerformanceCharts() {
+    var accountTarget = $("account-value-charts");
+    var holdingTarget = $("holding-value-charts");
+    if (accountTarget) {
+      accountTarget.innerHTML = state.accounts.map(function (account) {
+        var points = state.history.accounts.filter(function (row) { return row.accountId === account.id; });
+        if (!points.length && numeric(account.equity) != null) {
+          points = [{at: account.generatedAt || new Date().toISOString(), equity: account.equity}];
+        }
+        return lineChartCard(account.account, "Account value", points, "equity", "Account value");
+      }).join("") || emptyItem("No account history", "Account value charts appear after private feed history syncs.");
+    }
+    if (holdingTarget) {
+      var latestByKey = {};
+      state.accounts.forEach(function (account) {
+        (account.positions || []).forEach(function (position) {
+          var key = account.id + "::" + position.symbol;
+          latestByKey[key] = {account: account, position: position, value: numeric(position.value) || 0};
+        });
+      });
+      var rows = Object.keys(latestByKey).map(function (key) { return latestByKey[key]; }).sort(function (a, b) { return b.value - a.value; }).slice(0, 8);
+      holdingTarget.innerHTML = rows.map(function (row) {
+        var points = state.history.positions.filter(function (point) {
+          return point.accountId === row.account.id && point.symbol === row.position.symbol;
+        });
+        if (!points.length && numeric(row.position.value) != null) {
+          points = [{at: row.account.generatedAt || new Date().toISOString(), value: row.position.value}];
+        }
+        var title = row.position.symbol + " / " + row.account.account;
+        var meta = (row.position.name || tickerNames[row.position.symbol] || row.position.symbol) + " holding value";
+        return lineChartCard(title, meta, points, "value", "Stock value", row.position.totalPnl);
+      }).join("") || emptyItem("No holding history", "Stock holding charts appear after private feed history syncs.");
+    }
   }
 
   function renderSleeveSummary(total) {
@@ -713,11 +827,18 @@
       var weightNum = total ? holding.value / total : 0;
       return "<tr>"
         + cell("Ticker", "<b>" + html(holding.symbol) + "</b><small>" + html(holding.name) + "</small>")
-        + cell("Quantity", numberText(holding.shares, 6) + "<small>Avg " + money(holding.avgPrice) + "</small>")
+        + cell("Company", html(holding.name))
+        + cell("Shares", numberText(holding.shares, 6))
+        + cell("Stock price", money(holding.price))
+        + cell("Avg buy price", holding.averageCost == null ? "<span class=\"needs-sync\">Needs basis sync</span>" : money(holding.averageCost))
         + cell("Market value", money(holding.value))
-        + cell("Weight", pct(holding.value, total))
+        + cell("Cost basis", holding.costBasis == null ? "<span class=\"needs-sync\">Needs basis sync</span>" : money(holding.costBasis))
+        + cell("Daily P/L", pnlCell(holding.dailyPnl, "Needs daily sync"))
+        + cell("Unrealized P/L", pnlCell(holding.unrealizedPnl, "Needs basis sync"))
+        + cell("Realized P/L", pnlCell(holding.realizedPnl, "Needs trade sync"))
+        + cell("Total P/L", pnlCell(holding.totalPnl, "Needs basis sync"))
         + cell("Accounts", html(holding.accounts.join(", ")))
-        + cell("Thesis status", html(thesisStatus(holding.symbol, weightNum)))
+        + cell("Weight", pct(holding.value, total) + "<small>" + html(thesisStatus(holding.symbol, weightNum)) + "</small>")
         + "</tr>";
     }).join("") || "<tr>" + cell("Holdings", "No holdings synced") + "</tr>";
   }
@@ -1265,6 +1386,107 @@
     return "<td data-label=\"" + html(label) + "\">" + content + "</td>";
   }
 
+  function pnlCell(value, missingText) {
+    var number = numeric(value);
+    if (number == null) {
+      return "<span class=\"needs-sync\">" + html(missingText || "Needs sync") + "</span>";
+    }
+    return "<span class=\"" + valueClass(number) + "\">" + signedMoney(number) + "</span>";
+  }
+
+  function shortDate(value) {
+    var date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value || "");
+    return date.toLocaleDateString("en-US", {month: "short", day: "numeric"});
+  }
+
+  function compactMoney(value) {
+    var number = numeric(value);
+    if (number == null) return "$0";
+    var abs = Math.abs(number);
+    if (abs >= 1000000) return "$" + (number / 1000000).toFixed(abs >= 10000000 ? 0 : 1) + "M";
+    if (abs >= 1000) return "$" + (number / 1000).toFixed(abs >= 10000 ? 0 : 1) + "K";
+    return "$" + number.toFixed(abs >= 100 ? 0 : 2);
+  }
+
+  function lineChartCard(title, meta, points, valueKey, yLabel, pnlValue) {
+    var cleanPoints = (points || []).map(function (point) {
+      return {
+        at: point.at,
+        value: numeric(point[valueKey])
+      };
+    }).filter(function (point) { return point.at && point.value != null; }).sort(function (a, b) {
+      return new Date(a.at).getTime() - new Date(b.at).getTime();
+    });
+    if (!cleanPoints.length) {
+      return emptyItem(title, "No synced history yet.");
+    }
+    var first = cleanPoints[0];
+    var last = cleanPoints[cleanPoints.length - 1];
+    var trend = numeric(pnlValue);
+    if (trend == null && cleanPoints.length > 1) trend = last.value - first.value;
+    var trendClass = valueClass(trend);
+    var lineColor = trendClass === "negative" ? "var(--red)" : "var(--green)";
+    var chart = buildLineChart(cleanPoints, lineColor, yLabel);
+    var sub = cleanPoints.length > 1
+      ? shortDate(first.at) + " to " + shortDate(last.at) + " / " + signedMoney(last.value - first.value)
+      : "One synced point / more history needed";
+    return "<article class=\"chart-card\">"
+      + "<div class=\"stack-item-head\"><b>" + html(title) + "</b><span class=\"" + trendClass + "\">" + html(sub) + "</span></div>"
+      + "<p>" + html(meta) + " / latest " + html(money(last.value)) + "</p>"
+      + chart
+      + "</article>";
+  }
+
+  function buildLineChart(points, lineColor, yLabel) {
+    var width = 420;
+    var height = 220;
+    var left = 58;
+    var right = 18;
+    var top = 18;
+    var bottom = 46;
+    var values = points.map(function (point) { return point.value; });
+    var minValue = Math.min.apply(Math, values);
+    var maxValue = Math.max.apply(Math, values);
+    if (minValue === maxValue) {
+      var pad = Math.max(1, Math.abs(minValue) * 0.02);
+      minValue -= pad;
+      maxValue += pad;
+    }
+    var minTime = new Date(points[0].at).getTime();
+    var maxTime = new Date(points[points.length - 1].at).getTime();
+    if (minTime === maxTime) maxTime = minTime + 1;
+    function x(point) {
+      return left + (new Date(point.at).getTime() - minTime) / (maxTime - minTime) * (width - left - right);
+    }
+    function y(pointValue) {
+      return top + (maxValue - pointValue) / (maxValue - minValue) * (height - top - bottom);
+    }
+    var path = points.map(function (point, index) {
+      return (index ? "L" : "M") + x(point).toFixed(1) + " " + y(point.value).toFixed(1);
+    }).join(" ");
+    var yTicks = [minValue, (minValue + maxValue) / 2, maxValue];
+    var grid = yTicks.map(function (tick) {
+      var yy = y(tick).toFixed(1);
+      return "<line x1=\"" + left + "\" y1=\"" + yy + "\" x2=\"" + (width - right) + "\" y2=\"" + yy + "\" class=\"chart-grid-line\"/>"
+        + "<text x=\"" + (left - 8) + "\" y=\"" + (Number(yy) + 4) + "\" class=\"chart-tick\" text-anchor=\"end\">" + html(compactMoney(tick)) + "</text>";
+    }).join("");
+    var dots = points.length === 1
+      ? "<circle cx=\"" + x(points[0]).toFixed(1) + "\" cy=\"" + y(points[0].value).toFixed(1) + "\" r=\"4\" fill=\"" + lineColor + "\"/>"
+      : "";
+    return "<svg class=\"line-chart\" viewBox=\"0 0 " + width + " " + height + "\" role=\"img\" aria-label=\"" + html(yLabel) + " over time\">"
+      + grid
+      + "<line x1=\"" + left + "\" y1=\"" + top + "\" x2=\"" + left + "\" y2=\"" + (height - bottom) + "\" class=\"chart-axis\"/>"
+      + "<line x1=\"" + left + "\" y1=\"" + (height - bottom) + "\" x2=\"" + (width - right) + "\" y2=\"" + (height - bottom) + "\" class=\"chart-axis\"/>"
+      + "<path d=\"" + path + "\" fill=\"none\" stroke=\"" + lineColor + "\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>"
+      + dots
+      + "<text x=\"" + ((left + width - right) / 2) + "\" y=\"" + (height - 12) + "\" class=\"chart-label\" text-anchor=\"middle\">Time</text>"
+      + "<text x=\"16\" y=\"" + ((top + height - bottom) / 2) + "\" class=\"chart-label\" transform=\"rotate(-90 16 " + ((top + height - bottom) / 2) + ")\" text-anchor=\"middle\">" + html(yLabel) + "</text>"
+      + "<text x=\"" + left + "\" y=\"" + (height - 28) + "\" class=\"chart-tick\" text-anchor=\"start\">" + html(shortDate(points[0].at)) + "</text>"
+      + "<text x=\"" + (width - right) + "\" y=\"" + (height - 28) + "\" class=\"chart-tick\" text-anchor=\"end\">" + html(shortDate(points[points.length - 1].at)) + "</text>"
+      + "</svg>";
+  }
+
   function previewRow(label, value) {
     return "<div class=\"preview-row\"><span>" + html(label) + "</span><b>" + html(value) + "</b></div>";
   }
@@ -1478,6 +1700,13 @@
     var aggregated = aggregateHoldings(state.accounts);
     state.holdings = aggregated.holdings;
     state.foreignHoldings = aggregated.foreign;
+    var visibleAccountIds = {};
+    state.accounts.forEach(function (account) { visibleAccountIds[account.id] = true; });
+    var history = payload.history || {};
+    state.history = {
+      accounts: visibleRows(history.accounts || []).filter(function (row) { return visibleAccountIds[row.accountId]; }),
+      positions: visibleRows(history.positions || []).filter(function (row) { return visibleAccountIds[row.accountId]; })
+    };
     state.serverTrades = visibleRows(payload.trades || []);
     state.brain = visibleRows(payload.brain || []);
     state.reports = visibleRows(payload.reports || []);

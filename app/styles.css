@@ -595,6 +595,10 @@ table {
   min-width: 720px;
 }
 
+.holdings-ledger-table {
+  min-width: 1320px;
+}
+
 th,
 td {
   padding: 12px 10px;
@@ -857,8 +861,68 @@ textarea:focus {
   color: var(--red);
 }
 
+.neutral {
+  color: var(--text);
+}
+
+.needs-sync {
+  color: #ffd68a;
+}
+
 .warning-text {
   color: #ffd68a;
+}
+
+.chart-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.chart-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.62);
+}
+
+.chart-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.line-chart {
+  display: block;
+  width: 100%;
+  min-height: 170px;
+  overflow: visible;
+}
+
+.chart-axis {
+  stroke: rgba(248, 250, 252, 0.92);
+  stroke-width: 1.4;
+  vector-effect: non-scaling-stroke;
+}
+
+.chart-grid-line {
+  stroke: rgba(248, 250, 252, 0.16);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.chart-label,
+.chart-tick {
+  fill: rgba(248, 250, 252, 0.92);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.chart-tick {
+  fill: rgba(226, 232, 240, 0.86);
+  font-size: 10px;
 }
 
 @media (max-width: 1180px) {
@@ -936,6 +1000,10 @@ textarea:focus {
   }
 
   table {
+    min-width: 0;
+  }
+
+  .holdings-ledger-table {
     min-width: 0;
   }
 

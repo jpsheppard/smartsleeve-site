@@ -148,6 +148,30 @@
           <article class="panel-card">
             <div class="card-head">
               <div>
+                <span>Account charts</span>
+                <h2>Account value over time</h2>
+              </div>
+              <span class="status-chip">Private history</span>
+            </div>
+            <div id="account-value-charts" class="chart-grid"></div>
+          </article>
+
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Holding charts</span>
+                <h2>Stock value over time</h2>
+              </div>
+              <span class="status-chip">By account</span>
+            </div>
+            <div id="holding-value-charts" class="chart-grid"></div>
+          </article>
+        </div>
+
+        <div class="content-grid two-columns">
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
                 <span>Performance reports</span>
                 <h2>Daily report archive</h2>
               </div>
@@ -182,15 +206,22 @@
             </select>
           </div>
           <div class="table-wrap">
-            <table>
+            <table class="holdings-ledger-table">
               <thead>
                 <tr>
                   <th>Ticker</th>
-                  <th>Quantity</th>
+                  <th>Company</th>
+                  <th>Shares</th>
+                  <th>Stock price</th>
+                  <th>Avg buy price</th>
                   <th>Market value</th>
-                  <th>Weight</th>
+                  <th>Cost basis</th>
+                  <th>Daily P/L</th>
+                  <th>Unrealized P/L</th>
+                  <th>Realized P/L</th>
+                  <th>Total P/L</th>
                   <th>Accounts</th>
-                  <th>Thesis status</th>
+                  <th>Weight</th>
                 </tr>
               </thead>
               <tbody id="holdings-table"></tbody>
