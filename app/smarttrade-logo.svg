@@ -1,74 +1,45 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
   <title id="title">SmartTrade by SmartSleeve</title>
-  <desc id="desc">Many small leaves circling in wind with a green to orange horizontal gradient.</desc>
+  <desc id="desc">Leaves circling in wind with a green to orange horizontal gradient.</desc>
   <defs>
     <linearGradient id="leafGradient" x1="78" y1="0" x2="434" y2="0" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#39ff14"/>
-      <stop offset=".42" stop-color="#b9f83b"/>
-      <stop offset=".70" stop-color="#ffb238"/>
+      <stop offset=".45" stop-color="#b9f83b"/>
+      <stop offset=".72" stop-color="#ffb238"/>
       <stop offset="1" stop-color="#ff6b1a"/>
     </linearGradient>
-    <radialGradient id="windGlow" cx="48%" cy="48%" r="66%">
-      <stop offset="0" stop-color="#39ff14" stop-opacity=".20"/>
-      <stop offset=".50" stop-color="#ff9f1c" stop-opacity=".14"/>
+    <radialGradient id="windGlow" cx="48%" cy="48%" r="64%">
+      <stop offset="0" stop-color="#39ff14" stop-opacity=".18"/>
+      <stop offset=".58" stop-color="#ff9f1c" stop-opacity=".12"/>
       <stop offset="1" stop-color="#000" stop-opacity="0"/>
     </radialGradient>
-    <filter id="leafGlow" x="-40%" y="-40%" width="180%" height="180%">
-      <feGaussianBlur stdDeviation="4.4" result="blur"/>
-      <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.85 0 0 0 0 1 0 0 0 0 0.1 0 0 0 .76 0"/>
+    <filter id="leafGlow" x="-35%" y="-35%" width="170%" height="170%">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.85 0 0 0 0 1 0 0 0 0 0.1 0 0 0 .72 0"/>
       <feMerge>
         <feMergeNode/>
         <feMergeNode in="SourceGraphic"/>
       </feMerge>
     </filter>
-    <path id="leaf" d="M-34 0C-11-20 18-19 39 0 15 20-13 20-34 0Z"/>
   </defs>
   <rect width="512" height="512" rx="108" fill="#020617"/>
-  <circle cx="256" cy="256" r="218" fill="url(#windGlow)"/>
-  <g fill="none" stroke="url(#leafGradient)" stroke-linecap="round" opacity=".76">
-    <path d="M118 287c27 83 123 130 207 102 74-25 117-93 107-168" stroke-width="8" stroke-dasharray="1 20"/>
-    <path d="M393 215c-32-79-127-119-207-86-66 27-104 90-96 160" stroke-width="8" stroke-dasharray="1 20" opacity=".72"/>
-    <path d="M151 337c67 58 166 58 231 2" stroke-width="5" stroke-dasharray="1 17" opacity=".52"/>
-    <path d="M363 160c-66-49-156-47-221 5" stroke-width="5" stroke-dasharray="1 17" opacity=".44"/>
-  </g>
+  <circle cx="256" cy="256" r="214" fill="url(#windGlow)"/>
+  <path d="M136 292c29 73 119 111 194 78 61-27 95-87 89-148" fill="none" stroke="url(#leafGradient)" stroke-width="9" stroke-linecap="round" stroke-dasharray="1 22" opacity=".72"/>
+  <path d="M376 220c-30-72-120-108-194-75-58 26-92 81-89 139" fill="none" stroke="url(#leafGradient)" stroke-width="9" stroke-linecap="round" stroke-dasharray="1 22" opacity=".56"/>
   <g filter="url(#leafGlow)" fill="url(#leafGradient)">
-    <use href="#leaf" transform="translate(103 252) rotate(-11) scale(.62)"/>
-    <use href="#leaf" transform="translate(126 211) rotate(8) scale(.54)"/>
-    <use href="#leaf" transform="translate(151 166) rotate(28) scale(.66)"/>
-    <use href="#leaf" transform="translate(196 129) rotate(45) scale(.56)"/>
-    <use href="#leaf" transform="translate(246 105) rotate(70) scale(.62)"/>
-    <use href="#leaf" transform="translate(300 111) rotate(95) scale(.54)"/>
-    <use href="#leaf" transform="translate(350 143) rotate(119) scale(.68)"/>
-    <use href="#leaf" transform="translate(388 190) rotate(145) scale(.58)"/>
-    <use href="#leaf" transform="translate(411 243) rotate(172) scale(.64)"/>
-    <use href="#leaf" transform="translate(401 299) rotate(202) scale(.55)"/>
-    <use href="#leaf" transform="translate(367 348) rotate(225) scale(.67)"/>
-    <use href="#leaf" transform="translate(320 382) rotate(248) scale(.56)"/>
-    <use href="#leaf" transform="translate(265 399) rotate(276) scale(.64)"/>
-    <use href="#leaf" transform="translate(209 391) rotate(301) scale(.55)"/>
-    <use href="#leaf" transform="translate(158 359) rotate(323) scale(.68)"/>
-    <use href="#leaf" transform="translate(120 315) rotate(342) scale(.58)"/>
-    <use href="#leaf" transform="translate(206 242) rotate(24) scale(.46)"/>
-    <use href="#leaf" transform="translate(311 268) rotate(203) scale(.46)"/>
+    <path d="M117 257c44-36 86-40 125-12-38 26-78 30-125 12Z"/>
+    <path d="M162 149c52-8 88 10 110 52-43 7-79-10-110-52Z"/>
+    <path d="M283 103c46 20 67 55 63 104-38-17-60-51-63-104Z"/>
+    <path d="M388 183c20 44 12 84-24 120-17-37-9-78 24-120Z"/>
+    <path d="M361 328c-17 47-50 72-99 75 15-41 48-66 99-75Z"/>
+    <path d="M220 385c-49 11-86-5-112-47 43-9 80 7 112 47Z"/>
   </g>
-  <g fill="none" stroke="#020617" stroke-width="3.4" stroke-linecap="round" opacity=".80">
-    <path d="M85 250c28-9 54-8 78 4"/>
-    <path d="M112 211c28-4 54 3 78 20"/>
-    <path d="M144 166c27 14 49 32 66 54"/>
-    <path d="M192 131c22 21 37 46 48 74"/>
-    <path d="M248 108c14 26 21 54 21 84"/>
-    <path d="M301 116c4 30 0 58-11 85"/>
-    <path d="M352 147c-9 29-24 54-45 75"/>
-    <path d="M389 194c-18 25-39 44-65 58"/>
-    <path d="M410 247c-27 13-55 18-85 15"/>
-    <path d="M398 302c-29 3-56-3-82-18"/>
-    <path d="M365 350c-27-12-50-30-68-53"/>
-    <path d="M318 381c-20-21-35-47-43-77"/>
-    <path d="M263 397c-10-27-14-56-10-86"/>
-    <path d="M208 388c0-30 8-57 23-83"/>
-    <path d="M156 356c10-27 28-50 51-69"/>
-    <path d="M121 313c20-21 43-36 71-45"/>
-    <path d="M206 242c20 2 37 9 53 21"/>
-    <path d="M311 268c-20-2-38-9-54-21"/>
+  <g fill="none" stroke="#020617" stroke-width="4" stroke-linecap="round" opacity=".82">
+    <path d="M137 254c35-12 63-15 93-9"/>
+    <path d="M180 153c27 26 52 41 83 49"/>
+    <path d="M290 116c23 30 38 57 50 86"/>
+    <path d="M384 195c-8 37-17 66-20 98"/>
+    <path d="M349 336c-34 15-59 35-82 61"/>
+    <path d="M208 381c-30-23-58-35-91-41"/>
   </g>
 </svg>
