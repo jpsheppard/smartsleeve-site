@@ -164,8 +164,8 @@
       "<label>Last name<input id=\"auth-last-name\" type=\"text\" autocomplete=\"family-name\"></label>",
       "</div>",
       "<label>Email<input id=\"auth-email\" type=\"email\" autocomplete=\"username\" required></label>",
-      "<label>Password<input id=\"auth-password\" type=\"password\" autocomplete=\"current-password\" required></label>",
-      "<label class=\"auth-register-field\">Confirm password<input id=\"auth-password-confirm\" type=\"password\" autocomplete=\"new-password\"></label>",
+      "<label>Password<input id=\"auth-password\" type=\"password\" autocomplete=\"off\" minlength=\"8\" data-lpignore=\"true\" data-1p-ignore=\"true\" autocapitalize=\"none\" spellcheck=\"false\" required></label>",
+      "<label class=\"auth-register-field\">Confirm password<input id=\"auth-password-confirm\" type=\"password\" autocomplete=\"off\" minlength=\"8\" data-lpignore=\"true\" data-1p-ignore=\"true\" autocapitalize=\"none\" spellcheck=\"false\"></label>",
       "<label class=\"auth-check auth-register-field\"><input id=\"auth-accepted-terms\" type=\"checkbox\"><span>I understand SmartSleeve account access is for verified users and does not itself authorize broker trading.</span></label>",
       "<button type=\"submit\" id=\"auth-submit-button\">Sign in</button>",
       "<button type=\"button\" class=\"auth-link-button\" id=\"auth-reset-button\">Reset password</button>",
@@ -177,6 +177,9 @@
     if (emailInput && principalEmail) {
       emailInput.value = principalEmail;
     }
+    clearAuthPasswordFields();
+    window.setTimeout(clearAuthPasswordFields, 120);
+    window.setTimeout(clearAuthPasswordFields, 650);
     $("auth-gate-form").addEventListener("submit", function (event) {
       event.preventDefault();
       if ($("auth-gate-form").getAttribute("data-mode") === "register") {
@@ -191,6 +194,17 @@
       });
     });
     $("auth-reset-button").addEventListener("click", requestPasswordResetFromGate);
+  }
+
+  function clearAuthPasswordFields() {
+    ["auth-password", "auth-password-confirm"].forEach(function (id) {
+      var input = $(id);
+      if (input) {
+        input.value = "";
+        input.defaultValue = "";
+        input.setAttribute("value", "");
+      }
+    });
   }
 
   function showAuthNotice(title, message, actionLabel, actionMode) {
@@ -222,9 +236,10 @@
     text(
       "auth-gate-message",
       nextMode === "register"
-        ? "Create a verified SmartSleeve account. We will email a verification link before private data can load."
+        ? "Create a verified SmartSleeve account. Passwords must be at least 8 characters. We will email a verification link before private data can load."
         : "Sign in to load your private SmartSleeve data."
     );
+    clearAuthPasswordFields();
   }
 
   function loginFromGate() {
