@@ -483,16 +483,29 @@
           </article>
         </div>
 
-        <article class="panel-card">
-          <div class="card-head">
-            <div>
-              <span>Server trade history</span>
-              <h2>Submitted trades from analytics ledger</h2>
+        <div class="content-grid trade-history-layout">
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Execution ledger</span>
+                <h2>Clickable Sage and manual trades</h2>
+              </div>
+              <span class="status-chip">Private trades feed</span>
             </div>
-            <span class="status-chip">CLI trades feed</span>
-          </div>
-          <div id="server-trade-history" class="stack-list"></div>
-        </article>
+            <div id="server-trade-history" class="stack-list compact-list"></div>
+          </article>
+
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Trade details</span>
+                <h2>Execution and autoGuard diagnostics</h2>
+              </div>
+              <span id="trade-detail-status" class="status-chip">Select trade</span>
+            </div>
+            <div id="trade-detail-panel" class="trade-detail-panel"></div>
+          </article>
+        </div>
       </section>
 
       <section id="sage" class="panel" data-section="sage">

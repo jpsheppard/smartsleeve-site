@@ -397,6 +397,10 @@ main {
   grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
 }
 
+.trade-history-layout {
+  grid-template-columns: minmax(300px, 0.85fr) minmax(0, 1.15fr);
+}
+
 .sage-layout {
   grid-template-columns: minmax(300px, 0.75fr) minmax(0, 1.25fr);
 }
@@ -702,6 +706,118 @@ textarea:focus {
   padding: 14px;
 }
 
+.trade-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 8px;
+  color: var(--text);
+  background: rgba(15, 23, 42, 0.62);
+  text-align: left;
+  cursor: pointer;
+}
+
+.trade-row.active,
+.trade-row:hover {
+  border-color: rgba(57, 255, 20, 0.38);
+  background: rgba(57, 255, 20, 0.08);
+}
+
+.trade-row span {
+  display: grid;
+  gap: 4px;
+}
+
+.trade-row b {
+  font-size: 14px;
+}
+
+.trade-row small,
+.trade-row i {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.35;
+}
+
+.trade-row i {
+  max-width: 42%;
+  text-align: right;
+}
+
+.trade-detail-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.trade-detail-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.trade-detail-title h3 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.trade-detail-title span {
+  color: var(--green);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.detail-item,
+.trade-rationale {
+  padding: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.56);
+}
+
+.detail-item {
+  display: grid;
+  gap: 5px;
+}
+
+.detail-item span,
+.trade-rationale b {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.detail-item b {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.trade-rationale p {
+  margin: 7px 0 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.trade-gauge-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 0;
+}
+
 .preview-row {
   display: flex;
   justify-content: space-between;
@@ -939,6 +1055,7 @@ textarea:focus {
   .gauge-grid,
   .two-columns,
   .trade-layout,
+  .trade-history-layout,
   .sage-layout {
     grid-template-columns: 1fr;
   }
@@ -1073,11 +1190,26 @@ textarea:focus {
 
   .card-head,
   .stack-item-head,
+  .trade-detail-title,
   .preview-row {
     display: grid;
   }
 
   .preview-row b {
+    text-align: left;
+  }
+
+  .detail-grid,
+  .trade-gauge-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .trade-row {
+    display: grid;
+  }
+
+  .trade-row i {
+    max-width: none;
     text-align: left;
   }
 

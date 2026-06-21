@@ -27,6 +27,7 @@
     reports: [],
     history: {accounts: [], positions: []},
     sageMode: "recommend",
+    selectedTradeId: null,
     feedSource: "loading"
   };
 
@@ -1259,9 +1260,128 @@
   function renderServerTrades() {
     var target = $("server-trade-history");
     if (!target) return;
-    target.innerHTML = visibleRows(state.serverTrades).slice(0, 12).map(function (trade) {
-      return stackItem((trade.side || "?").toUpperCase() + " " + (trade.symbol || "?"), (trade.sleeve || trade.sleeveId || "Sleeve") + " / " + (trade.operatorId || trade.operator_id || "SQTS_AUTO"), (trade.account || trade.accountId || "") + " / " + money(trade.notionalUsd != null ? trade.notionalUsd : trade.notional_usd) + " / " + (trade.submittedAt || trade.submitted_at || "time unknown"), 55);
+    var rows = visibleRows(state.serverTrades).slice(0, 40);
+    if (!state.selectedTradeId && rows.length) {
+      state.selectedTradeId = tradeId(rows[0]);
+    }
+    target.innerHTML = rows.map(function (trade) {
+      var id = tradeId(trade);
+      var selected = id === state.selectedTradeId;
+      var title = tradeTitle(trade);
+      var meta = (trade.workflow || trade.autoGuardMode || "manual/order") + " / " + (trade.operatorId || trade.operator_id || "SQTS_AUTO");
+      var body = (trade.account || trade.accountId || "") + " / " + money(trade.notionalUsd != null ? trade.notionalUsd : trade.notional_usd) + " / " + (trade.submittedAt || trade.submitted_at || "time unknown");
+      return "<button type=\"button\" class=\"trade-row" + (selected ? " active" : "") + "\" data-server-trade-id=\"" + html(id) + "\">"
+        + "<span><b>" + html(title) + "</b><small>" + html(body) + "</small></span>"
+        + "<i>" + html(meta) + "</i>"
+        + "</button>";
     }).join("") || emptyItem("No server trade history", "Analytics trade ledger is not available for this user/account yet.");
+    renderTradeDetail();
+  }
+
+  function tradeId(trade) {
+    return String(trade.id || trade.orderId || trade.order_id || [trade.accountId || trade.account, trade.submittedAt || trade.submitted_at, trade.symbol, trade.side].join("|"));
+  }
+
+  function tradeTitle(trade) {
+    var side = String(trade.side || trade.action || "?").toUpperCase();
+    var symbol = trade.symbol || "?";
+    if (trade.targetSymbol || trade.target_symbol) {
+      return "REALLOCATE " + symbol + " -> " + (trade.targetSymbol || trade.target_symbol);
+    }
+    return side + " " + symbol;
+  }
+
+  function workflowLabel(trade) {
+    var workflow = trade.workflow || trade.command || trade.strategy;
+    if (workflow) return workflow;
+    if (trade.autoGuardMode || trade.autoGuardEndAt) return "autoGuard supervised";
+    var origin = String(trade.origin || trade.operatorId || trade.operator_id || "").toLowerCase();
+    return origin.indexOf("sage") !== -1 || origin.indexOf("custom_sage") !== -1 ? "Sage-directed order" : "Manual/direct order";
+  }
+
+  function renderTradeDetail() {
+    var panel = $("trade-detail-panel");
+    var status = $("trade-detail-status");
+    if (!panel) return;
+    var trade = visibleRows(state.serverTrades).find(function (row) { return tradeId(row) === state.selectedTradeId; });
+    if (!trade) {
+      panel.innerHTML = emptyItem("Select a trade", "Choose a submitted trade to inspect execution details and retrospective diagnostics.");
+      if (status) status.textContent = "Select trade";
+      return;
+    }
+    var evaluation = trade.evaluation || {};
+    var evalStatus = evaluation.status || retrospectiveStatus(trade);
+    if (status) status.textContent = evalStatus;
+    panel.innerHTML = ""
+      + "<div class=\"trade-detail-title\"><h3>" + html(tradeTitle(trade)) + "</h3><span>" + html(evalStatus) + "</span></div>"
+      + "<div class=\"detail-grid\">"
+      + detailItem("Origin", trade.origin || workflowLabel(trade))
+      + detailItem("Workflow", workflowLabel(trade))
+      + detailItem("Account", trade.account || trade.accountId || "Unknown")
+      + detailItem("Sleeve", trade.sleeve || trade.sleeveId || "Unknown")
+      + detailItem("Submitted", trade.submittedAt || trade.submitted_at || "Unknown")
+      + detailItem("Status", trade.status || "submitted_or_recorded")
+      + detailItem("Order type", orderTypeLabels[trade.orderType || trade.order_type] || trade.orderType || trade.order_type || "Unknown")
+      + detailItem("Session", sessionLabels[trade.session] || trade.session || "Unknown")
+      + detailItem("Time in force", trade.timeInForce || trade.time_in_force || "Needs broker sync")
+      + detailItem("Limit price", trade.limitPrice == null ? "None/market" : money(trade.limitPrice))
+      + detailItem("Quantity", trade.quantity == null ? "Needs fill sync" : numberText(trade.quantity, 6))
+      + detailItem("Notional", money(trade.notionalUsd != null ? trade.notionalUsd : trade.notional_usd))
+      + detailItem("Order ID", trade.orderId || trade.order_id || "Needs broker sync")
+      + detailItem("autoGuard mode", trade.autoGuardMode || trade.auto_guard_mode || "Not used")
+      + detailItem("autoGuard end", trade.autoGuardEndAt || trade.auto_guard_end_at || "Not windowed")
+      + "</div>"
+      + "<article class=\"trade-rationale\"><b>Rationale</b><p>" + html(trade.rationale || "No rationale recorded for this trade.") + "</p></article>"
+      + renderRetrospectiveDiagnostics(trade);
+  }
+
+  function detailItem(label, value) {
+    return "<div class=\"detail-item\"><span>" + html(label) + "</span><b>" + html(value) + "</b></div>";
+  }
+
+  function retrospectiveStatus(trade) {
+    if (!(trade.autoGuardMode || trade.autoGuardEndAt || trade.workflow)) {
+      return "Manual/no HEB";
+    }
+    if (!trade.autoGuardEndAt) {
+      return "Needs end time";
+    }
+    var end = new Date(trade.autoGuardEndAt).getTime();
+    if (Number.isFinite(end) && Date.now() < end) {
+      return "Pending window";
+    }
+    return "Awaiting yFinance evaluation";
+  }
+
+  function renderRetrospectiveDiagnostics(trade) {
+    var evaluation = trade.evaluation || {};
+    var hasHeb = numeric(evaluation.hindsightEfficientBasisPct) != null;
+    var hasCapture = numeric(evaluation.basisCapturePct) != null;
+    var hasSaved = numeric(evaluation.savedUsd) != null;
+    if (!hasHeb && !hasCapture && !hasSaved) {
+      return "<article class=\"trade-rationale\"><b>Retrospective diagnostics</b><p>" + html(retrospectiveExplainer(trade)) + "</p></article>";
+    }
+    return "<div class=\"gauge-grid trade-gauge-grid\">"
+      + gaugeCard("HEB", clampPct(evaluation.hindsightEfficientBasisPct), "Hindsight Efficient Basis percent after the trade window closes.")
+      + gaugeCard("autoGuard", clampPct(evaluation.basisCapturePct), "Basis capture versus the best achievable retrospective entry/exit/reallocation.")
+      + "<article class=\"gauge-card\"><span>You saved</span><h3>" + html(money(evaluation.savedUsd)) + "</h3><p>Estimated improvement from autoGuard versus immediate/manual baseline, using " + html(evaluation.dataSource || "yFinance") + " data.</p></article>"
+      + "</div>";
+  }
+
+  function clampPct(value) {
+    var number = numeric(value);
+    if (number == null) return 0;
+    return Math.max(0, Math.min(100, Math.round(number)));
+  }
+
+  function retrospectiveExplainer(trade) {
+    if (!(trade.autoGuardMode || trade.autoGuardEndAt || trade.workflow)) {
+      return "This looks like a manual/direct order. HEB, basis capture, and autoGuard savings are reserved for Sage windowed entries, exits, and reallocations.";
+    }
+    if (trade.autoGuardEndAt && Date.now() < new Date(trade.autoGuardEndAt).getTime()) {
+      return "autoGuard diagnostics will unlock after the specified end time, once retrospective market data are available.";
+    }
+    return "The trade is eligible for retrospective HEB and basis-capture evaluation, but no completed yFinance evaluation has been archived yet.";
   }
 
   function renderActivity() {
@@ -1615,6 +1735,11 @@
       }
       var recButton = event.target.closest("[data-rec-draft]");
       if (recButton) draftFromRecommendation(recButton.getAttribute("data-rec-draft"));
+      var tradeButton = event.target.closest("[data-server-trade-id]");
+      if (tradeButton) {
+        state.selectedTradeId = tradeButton.getAttribute("data-server-trade-id");
+        renderServerTrades();
+      }
       var recDismiss = event.target.closest("[data-rec-dismiss]");
       if (recDismiss) {
         state.recommendations = state.recommendations.filter(function (item) { return item.id !== recDismiss.getAttribute("data-rec-dismiss"); });
