@@ -28,12 +28,10 @@
         <strong id="session-title">Loading account</strong>
         <small id="session-detail">Syncing portfolio snapshot.</small>
       </div>
-      <nav class="primary-nav" aria-label="Primary">
+      <nav class="primary-nav concise-nav" aria-label="Primary">
         <a href="#dashboard" data-nav="dashboard" class="active">Dashboard</a>
-        <a href="#sleeves" data-nav="sleeves">Sleeves</a>
         <a href="#trade" data-nav="trade">Trade Center</a>
         <a href="#sage" data-nav="sage">Sage</a>
-        <a href="#risk" data-nav="risk">Risk</a>
       </nav>
       <div class="sidebar-status">
         <b>Data source</b>
@@ -103,7 +101,7 @@
                 <span>Top holdings</span>
                 <h2>What you own</h2>
               </div>
-              <button type="button" class="text-button" data-nav-button="risk">View risk</button>
+              <button type="button" class="text-button" data-nav-button="sage">Ask Sage</button>
             </div>
             <div id="top-holdings" class="stack-list"></div>
           </article>
@@ -138,7 +136,7 @@
                 <span>Allocation</span>
                 <h2>Active sleeves</h2>
               </div>
-              <button type="button" class="text-button" data-nav-button="sleeves">Manage sleeves</button>
+              <button type="button" class="text-button" data-nav-button="trade">Trade Center</button>
             </div>
             <div id="sleeve-summary" class="stack-list"></div>
           </article>
@@ -225,51 +223,6 @@
                 </tr>
               </thead>
               <tbody id="holdings-table"></tbody>
-            </table>
-          </div>
-        </article>
-      </section>
-
-      <section id="sleeves" class="panel" data-section="sleeves">
-        <div class="section-heading">
-          <p class="eyebrow">Sleeves</p>
-          <h2>Strategy buckets with targets, drift, risk, and actions</h2>
-          <p>Sleeves are capital buckets. Multi-sleeve accounts need the live sleeve ledger before SmartSleeve should show exact sleeve-level P/L.</p>
-        </div>
-
-        <div id="sleeve-cards" class="sleeve-grid"></div>
-
-        <article class="panel-card">
-          <div class="card-head">
-            <div>
-              <span>Rebalance</span>
-              <h2>Recommended sleeve actions</h2>
-            </div>
-            <button type="button" class="text-button" data-create-rebalance>Draft rebalance</button>
-          </div>
-          <div id="rebalance-list" class="stack-list"></div>
-        </article>
-
-        <article class="panel-card">
-          <div class="card-head">
-            <div>
-              <span>Sleeve holdings</span>
-              <h2>Position provenance</h2>
-            </div>
-            <span class="status-chip">Ledger-aware</span>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Sleeve</th>
-                  <th>Account</th>
-                  <th>Holdings</th>
-                  <th>Known value</th>
-                  <th>Next action</th>
-                </tr>
-              </thead>
-              <tbody id="sleeve-table"></tbody>
             </table>
           </div>
         </article>
@@ -601,94 +554,13 @@
         </article>
       </section>
 
-      <section id="risk" class="panel" data-section="risk">
-        <div class="section-heading">
-          <p class="eyebrow">Risk</p>
-          <h2>Concentration, margin, broker, sleeve, and event risk</h2>
-          <p>Risk findings produce concrete actions: trim, rebalance, raise cash, reduce margin, reconnect a broker, or review earnings exposure.</p>
-        </div>
-
-        <div class="dashboard-grid risk-metrics">
-          <article class="metric-card">
-            <span>Largest holding</span>
-            <strong id="largest-position">Loading...</strong>
-            <p id="largest-position-note">Position concentration.</p>
-          </article>
-          <article class="metric-card">
-            <span>Top 3 concentration</span>
-            <strong id="top-three-risk">Loading...</strong>
-            <p>Portfolio impact if leaders move together.</p>
-          </article>
-          <article class="metric-card">
-            <span>Margin risk</span>
-            <strong id="risk-margin">Loading...</strong>
-            <p>Negative cash and account leverage pressure.</p>
-          </article>
-          <article class="metric-card">
-            <span>Broker status</span>
-            <strong id="broker-health">Loading...</strong>
-            <p>Connected, view-only, pending, or disconnected.</p>
-          </article>
-        </div>
-
-        <div class="content-grid two-columns">
-          <article class="panel-card">
-            <div class="card-head">
-              <div>
-                <span>Risk actions</span>
-                <h2>What to review</h2>
-              </div>
-              <button type="button" class="text-button" data-nav-button="trade">Draft action</button>
-            </div>
-            <div id="risk-actions" class="stack-list"></div>
-          </article>
-
-          <article class="panel-card">
-            <div class="card-head">
-              <div>
-                <span>Broker connections</span>
-                <h2>Permissions and sync</h2>
-              </div>
-              <span class="status-chip">Read-only default</span>
-            </div>
-            <div id="broker-connections" class="stack-list"></div>
-          </article>
-        </div>
-
-        <article class="panel-card">
-          <div class="card-head">
-            <div>
-              <span>Risk table</span>
-              <h2>Exposure by account</h2>
-            </div>
-            <button type="button" class="danger-button small" id="risk-kill-switch">Kill automation</button>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Account</th>
-                  <th>Broker</th>
-                  <th>Equity</th>
-                  <th>Cash</th>
-                  <th>Buying power</th>
-                  <th>Risk note</th>
-                </tr>
-              </thead>
-              <tbody id="risk-account-table"></tbody>
-            </table>
-          </div>
-        </article>
-      </section>
     </main>
   </div>
 
-  <nav class="bottom-nav" aria-label="Primary mobile">
+  <nav class="bottom-nav concise-bottom-nav" aria-label="Primary mobile">
     <a href="#dashboard" data-nav="dashboard" class="active">Dashboard</a>
-    <a href="#sleeves" data-nav="sleeves">Sleeves</a>
     <a href="#trade" data-nav="trade">Trade</a>
     <a href="#sage" data-nav="sage">Sage</a>
-    <a href="#risk" data-nav="risk">Risk</a>
   </nav>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>

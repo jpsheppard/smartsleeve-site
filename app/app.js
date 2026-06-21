@@ -1724,10 +1724,8 @@
     });
     var titles = {
       dashboard: ["Dashboard", "What you own, why you own it, what changed, and what needs review."],
-      sleeves: ["Sleeves", "Strategy buckets with target allocation, drift, risk, and actions."],
       trade: ["Trade Center", "Draft, review, approve, reject, and audit trade decisions."],
-      sage: ["Sage", "Portfolio-specific recommendations and execution diagnostics."],
-      risk: ["Risk", "Concentration, margin, broker, sleeve, and event risk."]
+      sage: ["Sage", "Agent controls, recommendations, decision feed, and execution diagnostics."]
     };
     if (!titles[target]) {
       target = "dashboard";
