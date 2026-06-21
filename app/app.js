@@ -129,6 +129,7 @@
     core: 20,
     grand_sage: 100
   };
+  var AUTH_TOKEN_KEY = "smartsleeve_auth_token_v1";
   var discountCodes = {
     BFF4LYFE: {
       label: "BFF4LYFE",
@@ -514,16 +515,41 @@
     return body.error || fallback;
   }
 
+  function storedAuthToken() {
+    try {
+      return localStorage.getItem(AUTH_TOKEN_KEY) || "";
+    } catch (_err) {
+      return "";
+    }
+  }
+
+  function storeAuthToken(token) {
+    try {
+      if (token) {
+        localStorage.setItem(AUTH_TOKEN_KEY, token);
+      } else {
+        localStorage.removeItem(AUTH_TOKEN_KEY);
+      }
+    } catch (_err) {}
+  }
+
   function authFetch(path, options) {
     var url = authUrl(path);
     if (!url || !window.fetch) {
       return Promise.reject(new Error("auth_backend_not_configured"));
     }
-    return fetch(url, Object.assign({
+    var requestOptions = Object.assign({
       mode: "cors",
       credentials: "include",
       headers: {"Content-Type": "application/json"}
-    }, options || {})).then(function (response) {
+    }, options || {});
+    var token = storedAuthToken();
+    if (token) {
+      requestOptions.headers = Object.assign({}, requestOptions.headers || {}, {
+        Authorization: "Bearer " + token
+      });
+    }
+    return fetch(url, requestOptions).then(function (response) {
       return response.json().then(function (body) {
         if (!response.ok || !body.ok) {
           throw new Error(parseAuthError(body, "request_failed"));
@@ -569,6 +595,7 @@
         setLoginStatus("Signing in...", "");
         authFetch("/login", {method: "POST", body: JSON.stringify(payload)})
           .then(function (body) {
+            storeAuthToken(body.session_token || "");
             form.reset();
             displaySession(body.profile);
             setLoginStatus("Signed in.", "ok");
@@ -588,6 +615,7 @@
       logoutButton.addEventListener("click", function () {
         authFetch("/logout", {method: "POST", body: "{}"})
           .then(function () {
+            storeAuthToken("");
             displaySession(null);
             setLoginStatus("Signed out.", "ok");
           })

@@ -51,7 +51,7 @@ function corsHeaders(request, env) {
   return {
     "Access-Control-Allow-Origin": allowOrigin,
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Headers": "Authorization, Content-Type",
     "Access-Control-Allow-Credentials": "true",
     "Vary": "Origin",
   };
@@ -239,6 +239,12 @@ function parseCookies(request) {
         return [cookie.slice(0, splitAt), decodeURIComponent(cookie.slice(splitAt + 1))];
       })
   );
+}
+
+function bearerToken(request) {
+  const header = String(request.headers.get("Authorization") || "");
+  const match = /^Bearer\s+(.+)$/i.exec(header);
+  return match ? match[1].trim() : "";
 }
 
 function sessionCookie(token, maxAge = SESSION_TTL_SECONDS) {
@@ -512,7 +518,7 @@ async function login(request, env) {
   return jsonWithCookie(
     request,
     env,
-    { ok: true, status: "logged_in", profile: publicProfile(account.record, env) },
+    { ok: true, status: "logged_in", session_token: token, profile: publicProfile(account.record, env) },
     sessionCookie(token)
   );
 }
@@ -521,7 +527,7 @@ async function currentSession(request, env) {
   if (!env.SMARTSLEEVE_AUTH) {
     return { ok: false, error: "auth_storage_not_configured", status: 503 };
   }
-  const token = parseCookies(request)[SESSION_COOKIE];
+  const token = parseCookies(request)[SESSION_COOKIE] || bearerToken(request);
   if (!token) {
     return { ok: false, error: "not_authenticated", status: 401 };
   }
@@ -551,7 +557,7 @@ async function me(request, env) {
 
 async function logout(request, env) {
   if (env.SMARTSLEEVE_AUTH) {
-    const token = parseCookies(request)[SESSION_COOKIE];
+    const token = parseCookies(request)[SESSION_COOKIE] || bearerToken(request);
     if (token) {
       await env.SMARTSLEEVE_AUTH.delete(`session:${await sha256Hex(token)}`);
     }
