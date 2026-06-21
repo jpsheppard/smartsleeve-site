@@ -93,6 +93,30 @@ a {
   text-align: center;
 }
 
+.auth-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin: 0 0 14px;
+  padding: 4px;
+  border: 1px solid rgba(57, 255, 20, 0.20);
+  border-radius: 8px;
+  background: rgba(2, 6, 23, 0.72);
+}
+
+.auth-switch button {
+  min-height: 38px;
+  margin: 0;
+  border-radius: 6px;
+  color: var(--muted);
+  background: transparent;
+}
+
+.auth-switch button[aria-selected="true"] {
+  color: #04110a;
+  background: linear-gradient(135deg, var(--green), var(--green-2));
+}
+
 .auth-card label {
   display: grid;
   gap: 7px;
@@ -100,6 +124,32 @@ a {
   color: #d8f5dd;
   font-size: 13px;
   font-weight: 800;
+}
+
+.auth-name-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.auth-check {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  align-items: start;
+  gap: 10px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.auth-check input {
+  width: 18px;
+  min-height: 18px;
+  margin-top: 2px;
+  accent-color: var(--green);
+}
+
+.auth-card[data-mode="login"] .auth-register-field {
+  display: none;
 }
 
 .auth-card input {
@@ -121,6 +171,17 @@ a {
   background: linear-gradient(135deg, var(--green), var(--green-2));
   font-weight: 900;
   cursor: pointer;
+}
+
+@media (max-width: 520px) {
+  .auth-card {
+    padding: 20px;
+  }
+
+  .auth-name-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
 }
 
 .app-shell {

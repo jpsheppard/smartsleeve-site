@@ -9,6 +9,7 @@
   var orderIntentEndpoint = metaContent("smartsleeve-order-intent-endpoint") || (authEndpoint ? authEndpoint.replace(/\/$/, "") + "/order-intents" : "");
   var appFeedEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/api/app-feed" : "";
   var loginEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/login" : "";
+  var registerEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/register" : "";
   var sessionToken = params.get("session_token") || "";
 
   var state = {
@@ -129,13 +130,24 @@
     gate.id = "auth-gate";
     gate.className = "auth-gate";
     gate.innerHTML = [
-      "<form class=\"auth-card\" id=\"auth-gate-form\">",
+      "<form class=\"auth-card\" id=\"auth-gate-form\" data-mode=\"login\">",
       "<img src=\"/brand/smartsleeve-apparel-logo-cropped.png\" alt=\"SmartSleeve\">",
       "<h2>Private SmartSleeve Access</h2>",
       "<p id=\"auth-gate-message\">" + html(message || "Sign in to load your private SmartSleeve data.") + "</p>",
+      "<div class=\"auth-switch\" role=\"tablist\" aria-label=\"SmartSleeve access mode\">",
+      "<button type=\"button\" data-auth-mode=\"login\" aria-selected=\"true\">Sign in</button>",
+      "<button type=\"button\" data-auth-mode=\"register\" aria-selected=\"false\">Create account</button>",
+      "</div>",
+      "<label class=\"auth-register-field\">Username<input id=\"auth-username\" type=\"text\" autocomplete=\"username\" minlength=\"3\"></label>",
+      "<div class=\"auth-name-grid auth-register-field\">",
+      "<label>First name<input id=\"auth-first-name\" type=\"text\" autocomplete=\"given-name\"></label>",
+      "<label>Last name<input id=\"auth-last-name\" type=\"text\" autocomplete=\"family-name\"></label>",
+      "</div>",
       "<label>Email<input id=\"auth-email\" type=\"email\" autocomplete=\"username\" required></label>",
       "<label>Password<input id=\"auth-password\" type=\"password\" autocomplete=\"current-password\" required></label>",
-      "<button type=\"submit\">Sign in</button>",
+      "<label class=\"auth-register-field\">Confirm password<input id=\"auth-password-confirm\" type=\"password\" autocomplete=\"new-password\"></label>",
+      "<label class=\"auth-check auth-register-field\"><input id=\"auth-accepted-terms\" type=\"checkbox\"><span>I understand SmartSleeve account access is for verified users and does not itself authorize broker trading.</span></label>",
+      "<button type=\"submit\" id=\"auth-submit-button\">Sign in</button>",
       "<small>Account data is served only after the private API verifies your session.</small>",
       "</form>"
     ].join("");
@@ -146,8 +158,34 @@
     }
     $("auth-gate-form").addEventListener("submit", function (event) {
       event.preventDefault();
-      loginFromGate();
+      if ($("auth-gate-form").getAttribute("data-mode") === "register") {
+        registerFromGate();
+      } else {
+        loginFromGate();
+      }
     });
+    $all("[data-auth-mode]", gate).forEach(function (button) {
+      button.addEventListener("click", function () {
+        setAuthMode(button.getAttribute("data-auth-mode") || "login");
+      });
+    });
+  }
+
+  function setAuthMode(mode) {
+    var form = $("auth-gate-form");
+    if (!form) return;
+    var nextMode = mode === "register" ? "register" : "login";
+    form.setAttribute("data-mode", nextMode);
+    $all("[data-auth-mode]", form).forEach(function (button) {
+      button.setAttribute("aria-selected", button.getAttribute("data-auth-mode") === nextMode ? "true" : "false");
+    });
+    text("auth-submit-button", nextMode === "register" ? "Create account" : "Sign in");
+    text(
+      "auth-gate-message",
+      nextMode === "register"
+        ? "Create a verified SmartSleeve account. We will email a verification link before private data can load."
+        : "Sign in to load your private SmartSleeve data."
+    );
   }
 
   function loginFromGate() {
@@ -184,6 +222,47 @@
       })
       .catch(function (error) {
         text("auth-gate-message", "Sign in failed: " + error.message);
+      });
+  }
+
+  function registerFromGate() {
+    if (!registerEndpoint) {
+      text("auth-gate-message", "SmartSleeve registration endpoint is not configured.");
+      return;
+    }
+    var email = normalizeEmail(($("auth-email") || {}).value || "");
+    var firstName = String(($("auth-first-name") || {}).value || "").trim();
+    var lastName = String(($("auth-last-name") || {}).value || "").trim();
+    var username = String(($("auth-username") || {}).value || email.split("@")[0] || "").trim();
+    var password = String(($("auth-password") || {}).value || "");
+    var passwordConfirm = String(($("auth-password-confirm") || {}).value || "");
+    var acceptedTerms = Boolean(($("auth-accepted-terms") || {}).checked);
+    text("auth-gate-message", "Creating account and preparing verification email...");
+    authFetch(registerEndpoint, {
+      method: "POST",
+      headers: {"Content-Type": "application/json", "Accept": "application/json"},
+      body: JSON.stringify({
+        username: username,
+        email: email,
+        first_name: firstName,
+        last_name: lastName,
+        password: password,
+        password_confirm: passwordConfirm,
+        accepted_terms: acceptedTerms
+      })
+    })
+      .then(function (response) {
+        return response.json().catch(function () { return {}; }).then(function (payload) {
+          if (!response.ok || !payload.ok) {
+            var detail = payload.errors && payload.errors.length ? payload.errors.join(", ") : (payload.error || "registration_failed");
+            throw new Error(detail);
+          }
+          setAuthMode("login");
+          text("auth-gate-message", "Verification email sent. Check your inbox, verify, then sign in.");
+        });
+      })
+      .catch(function (error) {
+        text("auth-gate-message", "Account creation failed: " + error.message);
       });
   }
 
