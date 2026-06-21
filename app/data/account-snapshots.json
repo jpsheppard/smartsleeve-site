@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-06-19T15:26:00Z",
+  "source": "analytics_exports latest account snapshots",
+  "accounts": [
+    {
+      "id": "john-rh",
+      "account": "John RH",
+      "ownerEmail": "jpsheppard88@gmail.com",
+      "broker": "Robinhood Agentic",
+      "status": "current analytics snapshot",
+      "generatedAt": "2026-06-19T15:25:36Z",
+      "equity": 101249.11,
+      "cash": 5330.45,
+      "buyPower": 52.17,
+      "sleeves": "Grand Sage, Honey Badger, Savage Sage, Value Sage",
+      "positions": [
+        {"symbol": "ALAB", "shares": 10.631641, "price": 419.9, "value": 4464.23, "currency": "USD"},
+        {"symbol": "MU", "shares": 39.13518, "price": 1151.8005, "value": 45075.92, "currency": "USD"},
+        {"symbol": "SMCI", "shares": 0.000088, "price": 30.72, "value": 0, "currency": "USD"},
+        {"symbol": "SNDK", "shares": 20.78775, "price": 2209.87, "value": 45938.23, "currency": "USD"},
+        {"symbol": "SOXL", "shares": 1.566025, "price": 281.15, "value": 440.29, "currency": "USD"}
+      ]
+    },
+    {
+      "id": "john-ibkr-margin",
+      "account": "John IBKR Margin",
+      "ownerEmail": "jpsheppard88@gmail.com",
+      "broker": "IBKR Margin",
+      "status": "current analytics snapshot",
+      "generatedAt": "2026-06-19T15:26:00Z",
+      "equity": 30235.1,
+      "cash": -2981.64,
+      "buyPower": 3288.98,
+      "sleeves": "Grand Sage, Hyper Savage, Savage Sage",
+      "positions": [
+        {"symbol": "000660", "name": "SK Hynix", "shares": 2, "price": 2764000, "value": 5528000, "currency": "KRW"},
+        {"symbol": "MU", "shares": 25, "price": 1133.99, "value": 28349.75, "currency": "USD"},
+        {"symbol": "SNDK", "shares": 0.3832, "price": 2184.75, "value": 837.2, "currency": "USD"}
+      ]
+    },
+    {
+      "id": "john-ibkr-roth",
+      "account": "John IBKR Roth",
+      "ownerEmail": "jpsheppard88@gmail.com",
+      "broker": "IBKR Roth IRA",
+      "status": "current analytics snapshot",
+      "generatedAt": "2026-06-19T15:26:00Z",
+      "equity": 60365.71,
+      "cash": 0.88,
+      "buyPower": 0.88,
+      "sleeves": "Sage by SmartSleeve",
+      "positions": [
+        {"symbol": "ALAB", "shares": 2, "price": 417.07, "value": 834.14, "currency": "USD"},
+        {"symbol": "CRDO", "shares": 0.2571, "price": 271.83, "value": 69.89, "currency": "USD"},
+        {"symbol": "IONQ", "shares": 25, "price": 56.55, "value": 1413.75, "currency": "USD"},
+        {"symbol": "NBIS", "shares": 150.9199, "price": 286.69, "value": 43267.23, "currency": "USD"},
+        {"symbol": "QBTS", "shares": 25, "price": 24.69, "value": 617.25, "currency": "USD"},
+        {"symbol": "RGTI", "shares": 15, "price": 21.36, "value": 320.4, "currency": "USD"},
+        {"symbol": "SNDK", "shares": 6.3602, "price": 2184.75, "value": 13895.45, "currency": "USD"}
+      ]
+    },
+    {
+      "id": "criselda",
+      "account": "Crissy RH",
+      "ownerEmail": "criseldasarenas@gmail.com",
+      "broker": "Robinhood Agentic",
+      "status": "current analytics snapshot",
+      "generatedAt": "2026-06-19T15:25:36Z",
+      "equity": 1013.76,
+      "cash": 499.69,
+      "buyPower": 499.69,
+      "sleeves": "Grand Sage, Savage Sage",
+      "positions": [
+        {"symbol": "ALAB", "shares": 1.22426, "price": 419.9, "value": 514.07, "currency": "USD"}
+      ]
+    }
+  ]
+}

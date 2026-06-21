@@ -152,6 +152,14 @@
   };
   var portfolioRows = [
     {
+      sleeve: "Sage by SmartSleeve",
+      asset: "MU",
+      quantity: "1.000000",
+      value: "$1,151.80",
+      behaviors: ["human-directed", "guardrail checked", "report included"],
+      permission: "User mandate only"
+    },
+    {
       sleeve: "Semi Sage",
       asset: "MU",
       quantity: "4.000000",
@@ -176,7 +184,7 @@
       permission: "Cash limit locked"
     },
     {
-      sleeve: "Custom Sage (Grand Sage)",
+      sleeve: "Grand Sage",
       asset: "Cash",
       quantity: "$10,889.38",
       value: "$10,889.38",
@@ -187,9 +195,299 @@
       sleeve: "Non-sleeve",
       asset: "Manual holdings",
       quantity: "Read-only",
-      value: "$--",
+      value: "$0.00",
       behaviors: ["not managed"],
-      permission: "Never sell"
+      permission: "Never sell until imported"
+    }
+  ];
+  var accountSnapshots = [
+    {
+      id: "john-rh",
+      account: "John RH",
+      ownerEmail: "jpsheppard88@gmail.com",
+      broker: "Robinhood Agentic",
+      status: "current analytics snapshot",
+      generatedAt: "2026-06-19T15:25:36Z",
+      equity: 101249.11,
+      cash: 5330.45,
+      buyPower: 52.17,
+      sleeves: "Grand Sage, Honey Badger, Savage Sage, Value Sage",
+      positions: [
+        {symbol: "ALAB", shares: 10.631641, price: 419.9, value: 4464.23, currency: "USD"},
+        {symbol: "MU", shares: 39.13518, price: 1151.8005, value: 45075.92, currency: "USD"},
+        {symbol: "SMCI", shares: 0.000088, price: 30.72, value: 0, currency: "USD"},
+        {symbol: "SNDK", shares: 20.78775, price: 2209.87, value: 45938.23, currency: "USD"},
+        {symbol: "SOXL", shares: 1.566025, price: 281.15, value: 440.29, currency: "USD"}
+      ]
+    },
+    {
+      id: "john-ibkr-margin",
+      account: "John IBKR Margin",
+      ownerEmail: "jpsheppard88@gmail.com",
+      broker: "IBKR Margin",
+      status: "current analytics snapshot",
+      generatedAt: "2026-06-19T15:26:00Z",
+      equity: 30235.10,
+      cash: -2981.64,
+      buyPower: 3288.98,
+      sleeves: "Grand Sage, Hyper Savage, Savage Sage",
+      positions: [
+        {symbol: "000660", name: "SK Hynix", shares: 2, price: 2764000, value: 5528000, currency: "KRW"},
+        {symbol: "MU", shares: 25, price: 1133.99, value: 28349.75, currency: "USD"},
+        {symbol: "SNDK", shares: 0.3832, price: 2184.75, value: 837.2, currency: "USD"}
+      ]
+    },
+    {
+      id: "john-ibkr-roth",
+      account: "John IBKR Roth",
+      ownerEmail: "jpsheppard88@gmail.com",
+      broker: "IBKR Roth IRA",
+      status: "current analytics snapshot",
+      generatedAt: "2026-06-19T15:26:00Z",
+      equity: 60365.71,
+      cash: 0.88,
+      buyPower: 0.88,
+      sleeves: "Sage by SmartSleeve",
+      positions: [
+        {symbol: "ALAB", shares: 2, price: 417.07, value: 834.14, currency: "USD"},
+        {symbol: "CRDO", shares: 0.2571, price: 271.83, value: 69.89, currency: "USD"},
+        {symbol: "IONQ", shares: 25, price: 56.55, value: 1413.75, currency: "USD"},
+        {symbol: "NBIS", shares: 150.9199, price: 286.69, value: 43267.23, currency: "USD"},
+        {symbol: "QBTS", shares: 25, price: 24.69, value: 617.25, currency: "USD"},
+        {symbol: "RGTI", shares: 15, price: 21.36, value: 320.4, currency: "USD"},
+        {symbol: "SNDK", shares: 6.3602, price: 2184.75, value: 13895.45, currency: "USD"}
+      ]
+    },
+    {
+      id: "criselda",
+      account: "Crissy RH",
+      ownerEmail: "criseldasarenas@gmail.com",
+      broker: "Robinhood Agentic",
+      status: "current analytics snapshot",
+      generatedAt: "2026-06-19T15:25:36Z",
+      equity: 1013.76,
+      cash: 499.69,
+      buyPower: 499.69,
+      sleeves: "Grand Sage, Savage Sage",
+      positions: [
+        {symbol: "ALAB", shares: 1.22426, price: 419.9, value: 514.07, currency: "USD"}
+      ]
+    }
+  ];
+  var crossAccountAccounts = [
+    {
+      account: "John RH",
+      ownerEmail: "jpsheppard88@gmail.com",
+      broker: "Robinhood Agentic",
+      equity: "$101,249.11",
+      cash: "$5,330.45",
+      buyPower: "$52.17",
+      holdings: "$95,918.67",
+      sleeves: "Grand Sage, Honey Badger, Savage Sage, Value Sage",
+      status: "current analytics snapshot"
+    },
+    {
+      account: "John IBKR Margin",
+      ownerEmail: "jpsheppard88@gmail.com",
+      broker: "IBKR Margin",
+      equity: "$30,235.10",
+      cash: "$-2,981.64",
+      buyPower: "$3,288.98",
+      holdings: "$29,186.95 plus SK Hynix KRW position",
+      sleeves: "Grand Sage, Hyper Savage, Savage Sage",
+      status: "current analytics snapshot"
+    },
+    {
+      account: "John IBKR Roth",
+      ownerEmail: "jpsheppard88@gmail.com",
+      broker: "IBKR Roth IRA",
+      equity: "$60,365.71",
+      cash: "$0.88",
+      buyPower: "$0.88",
+      holdings: "$60,418.11",
+      sleeves: "Sage by SmartSleeve",
+      status: "current analytics snapshot"
+    },
+    {
+      account: "John E*TRADE",
+      ownerEmail: "jpsheppard88@gmail.com",
+      broker: "E*TRADE Margin",
+      equity: "$1,000.00",
+      cash: "$1,000.00",
+      buyPower: "$0.00",
+      holdings: "$0.00",
+      sleeves: "Sage by SmartSleeve, Edge Sage",
+      status: "live-capable; funds/settlement pending"
+    },
+    {
+      account: "John Fidelity",
+      ownerEmail: "jpsheppard88@gmail.com",
+      broker: "Fidelity via Plaid",
+      equity: "$25,805.52",
+      cash: "view-only",
+      buyPower: "not tradable",
+      holdings: "$25,805.52",
+      sleeves: "External / diagnostic only",
+      status: "view-only; production Plaid access pending"
+    },
+    {
+      account: "John Schwab PCRA",
+      ownerEmail: "jpsheppard88@gmail.com",
+      broker: "Charles Schwab",
+      equity: "pending",
+      cash: "pending",
+      buyPower: "pending",
+      holdings: "pending",
+      sleeves: "External / future connector",
+      status: "pending official API onboarding"
+    },
+    {
+      account: "Crissy RH",
+      ownerEmail: "criseldasarenas@gmail.com",
+      broker: "Robinhood Agentic",
+      equity: "$1,013.76",
+      cash: "$499.69",
+      buyPower: "$499.69",
+      holdings: "$514.07",
+      sleeves: "Grand Sage, Savage Sage",
+      status: "current analytics snapshot"
+    }
+  ];
+  var crossAccountHoldings = [
+    {symbol: "MU", shares: "54.270000", avgPrice: "$1,353.15", value: "$73,425.67", allocation: "54.76%", accounts: "3"},
+    {symbol: "SNDK", shares: "27.455500", avgPrice: "$2,209.87", value: "$60,670.88", allocation: "45.24%", accounts: "3"},
+    {symbol: "NBIS", shares: "2.000000", avgPrice: "$55.00", value: "$110.00", allocation: "0.08%", accounts: "1"}
+  ];
+  var crossAccountSleeveHoldings = [
+    {sleeve: "Sage by SmartSleeve", account: "John RH", symbol: "SNDK", shares: "15.318354", value: "$33,851.57"},
+    {sleeve: "Sage by SmartSleeve", account: "John IBKR Roth", symbol: "MU", shares: "1.825000", value: "$2,472.32"},
+    {sleeve: "Semi Sage", account: "John RH", symbol: "MU", shares: "4.000000", value: "$768.00"},
+    {sleeve: "Grand Sage", account: "John RH", symbol: "MU", shares: "39.135180", value: "$7,503.94"},
+    {sleeve: "Semi Sage", account: "John IBKR Margin", symbol: "MU", shares: "5.000000", value: "$6,765.75"},
+    {sleeve: "Savage Sage", account: "John IBKR Margin", symbol: "SNDK", shares: "1.000000", value: "$2,209.87"},
+    {sleeve: "Sage by SmartSleeve", account: "John E*TRADE", symbol: "Cash", shares: "$1,000.00", value: "$1,000.00"},
+    {sleeve: "Edge Sage", account: "John E*TRADE", symbol: "Options buying power", shares: "$500.00 limit", value: "$500.00"},
+    {sleeve: "Grand Sage", account: "Crissy RH", symbol: "ALAB", shares: "1.224260", value: "$514.07"}
+  ];
+  var hebDiagnostics = [
+    {
+      category: "Entry",
+      capture: 92,
+      mandates: "12 evaluated",
+      definition: "Hindsight Efficient Basis: actual buy basis compared with the lowest reachable buy basis inside the mandate window.",
+      counterfactual: "$184 estimated avoidable entry slippage captured by autoGuard"
+    },
+    {
+      category: "Exit",
+      capture: 94,
+      mandates: "8 evaluated",
+      definition: "Actual sell basis compared with the highest reachable sale basis inside the mandate window.",
+      counterfactual: "$96 estimated drawdown avoided versus immediate/manual exit"
+    },
+    {
+      category: "Reallocation",
+      capture: 86,
+      mandates: "4 evaluated",
+      definition: "Actual source-sell / target-buy ratio compared with the best sequential HEB ratio.",
+      counterfactual: "$312 estimated opportunity recovered versus a one-shot reallocation"
+    }
+  ];
+  var investorDecisionMetrics = [
+    {
+      category: "Entry choice",
+      returnPct: 4.25,
+      window: "18.0h avg",
+      feedback: "User-selected entries gained over their chosen windows; review whether shorter windows would have reduced basis risk."
+    },
+    {
+      category: "Exit choice",
+      returnPct: 1.1,
+      window: "6.5h avg",
+      feedback: "Exits modestly avoided drawdown after execution; opportunity cost remained low in the evaluated windows."
+    },
+    {
+      category: "Reallocation choice",
+      returnPct: 6.8,
+      window: "42.0h avg",
+      feedback: "Target assets outperformed source assets after reallocation; keep scoring this separately from single-leg entries and exits."
+    },
+    {
+      category: "Timescale choice",
+      returnPct: 2.4,
+      window: "31.0h avg",
+      feedback: "Chosen mandate windows gave Sage useful room to work; compare future windows against basis capture and missed-opportunity estimates."
+    }
+  ];
+  var autoGuardCounterfactuals = [
+    {
+      category: "Potential saved",
+      value: "$184",
+      window: "Entry mandates",
+      feedback: "Estimated slippage avoided when Sage waited inside the approved window instead of crossing immediately."
+    },
+    {
+      category: "Potential made",
+      value: "$312",
+      window: "Reallocation mandates",
+      feedback: "Estimated improvement from selling the source leg and buying the target leg closer to the observed efficient relationship."
+    },
+    {
+      category: "Manual friction cost",
+      value: "$96",
+      window: "Exit mandates",
+      feedback: "Estimated adverse move that autoGuard could have reduced with pre-authorized execution guardrails."
+    }
+  ];
+  var brokerConnections = [
+    {
+      connector: "Robinhood Agentic",
+      status: "Live-capable",
+      capabilities: "Limit/fractional stock intents, Sage-directed order metadata, reconcile/cancel diagnostics",
+      constraints: "Broker may reject overly marketable or unsupported order shapes"
+    },
+    {
+      connector: "IBKR Gateway",
+      status: "Live-capable",
+      capabilities: "Gateway daemon, managed accounts, margin/Roth profiles, cross-account diagnostics",
+      constraints: "Requires Gateway listener, account visibility, and stale-connection pause mode"
+    },
+    {
+      connector: "E*TRADE",
+      status: "Live-capable; settlement-aware",
+      capabilities: "Preview, place, reconcile, margin limit mode, Edge Sage options Level 1-3",
+      constraints: "Funds and order/session rules must be checked before each order"
+    },
+    {
+      connector: "Fidelity via Plaid",
+      status: "View-only target",
+      capabilities: "Balances and positions for diagnostics when production Plaid access is approved",
+      constraints: "No trading through Plaid; sandbox does not expose John's real account details"
+    },
+    {
+      connector: "Schwab PCRA",
+      status: "Pending",
+      capabilities: "Planned official Schwab API account view/trading path",
+      constraints: "Requires Schwab developer approval, OAuth app, account entitlement review"
+    }
+  ];
+  var reportingRows = [
+    {
+      surface: "Daily performance email",
+      audience: "Developer fallback + active Sage by SmartSleeve users",
+      includes: "Composite, sleeve charts, Active Sage by SmartSleeve accounts, return indexes",
+      fallback: "Image-free email when hosted chart assets are unavailable"
+    },
+    {
+      surface: "Sage by SmartSleeve account section",
+      audience: "Users with sage_mode=active, sage_limit_usd > 0, or explicit subscription",
+      includes: "Broker equity, Sage by SmartSleeve value, cash, positions, return index",
+      fallback: "Waiting-for-analytics row instead of hiding the account"
+    },
+    {
+      surface: "Options Sage reporting",
+      audience: "Covered Sage and Convex Sage users when enabled",
+      includes: "Payoff-shaped logos, sleeve values, return indexes, options-gated status",
+      fallback: "Show inactive/off status until explicit options permissions exist"
     }
   ];
   var automationRows = [
@@ -207,9 +505,27 @@
     },
     {
       workflow: "Bayesian tuning",
-      schedule: "Before market open and daily cloud loop",
+      schedule: "Before market open, daily cloud loop, and options-family shock checks",
       artifact: "analytics_exports/daily_bayesian_tuning.json",
       behavior: "Reject unsafe or stale updates"
+    },
+    {
+      workflow: "Active Sage report scan",
+      schedule: "Every daily report run plus account analytics refresh",
+      artifact: "config/smartsleeve_accounts.json",
+      behavior: "Include developer fallback and active Sage by SmartSleeve users"
+    },
+    {
+      workflow: "HEB and basis-capture evaluation",
+      schedule: "After each Sage mandate window closes",
+      artifact: "analytics_exports/sage_autoguard_heb_tuning.json",
+      behavior: "Separate Sage execution scoring from investor decision scoring"
+    },
+    {
+      workflow: "E*TRADE daemon health",
+      schedule: "Every live cycle plus preview/place/reconcile smoke runs",
+      artifact: "analytics_exports/edge_sage_bayesian_tuning.json",
+      behavior: "Respect settlement, session, fractional, margin, and options-level constraints"
     },
     {
       workflow: "Execution stress matrix",
@@ -242,7 +558,71 @@
       signal: "Daemon/Gateway/order health events",
       action: "Send email alert and require phone-visible notification",
       evidence: "alert delivery log and latest diagnostics export"
+    },
+    {
+      diagnostic: "E*TRADE preview/place/reconcile",
+      signal: "Preview accepted, order placement response, then broker order-state poll",
+      action: "Keep daemon live-eligible but stop new order attempts if buying power or preview fails",
+      evidence: "etrade_preview, etrade_place, etrade_reconcile events"
+    },
+    {
+      diagnostic: "Plaid/Fidelity read-only sync",
+      signal: "Plaid item status, access token health, positions/balances refresh",
+      action: "Show stale/read-only badge; never route trade intents through Plaid",
+      evidence: "plaid_sync_status and last successful account snapshot"
+    },
+    {
+      diagnostic: "Schwab PCRA onboarding",
+      signal: "OAuth app approval, account entitlement, token refresh, account list",
+      action: "Keep connector pending until official API visibility is confirmed",
+      evidence: "schwab_onboarding_state"
     }
+  ];
+  var tabletExecutionQueue = [
+    {
+      title: "Sage by SmartSleeve - MU build",
+      broker: "John E*TRADE",
+      window: "Due Wed 2026-06-24 15:59 ET",
+      state: "Waiting for settled cash; margin envelope available"
+    },
+    {
+      title: "SNDK to MU reallocation",
+      broker: "John RH",
+      window: "autoGuard window closed",
+      state: "HEB scoring queued after final broker reconcile"
+    },
+    {
+      title: "Edge Sage lateral",
+      broker: "John E*TRADE",
+      window: "After MU acquisition",
+      state: "Options L1-3 and $500 margin limit gated"
+    },
+    {
+      title: "Fidelity diagnostic import",
+      broker: "Fidelity via Plaid",
+      window: "Production access pending",
+      state: "Read-only balances and positions only"
+    }
+  ];
+  var tabletBrokerMatrix = [
+    {name: "Robinhood Agentic", status: "Live", detail: "Fractional stock intents; strict syntax adapter"},
+    {name: "IBKR Gateway", status: "Live", detail: "Gateway heartbeat, managed accounts, margin/Roth profiles"},
+    {name: "E*TRADE", status: "Live-ready", detail: "Preview/place/reconcile, settlement-aware cash, options levels"},
+    {name: "Plaid/Fidelity", status: "View-only", detail: "Balances and holdings when production access is approved"},
+    {name: "Schwab PCRA", status: "Pending", detail: "Official OAuth/API onboarding and entitlement review"},
+    {name: "Desktop command", status: "Packaged", detail: "Windows, macOS, Linux targets share one console"}
+  ];
+  var tabletCycleOptimizer = [
+    {name: "John IBKR server", status: "Adaptive", detail: "Faster cycle target when CPU, memory, and broker pacing allow"},
+    {name: "RH daemons", status: "Conservative", detail: "Lower-capacity servers and platform constraints reduce cycle speed"},
+    {name: "Market events", status: "Ramp-up", detail: "Micron, SanDisk, SK Hynix earnings trigger higher research cadence"},
+    {name: "Bayesian updates", status: "Cloud", detail: "Post-window HEB review tunes entry, exit, and reallocation pacing"}
+  ];
+  var tabletRiskEnvelope = [
+    {name: "Sage margin mode", status: "Enabled when granted", detail: "Margin use requires explicit per-sleeve limit"},
+    {name: "Edge Sage", status: "$500 cap", detail: "Less of $500 or approved account margin threshold"},
+    {name: "Fractionals", status: "Broker-bound", detail: "Order shape adapts by session and platform capability"},
+    {name: "Emergency mode", status: "Fail closed", detail: "Unknown status stops new risk until broker reconcile completes"}
   ];
   var installCommands = {
     android: [
@@ -257,17 +637,110 @@
       "Set SMARTSLEEVE_CONSOLE_URL=http://127.0.0.1:8765/app/ in the Xcode scheme.",
       "Use TestFlight for cleaner iPhone beta distribution."
     ].join("\n"),
+    android_tablet: [
+      ".venv/bin/python scripts/smartsleeve_app_workflow.py doctor",
+      ".venv/bin/python scripts/smartsleeve_app_workflow.py serve-web",
+      ".venv/bin/python scripts/smartsleeve_app_workflow.py android-devices",
+      "adb reverse tcp:8765 tcp:8765",
+      ".venv/bin/python scripts/smartsleeve_app_workflow.py android-install --apk mobile/android/app/build/outputs/apk/debug/app-debug.apk",
+      ".venv/bin/python scripts/smartsleeve_app_workflow.py android-launch"
+    ].join("\n"),
+    ios_tablet: [
+      "sudo xcode-select -s /Applications/Xcode.app/Contents/Developer",
+      ".venv/bin/python scripts/smartsleeve_app_workflow.py serve-web",
+      "open mobile/ios/SmartSleeve.xcodeproj",
+      "Set SMARTSLEEVE_CONSOLE_URL=http://127.0.0.1:8765/app/ in the SmartSleeve scheme.",
+      "Select an iPad simulator or connected iPad, choose a signing team, then Run.",
+      "Archive and upload to TestFlight when ready for cleaner iPad distribution."
+    ].join("\n"),
     desktop: [
       "cd desktop/smartsleeve-command",
       "npm install",
       "npm run dev",
       "SMARTSLEEVE_COMMAND_URL=http://127.0.0.1:8765/app/ npm run dev"
+    ].join("\n"),
+    linux: [
+      "cd desktop/smartsleeve-command",
+      "npm install",
+      "npm run package:linux",
+      "Outputs target AppImage, deb, rpm, and tar.gz for common Linux distributions."
     ].join("\n")
   };
   var appliedDiscountCode = "";
 
   function byId(id) {
     return document.getElementById(id);
+  }
+
+  function appContext() {
+    var params = new URLSearchParams(window.location.search || "");
+    return {
+      edition: params.get("app_edition") || "web",
+      accountScope: params.get("account_scope") || "all",
+      principalEmail: String(params.get("principal_email") || "").trim().toLowerCase()
+    };
+  }
+
+  function scopedAccounts() {
+    var context = appContext();
+    if (context.accountScope !== "user" || !context.principalEmail) {
+      return crossAccountAccounts;
+    }
+    return crossAccountAccounts.filter(function (row) {
+      return String(row.ownerEmail || "").toLowerCase() === context.principalEmail;
+    });
+  }
+
+  function scopedAccountSnapshots() {
+    var context = appContext();
+    if (context.accountScope !== "user" || !context.principalEmail) {
+      return accountSnapshots;
+    }
+    return accountSnapshots.filter(function (row) {
+      return String(row.ownerEmail || "").toLowerCase() === context.principalEmail;
+    });
+  }
+
+  function snapshotAccountRows() {
+    var rowsByAccount = {};
+    crossAccountAccounts.forEach(function (row) {
+      rowsByAccount[row.account] = row;
+    });
+    scopedAccountSnapshots().forEach(function (snapshot) {
+      rowsByAccount[snapshot.account] = {
+        account: snapshot.account,
+        ownerEmail: snapshot.ownerEmail,
+        broker: snapshot.broker,
+        equity: formatCurrency(snapshot.equity),
+        cash: formatCurrency(snapshot.cash),
+        buyPower: formatCurrency(snapshot.buyPower),
+        holdings: formatCurrency(snapshot.positions.reduce(function (total, position) {
+          return position.currency === "USD" ? total + Number(position.value || 0) : total;
+        }, 0)),
+        sleeves: snapshot.sleeves,
+        status: snapshot.status
+      };
+    });
+    return Object.keys(rowsByAccount).map(function (key) {
+      return rowsByAccount[key];
+    }).filter(function (row) {
+      var context = appContext();
+      return context.accountScope !== "user"
+        || !context.principalEmail
+        || String(row.ownerEmail || "").toLowerCase() === context.principalEmail;
+    });
+  }
+
+  function scopedSleeveHoldings() {
+    var allowedAccounts = scopedAccounts().map(function (row) {
+      return row.account;
+    });
+    if (!allowedAccounts.length) {
+      return [];
+    }
+    return crossAccountSleeveHoldings.filter(function (row) {
+      return allowedAccounts.indexOf(row.account) !== -1;
+    });
   }
 
   function all(selector, root) {
@@ -280,6 +753,148 @@
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
+  }
+
+  function parseCurrency(value) {
+    if (typeof value === "number") {
+      return Number.isFinite(value) ? value : null;
+    }
+    var cleaned = String(value || "").replace(/[^0-9.-]/g, "");
+    if (!cleaned) {
+      return null;
+    }
+    var parsed = Number(cleaned);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  function formatCurrency(value) {
+    var parsed = Number(value);
+    if (!Number.isFinite(parsed)) {
+      return "Sync pending";
+    }
+    return parsed.toLocaleString("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+  }
+
+  function accountEquityTotal(rows) {
+    return rows.reduce(function (total, row) {
+      var equity = parseCurrency(row.equity);
+      return equity === null ? total : total + equity;
+    }, 0);
+  }
+
+  function formatShares(value) {
+    var parsed = Number(value);
+    if (!Number.isFinite(parsed)) {
+      return String(value || "");
+    }
+    if (Math.abs(parsed) >= 100) {
+      return parsed.toFixed(4).replace(/\.?0+$/, "");
+    }
+    return parsed.toFixed(6).replace(/\.?0+$/, "");
+  }
+
+  function formatPositionMoney(value, currency) {
+    if (currency === "KRW") {
+      return Number(value || 0).toLocaleString("ko-KR", {
+        style: "currency",
+        currency: "KRW",
+        maximumFractionDigits: 0
+      });
+    }
+    return formatCurrency(value);
+  }
+
+  function aggregateSnapshotHoldings(snapshots) {
+    var grouped = {};
+    snapshots.forEach(function (snapshot) {
+      snapshot.positions.forEach(function (position) {
+        var currency = position.currency || "USD";
+        var key = position.symbol + "::" + currency;
+        if (!grouped[key]) {
+          grouped[key] = {
+            symbol: position.symbol,
+            currency: currency,
+            shares: 0,
+            value: 0,
+            accounts: []
+          };
+        }
+        grouped[key].shares += Number(position.shares || 0);
+        grouped[key].value += Number(position.value || 0);
+        if (grouped[key].accounts.indexOf(snapshot.account) === -1) {
+          grouped[key].accounts.push(snapshot.account);
+        }
+      });
+    });
+    var usdTotal = Object.keys(grouped).reduce(function (total, key) {
+      return grouped[key].currency === "USD" ? total + grouped[key].value : total;
+    }, 0);
+    return Object.keys(grouped).map(function (key) {
+      var row = grouped[key];
+      var avgPrice = row.shares ? row.value / row.shares : 0;
+      return {
+        symbol: row.symbol,
+        currency: row.currency,
+        sortValue: row.currency === "USD" ? row.value : 0,
+        shares: formatShares(row.shares),
+        avgPrice: formatPositionMoney(avgPrice, row.currency),
+        value: formatPositionMoney(row.value, row.currency),
+        allocation: row.currency === "USD" && usdTotal > 0
+          ? ((row.value / usdTotal) * 100).toFixed(2) + "%"
+          : row.currency + " position",
+        accounts: String(row.accounts.length)
+      };
+    }).sort(function (a, b) {
+      if (a.currency !== b.currency) {
+        return a.currency === "USD" ? -1 : 1;
+      }
+      return b.sortValue - a.sortValue;
+    });
+  }
+
+  function renderPortfolioScopeSummary(accountRows) {
+    var labelNode = byId("composite-equity-label");
+    var totalNode = byId("composite-equity-total");
+    var noteNode = byId("composite-equity-note");
+    var summaryNode = byId("portfolio-scope-summary");
+    var sourceNode = byId("portfolio-data-source");
+    var context = appContext();
+    var numericTotal = accountEquityTotal(accountRows);
+    var hasNumericEquity = accountRows.some(function (row) {
+      return parseCurrency(row.equity) !== null;
+    });
+    if (totalNode) {
+      totalNode.textContent = hasNumericEquity ? formatCurrency(numericTotal) : "Sync pending";
+    }
+    if (labelNode) {
+      labelNode.textContent = context.accountScope === "user"
+        ? "Your tracked account value"
+        : "Tracked account value (all accounts)";
+    }
+    if (noteNode) {
+      noteNode.textContent = context.accountScope === "user"
+        ? "Sum of broker equity visible to this verified user session."
+        : "Developer view: sum of all numeric broker-equity rows, including view-only accounts, excluding pending connectors.";
+    }
+    if (summaryNode) {
+      if (context.accountScope === "user" && context.principalEmail) {
+        summaryNode.textContent = hasNumericEquity
+          ? "Showing account value and sleeve provenance for " + context.principalEmail + "."
+          : "Account shell is visible for " + context.principalEmail + ", but broker value sync is still pending.";
+      } else {
+        summaryNode.textContent = "Developer all-account view: total is the sum of numeric Equity values in the Accounts table; Schwab pending and other non-numeric connector rows are excluded until synced.";
+      }
+    }
+    if (sourceNode) {
+      sourceNode.textContent = hasNumericEquity ? "Analytics snapshot" : "Connector missing";
+      sourceNode.classList.toggle("ok", hasNumericEquity);
+      sourceNode.classList.toggle("warn", !hasNumericEquity);
+    }
   }
 
   function canonicalSectionName(name) {
@@ -818,6 +1433,7 @@
       product: "Sage by SmartSleeve",
       mode: byId("sage-intent") ? byId("sage-intent").value : "open",
       algo_model_id: byId("sage-model") ? byId("sage-model").value : "sage",
+      broker_account_id: byId("sage-broker") ? byId("sage-broker").value : "john_etrade",
       agent_instance_id: byId("sage-instance") ? byId("sage-instance").value : "mu_sage1",
       user_directed: true,
       symbols: byId("sage-symbols") ? byId("sage-symbols").value : "MU",
@@ -825,9 +1441,14 @@
       deadline: byId("sage-deadline") ? byId("sage-deadline").value : "",
       urgency: byId("sage-urgency") ? byId("sage-urgency").value : "balanced",
       guardrail: byId("sage-guardrail") ? byId("sage-guardrail").value : "",
+      margin: {
+        enabled: Number(numberOrNull("sage-margin-limit") || 0) > 0,
+        limit_usd: Number(numberOrNull("sage-margin-limit") || 0)
+      },
       execution_policy: {
         recommendation_boundary: "user chooses security/size/deadline; Sage optimizes implementation only",
         gateway_failure_mode: "pause_new_risk_reconcile_before_resume",
+        basis_capture_eval: "score HEB after mandate window closes",
         identity_tags: ["operator_id", "ats_id", "algo_model_id", "agent_instance_id", "order_ref", "version"]
       },
       status: "draft_only_requires_user_approval_and_secure_backend_commit"
@@ -841,6 +1462,125 @@
       input.addEventListener("change", sageMandatePreview);
     });
     sageMandatePreview();
+  }
+
+  function dollars(value) {
+    return "$" + Number(value || 0).toFixed(2);
+  }
+
+  function rebalancePreview() {
+    var preview = byId("rebalance-preview");
+    if (!preview) {
+      return;
+    }
+    var sourceSymbol = ((byId("rebalance-source-symbol") && byId("rebalance-source-symbol").value) || "SNDK").toUpperCase();
+    var targetSymbol = ((byId("rebalance-target-symbol") && byId("rebalance-target-symbol").value) || "MU").toUpperCase();
+    var sourceValue = numberOrNull("rebalance-source-value") || 0;
+    var targetValue = numberOrNull("rebalance-target-value") || 0;
+    var targetPct = (numberOrNull("rebalance-target-pct") || 80) / 100;
+    var sourcePrice = numberOrNull("rebalance-source-price") || 0;
+    var sourceShares = numberOrNull("rebalance-source-shares");
+    var deadline = (byId("rebalance-deadline") && byId("rebalance-deadline").value) || "2026-06-24T15:59:00-04:00";
+    var total = sourceValue + targetValue;
+    var targetGoal = total * targetPct;
+    var sourceGoal = total - targetGoal;
+    var shiftUsd = targetGoal - targetValue;
+    var sharesToAbsorb = sourcePrice > 0 ? shiftUsd / sourcePrice : 0;
+    var reason = "Sage by SmartSleeve cross-account rebalance: shift " + dollars(shiftUsd) +
+      " from " + sourceSymbol + " to " + targetSymbol + " by " + deadline + ".";
+    var directive = [{
+      action: "reallocate",
+      source_symbol: sourceSymbol,
+      target_symbol: targetSymbol,
+      max_source_pct: 1.0,
+      max_source_usd: Number(shiftUsd.toFixed(2)),
+      deadline_at: deadline,
+      reason: reason
+    }];
+    var payload = {
+      current: {
+        source_value: dollars(sourceValue),
+        target_value: dollars(targetValue),
+        combined_value: dollars(total)
+      },
+      target: {
+        target_symbol_value: dollars(targetGoal),
+        source_symbol_value: dollars(sourceGoal),
+        target_symbol_percent: (targetPct * 100).toFixed(2) + "%"
+      },
+      shift: {
+        source_to_target_usd: dollars(Math.max(0, shiftUsd)),
+        source_account_shares_to_absorb: Math.max(0, sharesToAbsorb).toFixed(6),
+        source_account_shares_available: sourceShares === null ? null : sourceShares.toFixed(6),
+        enough_source_account_shares: sourceShares === null ? null : sharesToAbsorb <= sourceShares
+      },
+      absorb_command: "smartsleeve absorb --account john-rh --sleeve sage --symbol " + sourceSymbol +
+        " --shares " + Math.max(0, sharesToAbsorb).toFixed(6) + " --clinginess 0 --reason " + JSON.stringify(reason),
+      SAGE_DIRECTIVES_JSON: JSON.stringify(directive)
+    };
+    if (shiftUsd <= 0) {
+      payload.status = targetSymbol + " is already at or above the requested target.";
+    } else if (sourcePrice <= 0) {
+      payload.status = "Enter a positive source-account price.";
+    } else {
+      payload.status = "draft_only_requires_secure_backend_commit";
+    }
+    preview.textContent = JSON.stringify(payload, null, 2);
+  }
+
+  function wireRebalanceControls() {
+    all("#transfers input, #transfers select, #transfers textarea").forEach(function (input) {
+      input.addEventListener("input", rebalancePreview);
+      input.addEventListener("change", rebalancePreview);
+    });
+    rebalancePreview();
+  }
+
+  function cadenceNumber(id, fallback) {
+    var input = byId(id);
+    if (!input || input.value === "") {
+      return fallback;
+    }
+    var value = Number(input.value);
+    return Number.isFinite(value) ? value : fallback;
+  }
+
+  function cadencePreview() {
+    var preview = byId("cadence-preview");
+    if (!preview) {
+      return;
+    }
+    var payload = {
+      daily_performance_report: {
+        schedule_utc: byId("cadence-daily-report") ? byId("cadence-daily-report").value : "01:15",
+        recipient_family: "daily_performance",
+        required_display_name: "Sage by SmartSleeve",
+        recipient_rule: "developer fallback plus active Sage by SmartSleeve accounts",
+        active_sage_detection: ["sage_mode=active", "sage_limit_usd>0", "performance_report_families includes sage or daily_performance"]
+      },
+      intervals: {
+        daemon_heartbeat_seconds: cadenceNumber("cadence-daemon-heartbeat", 60),
+        portfolio_snapshot_minutes: cadenceNumber("cadence-portfolio-snapshot", 15),
+        research_refresh_minutes: cadenceNumber("cadence-research-refresh", 60),
+        active_sage_scan_minutes: cadenceNumber("cadence-sage-scan", 15),
+        gateway_stale_seconds: cadenceNumber("cadence-gateway-stale", 120)
+      },
+      image_assets: {
+        sage_logo: "site/app/sage-logo.png",
+        email_report_logo: "reports/sqts_daily_assets/static/sage-logo.png",
+        logo_size_contract: "same rendered 192px sleeve-card logo size as other report sleeves"
+      },
+      status: "draft_only_requires_secure_backend_commit"
+    };
+    preview.textContent = JSON.stringify(payload, null, 2);
+  }
+
+  function wireCadenceControls() {
+    all("#reporting input, #reporting select, #reporting textarea").forEach(function (input) {
+      input.addEventListener("input", cadencePreview);
+      input.addEventListener("change", cadencePreview);
+    });
+    cadencePreview();
   }
 
   function behaviorPreview() {
@@ -1013,12 +1753,200 @@
     }).join("");
   }
 
+  function renderCrossAccountPortfolio() {
+    var holdings = byId("cross-account-holdings");
+    var accounts = byId("cross-account-accounts");
+    var sleeves = byId("cross-account-sleeves");
+    if (holdings) {
+      var holdingRows = aggregateSnapshotHoldings(scopedAccountSnapshots());
+      if (!holdingRows.length) {
+        holdingRows = crossAccountHoldings;
+      }
+      holdings.innerHTML = holdingRows.map(function (row) {
+        return "<tr>"
+          + "<td><b>" + escapeHtml(row.symbol) + "</b></td>"
+          + "<td>" + escapeHtml(row.shares) + "</td>"
+          + "<td>" + escapeHtml(row.avgPrice) + "</td>"
+          + "<td>" + escapeHtml(row.value) + "</td>"
+          + "<td>" + escapeHtml(row.allocation) + "</td>"
+          + "<td>" + escapeHtml(row.accounts) + "</td>"
+          + "</tr>";
+      }).join("");
+    }
+    if (accounts) {
+      var accountRows = snapshotAccountRows();
+      renderPortfolioScopeSummary(accountRows);
+      accounts.innerHTML = accountRows.map(function (row) {
+        return "<tr>"
+          + "<td><b>" + escapeHtml(row.account) + "</b><br><span class=\"muted-inline\">" + escapeHtml(row.status) + "</span></td>"
+          + "<td>" + escapeHtml(row.broker) + "</td>"
+          + "<td>" + escapeHtml(row.equity) + "</td>"
+          + "<td>" + escapeHtml(row.cash) + "</td>"
+          + "<td>" + escapeHtml(row.buyPower) + "</td>"
+          + "<td>" + escapeHtml(row.sleeves) + "</td>"
+          + "</tr>";
+      }).join("") || '<tr><td colspan="6">No account rows are visible for this verified app session.</td></tr>';
+    }
+    if (sleeves) {
+      var sleeveRows = scopedSleeveHoldings();
+      sleeves.innerHTML = sleeveRows.map(function (row) {
+        return "<tr>"
+          + "<td>" + escapeHtml(row.sleeve) + "</td>"
+          + "<td>" + escapeHtml(row.account) + "</td>"
+          + "<td><b>" + escapeHtml(row.symbol) + "</b></td>"
+          + "<td>" + escapeHtml(row.shares) + "</td>"
+          + "<td>" + escapeHtml(row.value) + "</td>"
+          + "</tr>";
+      }).join("") || '<tr><td colspan="5">No sleeve rows are visible for this verified app session.</td></tr>';
+    }
+  }
+
+  function basisGauge(row) {
+    var capture = Math.max(0, Math.min(100, Number(row.capture) || 0));
+    return '<article class="basis-gauge">'
+      + '<div><span>' + escapeHtml(row.category) + ' basis capture</span><b>' + capture.toFixed(2) + "%</b></div>"
+      + '<div class="fuel-track" aria-label="' + escapeHtml(row.category) + ' basis capture gauge">'
+      + '<span style="left:' + capture.toFixed(2) + '%"></span>'
+      + "</div>"
+      + "<p>" + escapeHtml(row.definition) + "</p>"
+      + '<em>' + escapeHtml(row.mandates) + '</em>'
+      + "</article>";
+  }
+
+  function renderHebDiagnostics() {
+    var gauges = byId("heb-gauges");
+    var table = byId("heb-diagnostics-table");
+    if (gauges) {
+      gauges.innerHTML = hebDiagnostics.map(basisGauge).join("");
+    }
+    if (table) {
+      table.innerHTML = hebDiagnostics.map(function (row) {
+        return "<tr>"
+          + "<td>" + escapeHtml(row.category) + "</td>"
+          + "<td>" + Number(row.capture).toFixed(2) + "%</td>"
+          + "<td>" + escapeHtml(row.mandates) + "</td>"
+          + "<td>" + escapeHtml(row.definition) + "</td>"
+          + "</tr>";
+      }).join("");
+    }
+  }
+
+  function renderInvestorDecisionMetrics() {
+    var cards = byId("investor-decision-cards");
+    var table = byId("investor-decision-table");
+    if (cards) {
+      cards.innerHTML = investorDecisionMetrics.map(function (row) {
+        var positive = Number(row.returnPct) >= 0;
+        return '<article class="decision-card ' + (positive ? "positive" : "negative") + '">'
+          + "<span>" + escapeHtml(row.category) + "</span>"
+          + "<b>" + (positive ? "+" : "") + Number(row.returnPct).toFixed(2) + "%</b>"
+          + "<em>" + escapeHtml(row.window) + "</em>"
+          + "<p>" + escapeHtml(row.feedback) + "</p>"
+          + "</article>";
+      }).join("");
+    }
+    if (table) {
+      table.innerHTML = investorDecisionMetrics.map(function (row) {
+        return "<tr>"
+          + "<td>" + escapeHtml(row.category) + "</td>"
+          + "<td>" + (Number(row.returnPct) >= 0 ? "+" : "") + Number(row.returnPct).toFixed(2) + "%</td>"
+          + "<td>" + escapeHtml(row.window) + "</td>"
+          + "<td>" + escapeHtml(row.feedback) + "</td>"
+          + "</tr>";
+      }).join("");
+    }
+  }
+
+  function renderAutoGuardCounterfactuals() {
+    var cards = byId("autoguard-counterfactuals");
+    if (!cards) {
+      return;
+    }
+    cards.innerHTML = autoGuardCounterfactuals.map(function (row) {
+      return '<article class="decision-card positive">'
+        + "<span>" + escapeHtml(row.category) + "</span>"
+        + "<b>" + escapeHtml(row.value) + "</b>"
+        + "<em>" + escapeHtml(row.window) + "</em>"
+        + "<p>" + escapeHtml(row.feedback) + "</p>"
+        + "</article>";
+    }).join("");
+  }
+
+  function renderBrokerConnections() {
+    var table = byId("broker-connection-table");
+    if (!table) {
+      return;
+    }
+    table.innerHTML = brokerConnections.map(function (row) {
+      return "<tr>"
+        + "<td><b>" + escapeHtml(row.connector) + "</b></td>"
+        + "<td>" + escapeHtml(row.status) + "</td>"
+        + "<td>" + escapeHtml(row.capabilities) + "</td>"
+        + "<td>" + escapeHtml(row.constraints) + "</td>"
+        + "</tr>";
+    }).join("");
+  }
+
+  function tabletListItem(row) {
+    return '<div class="tablet-list-row">'
+      + "<div><b>" + escapeHtml(row.title || row.name) + "</b><span>" + escapeHtml(row.broker || row.detail) + "</span></div>"
+      + '<em>' + escapeHtml(row.window || row.status) + '</em>'
+      + "<p>" + escapeHtml(row.state || row.detail) + "</p>"
+      + "</div>";
+  }
+
+  function renderTabletCommandBoard() {
+    var queue = byId("tablet-execution-queue");
+    var brokers = byId("tablet-broker-matrix");
+    var cycles = byId("tablet-cycle-optimizer");
+    var risk = byId("tablet-risk-envelope");
+    if (queue) {
+      queue.innerHTML = tabletExecutionQueue.map(tabletListItem).join("");
+    }
+    if (brokers) {
+      brokers.innerHTML = tabletBrokerMatrix.map(tabletListItem).join("");
+    }
+    if (cycles) {
+      cycles.innerHTML = tabletCycleOptimizer.map(tabletListItem).join("");
+    }
+    if (risk) {
+      risk.innerHTML = tabletRiskEnvelope.map(tabletListItem).join("");
+    }
+  }
+
   function wirePortfolioBreakdown() {
     var filter = byId("portfolio-filter");
     if (filter) {
       filter.addEventListener("change", renderPortfolioBreakdown);
     }
     renderPortfolioBreakdown();
+    renderCrossAccountPortfolio();
+    renderHebDiagnostics();
+    renderInvestorDecisionMetrics();
+    renderAutoGuardCounterfactuals();
+    renderBrokerConnections();
+    renderTabletCommandBoard();
+  }
+
+  function loadAccountSnapshots() {
+    if (!window.fetch) {
+      return;
+    }
+    fetch("data/account-snapshots.json", {cache: "no-store"})
+      .then(function (response) {
+        if (!response.ok) {
+          throw new Error("snapshot fetch failed");
+        }
+        return response.json();
+      })
+      .then(function (payload) {
+        if (!payload || !Array.isArray(payload.accounts) || !payload.accounts.length) {
+          return;
+        }
+        accountSnapshots = payload.accounts;
+        renderCrossAccountPortfolio();
+      })
+      .catch(function () {});
   }
 
   function renderAutomationHealth() {
@@ -1033,6 +1961,21 @@
         + "<td>" + escapeHtml(row.schedule) + "</td>"
         + "<td><code>" + escapeHtml(row.artifact) + "</code></td>"
         + '<td><span class="health-pill ' + kind + '">' + escapeHtml(row.behavior) + "</span></td>"
+        + "</tr>";
+    }).join("");
+  }
+
+  function renderReportingTable() {
+    var table = byId("reporting-table");
+    if (!table) {
+      return;
+    }
+    table.innerHTML = reportingRows.map(function (row) {
+      return "<tr>"
+        + "<td>" + escapeHtml(row.surface) + "</td>"
+        + "<td>" + escapeHtml(row.audience) + "</td>"
+        + "<td>" + escapeHtml(row.includes) + "</td>"
+        + '<td><span class="health-pill ok">' + escapeHtml(row.fallback) + "</span></td>"
         + "</tr>";
     }).join("");
   }
@@ -1200,9 +2143,13 @@
     wireBehaviorControls();
     wireAdvancedOrderControls();
     wireSageMandateControls();
+    wireRebalanceControls();
+    wireCadenceControls();
     wireUniverseBuilder();
     wirePortfolioBreakdown();
+    loadAccountSnapshots();
     renderAutomationHealth();
+    renderReportingTable();
     renderDiagnosticsTable();
     wireCommandCenter();
     wireMerchStore();
