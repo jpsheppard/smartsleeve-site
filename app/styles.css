@@ -511,6 +511,36 @@ textarea:focus {
   grid-column: 1 / -1;
 }
 
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.check-row {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 11px;
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  border-radius: 8px;
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.check-row input {
+  width: 18px;
+  min-height: 18px;
+  margin: 2px 0 0;
+}
+
+.check-row label {
+  display: block;
+  color: #ffd68a;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .preview-box {
   display: grid;
   gap: 10px;
@@ -531,6 +561,38 @@ textarea:focus {
 
 .preview-row b {
   text-align: right;
+}
+
+.intent-json {
+  min-height: 320px;
+  max-height: 520px;
+  margin: 0;
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 8px;
+  color: #d7ffe1;
+  background: rgba(2, 6, 23, 0.72);
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  white-space: pre-wrap;
+}
+
+.compat-ok,
+.compat-warn,
+.compat-error {
+  border-color: rgba(148, 163, 184, 0.18);
+}
+
+.compat-ok {
+  background: rgba(57, 255, 20, 0.07);
+}
+
+.compat-warn {
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.compat-error {
+  background: rgba(251, 113, 133, 0.08);
 }
 
 .recommendation-card,

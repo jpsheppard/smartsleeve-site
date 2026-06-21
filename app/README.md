@@ -14,7 +14,8 @@ The route is intentionally not linked from the public placeholder homepage yet.
 - Subscription plan selection
 - Discount-code pricing preview
 - Bank funding/deposit intent UI
-- Robinhood connection placeholder
+- Broker-aware order-intent controls for market, limit, stop, stop-limit, trailing-stop, bracket, and reallocation workflows
+- Robinhood, E*TRADE, and IBKR account visibility with broker/session compatibility warnings
 - Sleeve limit controls for Sage by SmartSleeve, Semi Sage, Honey Badger, Grand Sage, General Sage, Value Sage, Savage Sage, Covered Sage, and Convex Sage
 - Daily report and cadence controls for active Sage by SmartSleeve users, developer fallback recipients, hosted chart/logo assets, and daemon/research refresh intervals
 - Trading behavior controls for clinginess/flip resistance, diversity, attraction, bullishness, stickiness, gain-locking, and hard hold
@@ -22,7 +23,7 @@ The route is intentionally not linked from the public placeholder homepage yet.
 - Portfolio behavior breakdowns and sleeve-owned touch permissions
 - Grand Sage research, priors, and Bayesian tuning workflow status
 - Absorb, lateral, and spinoff workflows
-- Daemon control placeholder
+- Daily performance and stock-pick report archive links backed by cloud app data
 - Security, identity, and money-movement readiness checklist
 - Website, Android, iOS, and SmartSleeve Command desktop app paths
 - Help, contact, and about pages
@@ -59,8 +60,12 @@ This is still an early product UI. It must not collect or submit:
 - Card/payment details
 - Real daemon start/stop commands
 - Real sleeve ledger mutations
-- Live trading instructions
+
+The Trade Center may create authenticated SmartSleeve `advanced_order_intent`
+records. Those records are not live trades. Production broker execution still
+requires server-side authorization, account guardrails, broker preview, explicit
+approval where required, broker placement, and reconciliation.
 
 Production versions still need signed sessions, server-side authorization,
 secret vaulting, provider-hosted payment/bank flows, audit logs, and explicit
-confirmation screens before any state-changing action.
+confirmation screens before any broker or sleeve state-changing action.

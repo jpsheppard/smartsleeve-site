@@ -9,6 +9,7 @@
   <meta name="theme-color" content="#020617">
   <meta name="sqts-analytics-endpoint" content="__SQTS_SITE_ANALYTICS_ENDPOINT__">
   <meta name="smartsleeve-auth-endpoint" content="__SMARTSLEEVE_AUTH_ENDPOINT__">
+  <meta name="smartsleeve-order-intent-endpoint" content="__SMARTSLEEVE_ORDER_INTENT_ENDPOINT__">
   <!-- SmartSleeve Console Prototype: secure backend integration surface. Custom Sage (Grand Sage). -->
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
@@ -143,6 +144,30 @@
           </article>
         </div>
 
+        <div class="content-grid two-columns">
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Performance reports</span>
+                <h2>Daily report archive</h2>
+              </div>
+              <span class="status-chip">Cloud archived</span>
+            </div>
+            <div id="report-archive-list" class="stack-list"></div>
+          </article>
+
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Stock picks</span>
+                <h2>Algo report archive</h2>
+              </div>
+              <span class="status-chip">Algo active days</span>
+            </div>
+            <div id="stock-pick-report-list" class="stack-list"></div>
+          </article>
+        </div>
+
         <article class="panel-card">
           <div class="card-head">
             <div>
@@ -223,17 +248,17 @@
         <div class="section-heading">
           <p class="eyebrow">Trade Center</p>
           <h2>Draft, review, approve, reject, and audit trades</h2>
-          <p>No live order is submitted from this screen without a server-side broker preview and explicit approval.</p>
+          <p>Build user-directed or Sage-assisted order intents, check broker/session compatibility, and route eligible orders through server-side preview before any live placement.</p>
         </div>
 
         <div class="content-grid trade-layout">
           <article class="panel-card">
             <div class="card-head">
               <div>
-                <span>Trade ticket</span>
-                <h2>Prepare order</h2>
+                <span>Order ticket</span>
+                <h2>Prepare intent</h2>
               </div>
-              <span class="status-chip">Draft only</span>
+              <span class="status-chip">Preview first</span>
             </div>
             <form id="trade-form" class="trade-form">
               <label>Account
@@ -242,55 +267,128 @@
               <label>Sleeve
                 <select id="trade-sleeve"></select>
               </label>
+              <label>Strategy
+                <select id="trade-strategy">
+                  <option value="single_order">Single order</option>
+                  <option value="autoguard_window">autoGuard window</option>
+                  <option value="reallocation">Reallocation</option>
+                  <option value="protective_exit">Protective exit</option>
+                  <option value="bracket">Bracket</option>
+                  <option value="ladder">Ladder</option>
+                </select>
+              </label>
+              <label>Asset class
+                <select id="trade-asset-type">
+                  <option value="equity">Stock / ETF</option>
+                  <option value="option">Option</option>
+                </select>
+              </label>
               <label>Ticker
                 <input id="trade-ticker" value="MU" autocomplete="off">
               </label>
-              <label>Action
+              <label>Intent
                 <select id="trade-action">
-                  <option>Buy</option>
-                  <option>Sell</option>
-                  <option>Trim</option>
-                  <option>Add</option>
-                  <option>Exit</option>
-                  <option>Rebalance</option>
+                  <option value="buy">Buy / build</option>
+                  <option value="sell">Sell / trim</option>
+                  <option value="exit">Exit position</option>
+                  <option value="reallocate">Reallocate</option>
+                  <option value="protect">Protect position</option>
                 </select>
               </label>
-              <label>Quantity
+              <label>Target ticker
+                <input id="trade-target-ticker" placeholder="For reallocations">
+              </label>
+              <label>Sizing
+                <select id="trade-sizing">
+                  <option value="notional">Dollar amount</option>
+                  <option value="quantity">Shares/contracts</option>
+                  <option value="percent">Portfolio percent</option>
+                </select>
+              </label>
+              <label>Shares / contracts
                 <input id="trade-quantity" inputmode="decimal" placeholder="Optional">
               </label>
               <label>Dollar amount
                 <input id="trade-notional" inputmode="decimal" value="1500">
               </label>
+              <label>Portfolio %
+                <input id="trade-percent" inputmode="decimal" placeholder="Optional">
+              </label>
               <label>Order type
                 <select id="trade-order-type">
-                  <option>Limit</option>
-                  <option>Market</option>
-                  <option>Stop limit</option>
+                  <option value="limit">Limit</option>
+                  <option value="market">Market</option>
+                  <option value="stop_market">Stop loss</option>
+                  <option value="stop_limit">Stop limit</option>
+                  <option value="trailing_stop_market">Trailing stop loss</option>
+                  <option value="trailing_stop_limit">Trailing stop limit</option>
+                  <option value="bracket">Bracket</option>
+                  <option value="pair_switch">Pair switch</option>
                 </select>
               </label>
               <label>Limit price
                 <input id="trade-limit" inputmode="decimal" value="1200">
               </label>
+              <label>Stop price
+                <input id="trade-stop" inputmode="decimal" placeholder="Stop trigger">
+              </label>
+              <label>Trail
+                <input id="trade-trail" inputmode="decimal" placeholder="Dollar or %">
+              </label>
+              <label>Trail unit
+                <select id="trade-trail-unit">
+                  <option value="percent">Percent</option>
+                  <option value="amount">Dollars</option>
+                </select>
+              </label>
+              <label>Session
+                <select id="trade-session">
+                  <option value="regular">Regular market</option>
+                  <option value="extended">Extended hours</option>
+                  <option value="all_day">Overnight / 24 Hour Market</option>
+                </select>
+              </label>
               <label>Time in force
                 <select id="trade-tif">
-                  <option>Day</option>
-                  <option>GTC</option>
-                  <option>Extended hours where broker allows</option>
+                  <option value="day">GFD / day</option>
+                  <option value="gtc">GTC</option>
                 </select>
+              </label>
+              <label>autoGuard end time
+                <input id="trade-window-end" type="datetime-local">
+              </label>
+              <label>Margin cap
+                <input id="trade-margin-limit" inputmode="decimal" placeholder="Optional">
               </label>
               <label>Operator/source
                 <select id="trade-operator">
-                  <option>JPS_MANUAL</option>
-                  <option>SAGE_RECOMMEND</option>
-                  <option>SAGE_ASSISTED</option>
-                  <option>SQTS_REBALANCE</option>
-                  <option>SQTS_RISK_EXIT</option>
+                  <option value="USER_DIRECTED">User-directed</option>
+                  <option value="SAGE_RECOMMEND">Sage recommendation</option>
+                  <option value="SAGE_ASSISTED">Sage assisted</option>
+                  <option value="SAGE_AUTOGUARD">Sage autoGuard</option>
+                  <option value="SQTS_REBALANCE">SmartSleeve rebalance</option>
+                  <option value="SQTS_RISK_EXIT">Risk exit</option>
+                </select>
+              </label>
+              <label>Execution mode
+                <select id="trade-execution-mode">
+                  <option value="draft">Draft only</option>
+                  <option value="server_preview">Server preview</option>
+                  <option value="assisted_place">Preview then request placement</option>
+                  <option value="autoguard">autoGuard supervised</option>
                 </select>
               </label>
               <label class="wide">Reason for trade
                 <textarea id="trade-reason" rows="3">Deploy approved cash into MU within Sage guardrails.</textarea>
               </label>
-              <button type="submit" class="primary wide">Create draft order</button>
+              <div class="check-row wide">
+                <input id="trade-confirm" type="checkbox">
+                <label for="trade-confirm">I understand this creates an auditable SmartSleeve order intent. Live placement still requires broker preview, authorization, and account guardrails.</label>
+              </div>
+              <div class="button-row wide">
+                <button type="submit" class="primary">Create draft intent</button>
+                <button type="button" class="text-button" id="server-preview-button">Send for server preview</button>
+              </div>
             </form>
           </article>
 
@@ -303,6 +401,30 @@
               <span class="status-chip warning">Approval required</span>
             </div>
             <div id="trade-preview" class="preview-box"></div>
+          </article>
+        </div>
+
+        <div class="content-grid two-columns">
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Broker compatibility</span>
+                <h2>Robinhood session rules</h2>
+              </div>
+              <span id="broker-rule-status" class="status-chip">Checking</span>
+            </div>
+            <div id="broker-compatibility" class="stack-list compact-list"></div>
+          </article>
+
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Intent payload</span>
+                <h2>Backend handoff</h2>
+              </div>
+              <button type="button" class="text-button" id="copy-intent-json">Copy JSON</button>
+            </div>
+            <pre id="intent-json" class="intent-json"></pre>
           </article>
         </div>
 
@@ -329,6 +451,17 @@
             <div id="activity-log" class="stack-list compact-list"></div>
           </article>
         </div>
+
+        <article class="panel-card">
+          <div class="card-head">
+            <div>
+              <span>Server trade history</span>
+              <h2>Submitted trades from analytics ledger</h2>
+            </div>
+            <span class="status-chip">CLI trades feed</span>
+          </div>
+          <div id="server-trade-history" class="stack-list"></div>
+        </article>
       </section>
 
       <section id="sage" class="panel" data-section="sage">
@@ -375,6 +508,17 @@
             <span class="status-chip">Draftable</span>
           </div>
           <div id="sage-recommendations" class="recommendation-grid"></div>
+        </article>
+
+        <article class="panel-card">
+          <div class="card-head">
+            <div>
+              <span>Brain</span>
+              <h2>Latest sleeve decisions</h2>
+            </div>
+            <span class="status-chip">CLI brain feed</span>
+          </div>
+          <div id="brain-decisions" class="recommendation-grid"></div>
         </article>
 
         <article class="panel-card">
