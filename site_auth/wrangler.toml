@@ -1,0 +1,12 @@
+name = "smartsleeve-auth"
+main = "cloudflare_worker.js"
+compatibility_date = "2026-06-21"
+
+[vars]
+SMARTSLEEVE_AUTH_APP_URL = "https://smartsleeve.ai/app/"
+SMARTSLEEVE_AUTH_ALLOWED_ORIGINS = "https://smartsleeve.ai,https://www.smartsleeve.ai"
+SMARTSLEEVE_DEVELOPER_EMAILS = "john@smartsleeve.ai,jpsheppard88@gmail.com"
+
+[[kv_namespaces]]
+binding = "SMARTSLEEVE_AUTH"
+id = "1efca0db81224bdab4950ce76812b27a"
