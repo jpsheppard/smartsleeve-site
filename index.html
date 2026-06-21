@@ -4,12 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SmartSleeve Quantitative Trading Systems</title>
-  <meta name="description" content="SmartSleeve: quantitative trading for the agentic age. Coming soon.">
+  <meta name="description" content="SmartSleeve Quantitative Trading Systems: agentic AI-powered quantitative trading across adaptive strategy sleeves. Coming soon.">
   <meta property="og:title" content="SmartSleeve Quantitative Trading Systems">
-  <meta property="og:description" content="Quantitative trading for the agentic age. Coming soon.">
+  <meta property="og:description" content="Agentic AI-powered quantitative trading across adaptive strategy sleeves. Coming soon.">
   <meta property="og:type" content="website">
-  <meta property="og:image" content="https://smartsleeve.ai/smartsleeve-ss-banner.png">
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <meta property="og:image" content="https://sqts-assets.sfo2.cdn.digitaloceanspaces.com/sqts-logo-green.png">
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
@@ -17,7 +16,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
   <link rel="manifest" href="/site.webmanifest">
   <meta name="theme-color" content="#020617">
-  <meta name="sqts-analytics-endpoint" content="https://smartsleeve-analytics.jpsheppard88.workers.dev/collect">
+  <meta name="sqts-analytics-endpoint" content="__SQTS_SITE_ANALYTICS_ENDPOINT__">
   <style>
     :root {
       --bg: #020617;
@@ -67,6 +66,28 @@
       position: relative;
     }
 
+    main::before,
+    main::after {
+      content: "";
+      position: absolute;
+      inset: auto;
+      width: 300px;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--line), transparent);
+      transform: rotate(18deg);
+      pointer-events: none;
+    }
+
+    main::before {
+      left: -80px;
+      top: 80px;
+    }
+
+    main::after {
+      right: -70px;
+      bottom: 96px;
+    }
+
     .brand {
       display: block;
       width: min(720px, 100%);
@@ -74,6 +95,15 @@
       margin: 0 auto 18px;
       border-radius: 18px;
       filter: drop-shadow(0 0 24px rgba(57, 255, 20, 0.22));
+    }
+
+    .tagline {
+      margin: 0 auto;
+      max-width: 760px;
+      color: var(--text);
+      font-size: clamp(17px, 2vw, 23px);
+      line-height: 1.35;
+      letter-spacing: 0.01em;
     }
 
     .coming-soon {
@@ -184,21 +214,18 @@
 <body>
   <nav class="landing-side-menu" aria-label="SmartSleeve landing navigation">
     <a href="/app/#shop">Shop</a>
-    <a href="/about.html">About Us</a>
-    <a href="/contact.html">Contact Us</a>
-    <a href="https://console.smartsleeve.ai/dev-login">Developer Login</a>
+    <a href="/app/">Console</a>
   </nav>
   <main aria-label="SmartSleeve Quantitative Trading Systems coming soon">
     <img
       class="brand"
-      src="/smartsleeve-ss-banner.png"
-      alt="SmartSleeve SS logo">
+      src="https://sqts-assets.sfo2.cdn.digitaloceanspaces.com/sqts-logo-green.png"
+      alt="SQTS - SmartSleeve Quantitative Trading Systems">
+    <p class="tagline">Agentic AI-powered quantitative trading across adaptive strategy sleeves.</p>
     <div class="circuit-line" aria-hidden="true"></div>
     <div class="landing-actions" aria-label="SmartSleeve site links">
-      <a href="/app/#shop">Shop SmartSleeve merch</a>
-      <a href="/about.html">About Us</a>
-      <a href="/contact.html">Contact Us</a>
-      <a href="https://console.smartsleeve.ai/dev-login">Developer Login</a>
+      <a href="/app/#shop">Shop SQTS merch</a>
+      <a href="/app/">Open SmartSleeve console</a>
     </div>
     <h1 class="coming-soon">Coming soon...</h1>
   </main>
