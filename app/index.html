@@ -301,9 +301,9 @@
               <label>Strategy
                 <select id="trade-strategy">
                   <option value="single_order">Single order</option>
-                  <option value="autoguard_window">autoGuard window</option>
-                  <option value="reallocation">Reallocation</option>
-                  <option value="protective_exit">Protective exit</option>
+                  <option value="smarttrade_window">SmartTrade window</option>
+                  <option value="reallocation">SmartTrade reallocation</option>
+                  <option value="protective_exit">AutoGuard protective exit</option>
                   <option value="bracket">Bracket</option>
                   <option value="ladder">Ladder</option>
                 </select>
@@ -385,7 +385,7 @@
                   <option value="gtc">GTC</option>
                 </select>
               </label>
-              <label>autoGuard end time
+              <label>AutoGuard / SmartTrade end time
                 <input id="trade-window-end" type="datetime-local">
               </label>
               <label>Margin cap
@@ -396,7 +396,7 @@
                   <option value="USER_DIRECTED">User-directed</option>
                   <option value="SAGE_RECOMMEND">Sage recommendation</option>
                   <option value="SAGE_ASSISTED">Sage assisted</option>
-                  <option value="SAGE_AUTOGUARD">Sage autoGuard</option>
+                  <option value="SAGE_AUTOGUARD">Sage AutoGuard</option>
                   <option value="SQTS_REBALANCE">SmartSleeve rebalance</option>
                   <option value="SQTS_RISK_EXIT">Risk exit</option>
                 </select>
@@ -406,7 +406,7 @@
                   <option value="draft">Draft only</option>
                   <option value="server_preview">Server preview</option>
                   <option value="assisted_place">Preview then request placement</option>
-                  <option value="autoguard">autoGuard supervised</option>
+                  <option value="autoguard">AutoGuard supervised</option>
                 </select>
               </label>
               <label class="wide">Reason for trade
@@ -499,7 +499,7 @@
             <div class="card-head">
               <div>
                 <span>Trade details</span>
-                <h2>Execution and autoGuard diagnostics</h2>
+                <h2>Execution, SmartTrade, and AutoGuard diagnostics</h2>
               </div>
               <span id="trade-detail-status" class="status-chip">Select trade</span>
             </div>

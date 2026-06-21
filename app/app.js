@@ -68,6 +68,23 @@
     synthetic_supervised: "SmartSleeve synthetic supervisor"
   };
 
+  var strategyLabels = {
+    single_order: "Single order",
+    smarttrade_window: "SmartTrade window",
+    autoguard_window: "SmartTrade window",
+    reallocation: "SmartTrade reallocation",
+    protective_exit: "AutoGuard protective exit",
+    bracket: "Bracket",
+    ladder: "Ladder"
+  };
+
+  var executionModeLabels = {
+    draft: "Draft only",
+    server_preview: "Server preview",
+    assisted_place: "Preview then request placement",
+    autoguard: "AutoGuard supervised"
+  };
+
   var sleeveTargets = {
     "Sage by SmartSleeve": 35,
     "Grand Sage": 30,
@@ -655,6 +672,51 @@
     return "Needs thesis note";
   }
 
+  function isSageLabel(value) {
+    return String(value || "").toLowerCase().indexOf("sage") !== -1 || String(value || "").toLowerCase().indexOf("custom_sage") !== -1;
+  }
+
+  function holdingHasSage(holding) {
+    return (holding.sleeves || []).some(isSageLabel);
+  }
+
+  function tradeHasSage(trade) {
+    return [trade.origin, trade.operatorId, trade.operator_id, trade.tradingSystem, trade.trading_system, trade.sleeve, trade.sleeveId].some(isSageLabel);
+  }
+
+  function isAutoGuardTrade(trade) {
+    return [trade.autoGuardMode, trade.auto_guard_mode, trade.operatorId, trade.operator_id, trade.workflow, trade.strategy].some(function (value) {
+      return String(value || "").toLowerCase().indexOf("autoguard") !== -1;
+    });
+  }
+
+  function isSmartTrade(trade) {
+    var workflow = String(trade.workflow || trade.strategy || "").toLowerCase();
+    var smartTrade = trade.smartTrade || trade.smart_trade || {};
+    return Boolean(smartTrade.enabled)
+      || workflow.indexOf("smarttrade") !== -1
+      || workflow.indexOf("reallocation") !== -1
+      || workflow.indexOf("open") !== -1
+      || workflow.indexOf("close") !== -1
+      || Boolean(trade.targetSymbol || trade.target_symbol);
+  }
+
+  function logoImg(src, label, className) {
+    return "<img class=\"" + html(className || "mini-logo") + "\" src=\"" + html(src) + "\" alt=\"" + html(label) + "\">";
+  }
+
+  function sageBadge() {
+    return logoImg("/app/sage-logo.png", "Sage by SmartSleeve", "mini-logo sage-mini-logo");
+  }
+
+  function featureBadges(trade) {
+    var badges = [];
+    if (tradeHasSage(trade)) badges.push(sageBadge());
+    if (isAutoGuardTrade(trade)) badges.push(logoImg("/app/autoguard-logo.svg", "AutoGuard", "mini-logo feature-mini-logo"));
+    if (isSmartTrade(trade)) badges.push(logoImg("/app/smarttrade-logo.svg", "SmartTrade", "mini-logo feature-mini-logo"));
+    return badges.length ? "<span class=\"feature-badges\">" + badges.join("") + "</span>" : "";
+  }
+
   function buildRecommendations() {
     var total = accountTotal("equity");
     var bySymbol = {};
@@ -826,8 +888,9 @@
     if (!target) return;
     target.innerHTML = rows.map(function (holding) {
       var weightNum = total ? holding.value / total : 0;
+      var holdingBadge = holdingHasSage(holding) ? sageBadge() : "";
       return "<tr>"
-        + cell("Ticker", "<b>" + html(holding.symbol) + "</b><small>" + html(holding.name) + "</small>")
+        + cell("Ticker", "<span class=\"ticker-lockup\">" + holdingBadge + "<span><b>" + html(holding.symbol) + "</b><small>" + html(holding.name) + "</small></span></span>")
         + cell("Company", html(holding.name))
         + cell("Shares", numberText(holding.shares, 6))
         + cell("Stock price", money(holding.price))
@@ -945,6 +1008,16 @@
     return "synthetic_supervised";
   }
 
+  function isSmartTradeStrategy(strategy, action) {
+    var normalized = String(strategy || "").toLowerCase();
+    var actionText = String(action || "").toLowerCase();
+    return normalized.indexOf("smarttrade") !== -1
+      || normalized === "autoguard_window"
+      || normalized === "reallocation"
+      || actionText === "reallocate"
+      || actionText === "exit";
+  }
+
   function currentHolding(symbol) {
     var normalized = String(symbol || "").toUpperCase();
     return state.holdings.find(function (holding) { return holding.symbol === normalized; }) || null;
@@ -993,6 +1066,11 @@
         margin_limit_usd: numericOrNull("trade-margin-limit"),
         broker_preview_required: true,
         account_guardrails_required: true
+      },
+      smartTrade: {
+        enabled: isSmartTradeStrategy(valueOf("trade-strategy"), action),
+        workflow: strategyLabels[valueOf("trade-strategy")] || valueOf("trade-strategy"),
+        window_end_local: valueOf("trade-window-end") || null
       }
     };
     if (intent.order_type === "trailing_stop_limit" && intent.limit_price != null) {
@@ -1089,7 +1167,7 @@
       preview.innerHTML = [
       previewRow("Ticker", intent.symbol || "Needs ticker"),
       previewRow("Intent", intent.action + " / " + intent.side),
-      previewRow("Strategy", intent.strategy),
+      previewRow("Strategy", strategyLabels[intent.strategy] || intent.strategy),
       previewRow("Quantity", intent.quantity == null ? "By sizing mode" : numberText(intent.quantity, 6)),
       previewRow("Estimated notional", money(notional)),
       previewRow("Account", intent.account_label || "Needs account"),
@@ -1098,6 +1176,7 @@
       previewRow("Session", sessionLabels[intent.session] || intent.session),
       previewRow("Time in force", intent.time_in_force),
       previewRow("Execution route", routeLabels[intent.execution_route] || intent.execution_route),
+      previewRow("Execution mode", executionModeLabels[intent.execution_mode] || intent.execution_mode),
       previewRow("Portfolio weight after trade", accountTotal("equity") && notional ? pct(notional, accountTotal("equity")) + " before existing position adjustment" : "Needs notional"),
       previewRow("Estimated cash after buy", accountRow && numeric(accountRow.cash) != null ? money(accountRow.cash - notional) : "Needs broker cash"),
       previewRow("Compatibility", validation.errors.length ? "Fix required" : validation.warnings.length ? "Preview with warnings" : "Ready for server preview"),
@@ -1268,10 +1347,10 @@
       var id = tradeId(trade);
       var selected = id === state.selectedTradeId;
       var title = tradeTitle(trade);
-      var meta = (trade.workflow || trade.autoGuardMode || "manual/order") + " / " + (trade.operatorId || trade.operator_id || "SQTS_AUTO");
+      var meta = (workflowLabel(trade) || "Manual/direct order") + " / " + (trade.operatorId || trade.operator_id || "SQTS_AUTO");
       var body = (trade.account || trade.accountId || "") + " / " + money(trade.notionalUsd != null ? trade.notionalUsd : trade.notional_usd) + " / " + (trade.submittedAt || trade.submitted_at || "time unknown");
       return "<button type=\"button\" class=\"trade-row" + (selected ? " active" : "") + "\" data-server-trade-id=\"" + html(id) + "\">"
-        + "<span><b>" + html(title) + "</b><small>" + html(body) + "</small></span>"
+        + "<span><b>" + featureBadges(trade) + html(title) + "</b><small>" + html(body) + "</small></span>"
         + "<i>" + html(meta) + "</i>"
         + "</button>";
     }).join("") || emptyItem("No server trade history", "Analytics trade ledger is not available for this user/account yet.");
@@ -1293,8 +1372,13 @@
 
   function workflowLabel(trade) {
     var workflow = trade.workflow || trade.command || trade.strategy;
-    if (workflow) return workflow;
-    if (trade.autoGuardMode || trade.autoGuardEndAt) return "autoGuard supervised";
+    var smartTrade = trade.smartTrade || trade.smart_trade || {};
+    if (smartTrade.enabled && smartTrade.workflow) return String(smartTrade.workflow).replace(/smarttrade/gi, "SmartTrade").replace(/autoguard/gi, "AutoGuard");
+    if (smartTrade.enabled) return "SmartTrade execution";
+    if (workflow && strategyLabels[workflow]) return strategyLabels[workflow];
+    if (workflow) return String(workflow).replace(/smarttrade/gi, "SmartTrade").replace(/autoguard/gi, "AutoGuard");
+    if (isSmartTrade(trade)) return "SmartTrade execution";
+    if (trade.autoGuardMode || trade.autoGuardEndAt) return "AutoGuard supervised";
     var origin = String(trade.origin || trade.operatorId || trade.operator_id || "").toLowerCase();
     return origin.indexOf("sage") !== -1 || origin.indexOf("custom_sage") !== -1 ? "Sage-directed order" : "Manual/direct order";
   }
@@ -1313,7 +1397,7 @@
     var evalStatus = evaluation.status || retrospectiveStatus(trade);
     if (status) status.textContent = evalStatus;
     panel.innerHTML = ""
-      + "<div class=\"trade-detail-title\"><h3>" + html(tradeTitle(trade)) + "</h3><span>" + html(evalStatus) + "</span></div>"
+      + "<div class=\"trade-detail-title\"><h3>" + featureBadges(trade) + html(tradeTitle(trade)) + "</h3><span>" + html(evalStatus) + "</span></div>"
       + "<div class=\"detail-grid\">"
       + detailItem("Origin", trade.origin || workflowLabel(trade))
       + detailItem("Workflow", workflowLabel(trade))
@@ -1328,8 +1412,8 @@
       + detailItem("Quantity", trade.quantity == null ? "Needs fill sync" : numberText(trade.quantity, 6))
       + detailItem("Notional", money(trade.notionalUsd != null ? trade.notionalUsd : trade.notional_usd))
       + detailItem("Order ID", trade.orderId || trade.order_id || "Needs broker sync")
-      + detailItem("autoGuard mode", trade.autoGuardMode || trade.auto_guard_mode || "Not used")
-      + detailItem("autoGuard end", trade.autoGuardEndAt || trade.auto_guard_end_at || "Not windowed")
+      + detailItem("AutoGuard mode", trade.autoGuardMode || trade.auto_guard_mode || "Not used")
+      + detailItem("AutoGuard / SmartTrade end", trade.autoGuardEndAt || trade.auto_guard_end_at || "Not windowed")
       + "</div>"
       + "<article class=\"trade-rationale\"><b>Rationale</b><p>" + html(trade.rationale || "No rationale recorded for this trade.") + "</p></article>"
       + renderRetrospectiveDiagnostics(trade);
@@ -1363,8 +1447,8 @@
     }
     return "<div class=\"gauge-grid trade-gauge-grid\">"
       + gaugeCard("HEB", clampPct(evaluation.hindsightEfficientBasisPct), "Hindsight Efficient Basis percent after the trade window closes.")
-      + gaugeCard("autoGuard", clampPct(evaluation.basisCapturePct), "Basis capture versus the best achievable retrospective entry/exit/reallocation.")
-      + "<article class=\"gauge-card\"><span>You saved</span><h3>" + html(money(evaluation.savedUsd)) + "</h3><p>Estimated improvement from autoGuard versus immediate/manual baseline, using " + html(evaluation.dataSource || "yFinance") + " data.</p></article>"
+      + gaugeCard("SmartTrade", clampPct(evaluation.basisCapturePct), "Basis capture versus the best achievable retrospective entry/exit/reallocation.")
+      + "<article class=\"gauge-card\"><span>You saved</span><h3>" + html(money(evaluation.savedUsd)) + "</h3><p>Estimated improvement from SmartTrade or AutoGuard versus immediate/manual baseline, using " + html(evaluation.dataSource || "yFinance") + " data.</p></article>"
       + "</div>";
   }
 
@@ -1376,10 +1460,10 @@
 
   function retrospectiveExplainer(trade) {
     if (!(trade.autoGuardMode || trade.autoGuardEndAt || trade.workflow)) {
-      return "This looks like a manual/direct order. HEB, basis capture, and autoGuard savings are reserved for Sage windowed entries, exits, and reallocations.";
+      return "This looks like a manual/direct order. HEB, basis capture, and savings diagnostics are reserved for Sage SmartTrade entries, exits, reallocations, and AutoGuard windows.";
     }
     if (trade.autoGuardEndAt && Date.now() < new Date(trade.autoGuardEndAt).getTime()) {
-      return "autoGuard diagnostics will unlock after the specified end time, once retrospective market data are available.";
+      return "SmartTrade/AutoGuard diagnostics will unlock after the specified end time, once retrospective market data are available.";
     }
     return "The trade is eligible for retrospective HEB and basis-capture evaluation, but no completed yFinance evaluation has been archived yet.";
   }

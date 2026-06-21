@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">AutoGuard by SmartSleeve</title>
+  <desc id="desc">Neon green shield logo for Sage AutoGuard volatility protection.</desc>
+  <defs>
+    <radialGradient id="guardGlow" cx="50%" cy="38%" r="62%">
+      <stop offset="0" stop-color="#a3ff5c" stop-opacity=".52"/>
+      <stop offset=".55" stop-color="#39ff14" stop-opacity=".16"/>
+      <stop offset="1" stop-color="#000" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="guardEdge" x1="96" y1="48" x2="416" y2="464" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#d9ffb8"/>
+      <stop offset=".42" stop-color="#39ff14"/>
+      <stop offset="1" stop-color="#087f2d"/>
+    </linearGradient>
+    <linearGradient id="guardInner" x1="160" y1="116" x2="352" y2="406" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#063c1b"/>
+      <stop offset=".52" stop-color="#031707"/>
+      <stop offset="1" stop-color="#020617"/>
+    </linearGradient>
+    <filter id="greenGlow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="7" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.22 0 0 0 0 1 0 0 0 0 0.08 0 0 0 .95 0"/>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="108" fill="#020617"/>
+  <circle cx="256" cy="248" r="210" fill="url(#guardGlow)"/>
+  <path filter="url(#greenGlow)" d="M256 54c45 34 95 51 151 53 5 85-6 157-32 215-27 61-67 106-119 136-52-30-92-75-119-136-26-58-37-130-32-215 56-2 106-19 151-53Z" fill="url(#guardInner)" stroke="url(#guardEdge)" stroke-width="15" stroke-linejoin="round"/>
+  <path d="M256 100c32 24 68 39 108 45 0 62-10 113-29 154-19 42-45 74-79 96-34-22-60-54-79-96-19-41-29-92-29-154 40-6 76-21 108-45Z" fill="none" stroke="#39ff14" stroke-opacity=".36" stroke-width="7"/>
+  <path d="M256 160c-40 36-59 78-55 124 3 35 22 64 55 87 33-23 52-52 55-87 4-46-15-88-55-124Z" fill="#39ff14" fill-opacity=".10" stroke="#a3ff5c" stroke-opacity=".52" stroke-width="5"/>
+  <path d="M256 362V162" stroke="#39ff14" stroke-width="8" stroke-linecap="round"/>
+  <path d="M256 251c-36-2-62-18-78-48 38-6 65 7 78 48Z" fill="#39ff14" fill-opacity=".82"/>
+  <path d="M257 251c36-2 62-18 78-48-38-6-65 7-78 48Z" fill="#39ff14" fill-opacity=".54"/>
+  <path d="M256 300c-26-1-46-11-61-30 30-7 51 3 61 30Z" fill="#a3ff5c" fill-opacity=".74"/>
+</svg>
