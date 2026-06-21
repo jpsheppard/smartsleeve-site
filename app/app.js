@@ -717,6 +717,38 @@
     return badges.length ? "<span class=\"feature-badges\">" + badges.join("") + "</span>" : "";
   }
 
+  function userDirectedBadge() {
+    return logoImg("/app/user-trade-logo.svg", "User-directed order", "mini-logo user-mini-logo");
+  }
+
+  function isSageDirectedOrder(order) {
+    return [order.origin, order.operatorId, order.operator_id, order.operator, order.tradingSystem, order.trading_system, order.sourceLabel].some(isSageLabel);
+  }
+
+  function isUserDirectedOrder(order) {
+    var values = [order.origin, order.operatorId, order.operator_id, order.operator, order.originator, order.sourceLabel].join(" ").toLowerCase();
+    if (isSageDirectedOrder(order)) return false;
+    return values.indexOf("user_directed") !== -1
+      || values.indexOf("user-directed") !== -1
+      || values.indexOf("manual") !== -1
+      || values.indexOf("human") !== -1;
+  }
+
+  function originLabel(order) {
+    if (isSageDirectedOrder(order)) return "Sage by SmartSleeve";
+    if (isUserDirectedOrder(order)) return "User-directed";
+    return order.origin || order.operatorId || order.operator_id || order.operator || "SmartSleeve";
+  }
+
+  function originBadges(order) {
+    var badges = [];
+    if (isUserDirectedOrder(order)) badges.push(userDirectedBadge());
+    if (tradeHasSage(order)) badges.push(sageBadge());
+    if (isAutoGuardTrade(order)) badges.push(logoImg("/app/autoguard-logo.svg", "AutoGuard", "mini-logo feature-mini-logo"));
+    if (isSmartTrade(order)) badges.push(logoImg("/app/smarttrade-logo.svg", "SmartTrade", "mini-logo feature-mini-logo"));
+    return badges.length ? "<span class=\"feature-badges\">" + badges.join("") + "</span>" : "";
+  }
+
   function buildRecommendations() {
     var total = accountTotal("equity");
     var bySymbol = {};
@@ -1251,6 +1283,7 @@
     persistDraftOrders();
     addActivity("Draft order created", order.operator, order.account, order.ticker + " " + order.action + " " + money(order.notional));
     renderDraftOrders();
+    renderServerTrades();
     renderActivity();
     toast("Draft intent created. Broker preview and approval are still required.");
   }
@@ -1261,12 +1294,12 @@
     if (!list) return;
     list.innerHTML = state.draftOrders.map(function (order) {
       return "<article class=\"stack-item\">"
-        + "<div class=\"stack-item-head\"><b>" + html(order.ticker + " " + order.action) + "</b><span>" + html(order.status) + "</span></div>"
+        + "<div class=\"stack-item-head\"><b>" + originBadges(order) + html(order.ticker + " " + order.action) + "</b><span>" + html(order.status) + "</span></div>"
         + "<p>" + html(order.account) + " / " + html(order.sleeve) + " / " + money(order.notional) + "</p>"
-        + "<p>" + html(orderTypeLabels[order.orderType] || order.orderType) + (order.limit ? " limit " + html(order.limit) : "") + " / " + html(order.tif) + " / " + html(order.operator) + "</p>"
+        + "<p>" + html(orderTypeLabel(order)) + (order.limit ? " limit " + html(order.limit) : "") + " / " + html(order.tif) + " / " + html(originLabel(order)) + "</p>"
         + "<div class=\"recommendation-actions\"><button type=\"button\" class=\"text-button\" data-order-action=\"preview\" data-order-id=\"" + html(order.id) + "\">Server preview</button><button type=\"button\" class=\"text-button\" data-order-action=\"copy\" data-order-id=\"" + html(order.id) + "\">Copy JSON</button><button type=\"button\" class=\"danger-button small\" data-order-action=\"reject\" data-order-id=\"" + html(order.id) + "\">Reject</button></div>"
         + "</article>";
-    }).join("") || emptyItem("No pending orders", "Create a draft from the ticket or a Sage recommendation.");
+    }).join("") || emptyItem("No draft orders", "Create a draft from the ticket or a Sage by SmartSleeve recommendation.");
   }
 
   function persistDraftOrders() {
@@ -1339,22 +1372,78 @@
   function renderServerTrades() {
     var target = $("server-trade-history");
     if (!target) return;
-    var rows = visibleRows(state.serverTrades).slice(0, 40);
+    var rows = combinedOrderRows().slice(0, 60);
     if (!state.selectedTradeId && rows.length) {
-      state.selectedTradeId = tradeId(rows[0]);
+      state.selectedTradeId = orderLifecycleId(rows[0]);
     }
-    target.innerHTML = rows.map(function (trade) {
-      var id = tradeId(trade);
+    if (state.selectedTradeId && !rows.some(function (row) { return orderLifecycleId(row) === state.selectedTradeId; })) {
+      state.selectedTradeId = rows.length ? orderLifecycleId(rows[0]) : null;
+    }
+    target.innerHTML = rows.map(function (order) {
+      var id = orderLifecycleId(order);
       var selected = id === state.selectedTradeId;
-      var title = tradeTitle(trade);
-      var meta = (workflowLabel(trade) || "Manual/direct order") + " / " + (trade.operatorId || trade.operator_id || "SQTS_AUTO");
-      var body = (trade.account || trade.accountId || "") + " / " + money(trade.notionalUsd != null ? trade.notionalUsd : trade.notional_usd) + " / " + (trade.submittedAt || trade.submitted_at || "time unknown");
+      var title = orderLifecycleTitle(order);
+      var meta = orderStatusLabel(order) + " / " + orderLifecycleTimestamp(order);
+      var body = (order.account || order.accountId || "") + " / " + money(orderNotional(order)) + " / " + orderTypeLabel(order);
+      var price = orderSharePrice(order);
+      var quantity = orderQuantity(order);
+      var right = originLabel(order) + " / " + (quantity == null ? "shares sync" : numberText(quantity, 6) + " sh") + " / " + (price == null ? "price sync" : money(price));
       return "<button type=\"button\" class=\"trade-row" + (selected ? " active" : "") + "\" data-server-trade-id=\"" + html(id) + "\">"
-        + "<span><b>" + featureBadges(trade) + html(title) + "</b><small>" + html(body) + "</small></span>"
-        + "<i>" + html(meta) + "</i>"
+        + "<span><b>" + originBadges(order) + html(title) + "</b><small>" + html(body) + "</small><small>" + html(meta) + "</small></span>"
+        + "<i>" + html(right) + "</i>"
         + "</button>";
-    }).join("") || emptyItem("No server trade history", "Analytics trade ledger is not available for this user/account yet.");
+    }).join("") || emptyItem("No order history", "Draft orders, broker statuses, and completed execution records will appear here.");
     renderTradeDetail();
+  }
+
+  function combinedOrderRows() {
+    var drafts = state.draftOrders.map(function (order) {
+      var intent = order.intent || {};
+      return Object.assign({}, intent, order, {
+        lifecycleSource: "draft",
+        sourceLabel: "Local draft",
+        id: order.id || intent.intent_id,
+        orderId: order.orderId || intent.order_id,
+        account: order.account || intent.account_label,
+        accountId: intent.account_id,
+        sleeve: order.sleeve || intent.sleeve,
+        symbol: intent.symbol || order.ticker,
+        targetSymbol: intent.target_symbol,
+        side: intent.side || sideFromAction(order.action),
+        action: order.action || intent.action,
+        quantity: intent.quantity,
+        notionalUsd: order.notional != null ? order.notional : intent.notional_usd,
+        orderType: order.orderType || intent.order_type,
+        limitPrice: order.limit != null ? order.limit : intent.limit_price,
+        timeInForce: order.tif || intent.time_in_force,
+        session: intent.session,
+        operatorId: order.operator || intent.operator_id,
+        placedAt: intent.created_at || order.time,
+        submittedAt: intent.created_at || order.time,
+        status: order.status || intent.status || "Draft"
+      });
+    });
+    var trades = visibleRows(state.serverTrades).map(function (trade) {
+      return Object.assign({}, trade, {
+        lifecycleSource: "server",
+        sourceLabel: "Broker/analytics feed",
+        placedAt: trade.placedAt || trade.placed_at || trade.submittedAt || trade.submitted_at,
+        executedAt: trade.executedAt || trade.executed_at || trade.filledAt || trade.filled_at || trade.completedAt || trade.completed_at,
+        canceledAt: trade.canceledAt || trade.canceled_at
+      });
+    });
+    return drafts.concat(trades).sort(function (a, b) {
+      return timestampMs(orderLifecycleTimestamp(b)) - timestampMs(orderLifecycleTimestamp(a));
+    });
+  }
+
+  function timestampMs(value) {
+    var parsed = new Date(value || 0).getTime();
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  function orderLifecycleId(order) {
+    return String((order.lifecycleSource || "server") + ":" + (order.id || order.orderId || order.order_id || order.intent_id || [order.accountId || order.account, order.submittedAt || order.submitted_at || order.placedAt, order.symbol, order.side].join("|")));
   }
 
   function tradeId(trade) {
@@ -1368,6 +1457,72 @@
       return "REALLOCATE " + symbol + " -> " + (trade.targetSymbol || trade.target_symbol);
     }
     return side + " " + symbol;
+  }
+
+  function orderLifecycleTitle(order) {
+    var target = order.targetSymbol || order.target_symbol;
+    var symbol = String(order.symbol || order.ticker || "?").toUpperCase();
+    if (target) {
+      return "REALLOCATE " + symbol + " -> " + String(target).toUpperCase();
+    }
+    return orderTypeLabel(order) + " " + symbol;
+  }
+
+  function orderTypeLabel(order) {
+    var side = String(order.side || sideFromAction(order.action) || "").toLowerCase();
+    var type = order.orderType || order.order_type || "order";
+    var base = orderTypeLabels[type] || String(type).replace(/_/g, " ");
+    if (side === "buy" || side === "sell") {
+      return base + " " + side;
+    }
+    if (String(order.action || "").toLowerCase() === "reallocate") {
+      return base + " reallocation";
+    }
+    return base;
+  }
+
+  function orderStatusLabel(order) {
+    return order.status || order.orderStatus || order.order_status || "submitted_or_recorded";
+  }
+
+  function orderLifecycleTimestamp(order) {
+    var status = String(orderStatusLabel(order)).toLowerCase();
+    if (status.indexOf("cancel") !== -1 && (order.canceledAt || order.canceled_at)) return order.canceledAt || order.canceled_at;
+    if ((status.indexOf("fill") !== -1 || status.indexOf("complete") !== -1 || status.indexOf("execut") !== -1) && (order.executedAt || order.executed_at || order.filledAt || order.filled_at || order.completedAt || order.completed_at)) {
+      return order.executedAt || order.executed_at || order.filledAt || order.filled_at || order.completedAt || order.completed_at;
+    }
+    return order.submittedAt || order.submitted_at || order.placedAt || order.placed_at || order.time || "time unknown";
+  }
+
+  function orderExecutionText(order) {
+    var status = orderStatusLabel(order);
+    var executed = order.executedAt || order.executed_at || order.filledAt || order.filled_at || order.completedAt || order.completed_at;
+    var canceled = order.canceledAt || order.canceled_at;
+    if (canceled) return "Canceled: " + canceled;
+    if (executed) return "Executed: " + executed;
+    return status;
+  }
+
+  function orderQuantity(order) {
+    return numeric(order.quantity != null ? order.quantity : order.filledQuantity != null ? order.filledQuantity : order.filled_quantity);
+  }
+
+  function orderNotional(order) {
+    var explicit = numeric(order.notionalUsd != null ? order.notionalUsd : order.notional_usd);
+    if (explicit != null) return explicit;
+    var quantity = orderQuantity(order);
+    var price = orderSharePrice(order);
+    return quantity != null && price != null ? quantity * price : null;
+  }
+
+  function orderSharePrice(order) {
+    var price = numeric(order.limitPrice != null ? order.limitPrice : order.limit_price);
+    if (price != null) return price;
+    price = numeric(order.averageFillPrice != null ? order.averageFillPrice : order.average_fill_price);
+    if (price != null) return price;
+    var notional = numeric(order.notionalUsd != null ? order.notionalUsd : order.notional_usd);
+    var quantity = orderQuantity(order);
+    return notional != null && quantity ? notional / quantity : null;
   }
 
   function workflowLabel(trade) {
@@ -1387,30 +1542,40 @@
     var panel = $("trade-detail-panel");
     var status = $("trade-detail-status");
     if (!panel) return;
-    var trade = visibleRows(state.serverTrades).find(function (row) { return tradeId(row) === state.selectedTradeId; });
+    var trade = combinedOrderRows().find(function (row) { return orderLifecycleId(row) === state.selectedTradeId; });
     if (!trade) {
-      panel.innerHTML = emptyItem("Select a trade", "Choose a submitted trade to inspect execution details and retrospective diagnostics.");
-      if (status) status.textContent = "Select trade";
+      panel.innerHTML = emptyItem("Select an order", "Choose an order or completed trade to inspect lifecycle details and retrospective diagnostics.");
+      if (status) status.textContent = "Select order";
       return;
     }
     var evaluation = trade.evaluation || {};
     var evalStatus = evaluation.status || retrospectiveStatus(trade);
-    if (status) status.textContent = evalStatus;
+    if (status) status.textContent = orderStatusLabel(trade);
+    var symbol = String(trade.symbol || trade.ticker || "?").split(" ")[0].toUpperCase();
+    var targetSymbol = trade.targetSymbol || trade.target_symbol;
+    var company = tickerNames[symbol] || "Needs security master sync";
+    var quantity = orderQuantity(trade);
+    var sharePrice = orderSharePrice(trade);
+    var notional = orderNotional(trade);
     panel.innerHTML = ""
-      + "<div class=\"trade-detail-title\"><h3>" + featureBadges(trade) + html(tradeTitle(trade)) + "</h3><span>" + html(evalStatus) + "</span></div>"
+      + "<div class=\"trade-detail-title\"><h3>" + originBadges(trade) + html(orderLifecycleTitle(trade)) + "</h3><span>" + html(evalStatus) + "</span></div>"
       + "<div class=\"detail-grid\">"
-      + detailItem("Origin", trade.origin || workflowLabel(trade))
+      + detailItem("Placed by", originLabel(trade))
+      + detailItem("Order type", orderTypeLabel(trade))
+      + detailItem("Ticker", targetSymbol ? symbol + " -> " + targetSymbol : symbol)
+      + detailItem("Company", company)
+      + detailItem("# shares", quantity == null ? "Needs broker fill sync" : numberText(quantity, 6))
+      + detailItem("Share price", sharePrice == null ? "Needs price/fill sync" : money(sharePrice))
+      + detailItem("Total cash value", money(notional))
+      + detailItem("Placement timestamp", trade.placedAt || trade.placed_at || trade.submittedAt || trade.submitted_at || trade.time || "Unknown")
+      + detailItem("Execution timestamp/status", orderExecutionText(trade))
+      + detailItem("Status", orderStatusLabel(trade))
+      + detailItem("Lifecycle source", trade.sourceLabel || trade.lifecycleSource || "Analytics feed")
       + detailItem("Workflow", workflowLabel(trade))
       + detailItem("Account", trade.account || trade.accountId || "Unknown")
       + detailItem("Sleeve", trade.sleeve || trade.sleeveId || "Unknown")
-      + detailItem("Submitted", trade.submittedAt || trade.submitted_at || "Unknown")
-      + detailItem("Status", trade.status || "submitted_or_recorded")
-      + detailItem("Order type", orderTypeLabels[trade.orderType || trade.order_type] || trade.orderType || trade.order_type || "Unknown")
       + detailItem("Session", sessionLabels[trade.session] || trade.session || "Unknown")
       + detailItem("Time in force", trade.timeInForce || trade.time_in_force || "Needs broker sync")
-      + detailItem("Limit price", trade.limitPrice == null ? "None/market" : money(trade.limitPrice))
-      + detailItem("Quantity", trade.quantity == null ? "Needs fill sync" : numberText(trade.quantity, 6))
-      + detailItem("Notional", money(trade.notionalUsd != null ? trade.notionalUsd : trade.notional_usd))
       + detailItem("Order ID", trade.orderId || trade.order_id || "Needs broker sync")
       + detailItem("AutoGuard mode", trade.autoGuardMode || trade.auto_guard_mode || "Not used")
       + detailItem("AutoGuard / SmartTrade end", trade.autoGuardEndAt || trade.auto_guard_end_at || "Not windowed")
@@ -1796,6 +1961,7 @@
                   order.status = "Server preview accepted";
                   persistDraftOrders();
                   renderDraftOrders();
+                  renderServerTrades();
                   toast("Server accepted the draft for preview.");
                 }
               })
@@ -1803,6 +1969,7 @@
                 order.status = "Server preview unavailable";
                 persistDraftOrders();
                 renderDraftOrders();
+                renderServerTrades();
                 toast("Server preview unavailable: " + error.message);
               });
           } else {
@@ -1811,6 +1978,7 @@
           addActivity("Order " + (action === "preview" ? "preview requested" : "rejected"), order.operator, order.account, order.ticker + " " + order.action);
           persistDraftOrders();
           renderDraftOrders();
+          renderServerTrades();
           renderActivity();
           if (action !== "preview") toast(order.status + ".");
         }
