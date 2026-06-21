@@ -51,9 +51,13 @@ a {
   position: fixed;
   inset: 0;
   z-index: 2000;
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
   padding: 22px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   background:
     radial-gradient(circle at 50% 8%, rgba(57, 255, 20, 0.14), transparent 34%),
     rgba(2, 6, 23, 0.96);
@@ -61,6 +65,10 @@ a {
 
 .auth-card {
   width: min(460px, 100%);
+  max-height: calc(100dvh - 44px);
+  margin: auto 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding: 26px;
   border: 1px solid rgba(57, 255, 20, 0.26);
   border-radius: 18px;
@@ -174,7 +182,13 @@ a {
 }
 
 @media (max-width: 520px) {
+  .auth-gate {
+    padding: 14px;
+  }
+
   .auth-card {
+    max-height: calc(100dvh - 28px);
+    margin: 0;
     padding: 20px;
   }
 
