@@ -10,6 +10,7 @@
   var appFeedEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/api/app-feed" : "";
   var loginEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/login" : "";
   var registerEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/register" : "";
+  var passwordResetEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/password-reset/request" : "";
   var sessionToken = params.get("session_token") || "";
 
   var state = {
@@ -148,6 +149,7 @@
       "<label class=\"auth-register-field\">Confirm password<input id=\"auth-password-confirm\" type=\"password\" autocomplete=\"new-password\"></label>",
       "<label class=\"auth-check auth-register-field\"><input id=\"auth-accepted-terms\" type=\"checkbox\"><span>I understand SmartSleeve account access is for verified users and does not itself authorize broker trading.</span></label>",
       "<button type=\"submit\" id=\"auth-submit-button\">Sign in</button>",
+      "<button type=\"button\" class=\"auth-link-button\" id=\"auth-reset-button\">Reset password</button>",
       "<small>Account data is served only after the private API verifies your session.</small>",
       "</form>"
     ].join("");
@@ -168,6 +170,24 @@
       button.addEventListener("click", function () {
         setAuthMode(button.getAttribute("data-auth-mode") || "login");
       });
+    });
+    $("auth-reset-button").addEventListener("click", requestPasswordResetFromGate);
+  }
+
+  function showAuthNotice(title, message, actionLabel, actionMode) {
+    var form = $("auth-gate-form");
+    if (!form) return;
+    form.innerHTML = [
+      "<img src=\"/brand/smartsleeve-apparel-logo-cropped.png\" alt=\"SmartSleeve\">",
+      "<h2>" + html(title) + "</h2>",
+      "<p>" + html(message) + "</p>",
+      "<button type=\"button\" id=\"auth-notice-action\">" + html(actionLabel || "Return to sign in") + "</button>",
+      "<small>Account data is served only after the private API verifies your session.</small>"
+    ].join("");
+    $("auth-notice-action").addEventListener("click", function () {
+      removeAuthGate();
+      showAuthGate();
+      setAuthMode(actionMode || "login");
     });
   }
 
@@ -257,12 +277,53 @@
             var detail = payload.errors && payload.errors.length ? payload.errors.join(", ") : (payload.error || "registration_failed");
             throw new Error(detail);
           }
-          setAuthMode("login");
-          text("auth-gate-message", "Verification email sent. Check your inbox, verify, then sign in.");
+          showAuthNotice(
+            "Check your email",
+            "Your account request was submitted. We sent a verification link to " + email + ". Open that email, confirm the account, then return here to sign in.",
+            "Back to sign in",
+            "login"
+          );
         });
       })
       .catch(function (error) {
-        text("auth-gate-message", "Account creation failed: " + error.message);
+        var message = error.message === "account_already_verified"
+          ? "That email already has a verified SmartSleeve account. Sign in with the existing password or use Reset password."
+          : "Account creation failed: " + error.message;
+        text("auth-gate-message", message);
+      });
+  }
+
+  function requestPasswordResetFromGate() {
+    if (!passwordResetEndpoint) {
+      text("auth-gate-message", "SmartSleeve password reset endpoint is not configured.");
+      return;
+    }
+    var email = normalizeEmail(($("auth-email") || {}).value || "");
+    if (!email) {
+      text("auth-gate-message", "Enter your email, then tap Reset password.");
+      return;
+    }
+    text("auth-gate-message", "Sending password reset email...");
+    authFetch(passwordResetEndpoint, {
+      method: "POST",
+      headers: {"Content-Type": "application/json", "Accept": "application/json"},
+      body: JSON.stringify({identity: email})
+    })
+      .then(function (response) {
+        return response.json().catch(function () { return {}; }).then(function (payload) {
+          if (!response.ok || !payload.ok) {
+            throw new Error(payload.error || "password_reset_failed");
+          }
+          showAuthNotice(
+            "Check your email",
+            "If " + email + " has a SmartSleeve account, we sent a password reset link. Open it, set a new password, then return here to sign in.",
+            "Back to sign in",
+            "login"
+          );
+        });
+      })
+      .catch(function (error) {
+        text("auth-gate-message", "Password reset failed: " + error.message);
       });
   }
 
