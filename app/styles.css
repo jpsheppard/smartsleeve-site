@@ -855,6 +855,48 @@ textarea:focus {
   margin-top: 0;
 }
 
+.brand-explainer {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.brand-explainer-item {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.48);
+}
+
+.brand-explainer-item img {
+  width: 44px;
+  height: 44px;
+  border: 1px solid rgba(57, 255, 20, 0.26);
+  border-radius: 8px;
+  object-fit: cover;
+  background: #000;
+}
+
+.brand-explainer-item b {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.brand-explainer-item p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .preview-row {
   display: flex;
   justify-content: space-between;
@@ -1090,6 +1132,7 @@ textarea:focus {
   .sleeve-grid,
   .recommendation-grid,
   .gauge-grid,
+  .brand-explainer,
   .two-columns,
   .trade-layout,
   .trade-history-layout,
