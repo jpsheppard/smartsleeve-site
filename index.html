@@ -66,28 +66,6 @@
       position: relative;
     }
 
-    main::before,
-    main::after {
-      content: "";
-      position: absolute;
-      inset: auto;
-      width: 300px;
-      height: 1px;
-      background: linear-gradient(90deg, transparent, var(--line), transparent);
-      transform: rotate(18deg);
-      pointer-events: none;
-    }
-
-    main::before {
-      left: -80px;
-      top: 80px;
-    }
-
-    main::after {
-      right: -70px;
-      bottom: 96px;
-    }
-
     .brand {
       display: block;
       width: min(720px, 100%);
