@@ -3,41 +3,627 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="robots" content="noindex,nofollow,noarchive">
-  <title>SmartSleeve Private Access</title>
-  <style>
-    :root { color-scheme: dark; }
-    * { box-sizing: border-box; }
-    html, body { min-height: 100%; margin: 0; }
-    body {
-      display: grid;
-      place-items: center;
-      padding: 24px;
-      background: radial-gradient(circle at 50% 12%, rgba(57,255,20,.12), transparent 34%), #020617;
-      color: #e5fbe7;
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    }
-    main {
-      width: min(680px, 100%);
-      padding: clamp(24px, 6vw, 48px);
-      border: 1px solid rgba(57,255,20,.24);
-      border-radius: 22px;
-      background: rgba(2,6,23,.86);
-      text-align: center;
-      box-shadow: 0 32px 100px rgba(0,0,0,.52), 0 0 56px rgba(57,255,20,.10);
-    }
-    img { width: min(420px, 90%); height: auto; margin-bottom: 18px; }
-    h1 { margin: 0 0 10px; color: #39ff14; font-size: clamp(30px, 6vw, 54px); letter-spacing: 0; }
-    p { margin: 0 auto; max-width: 520px; color: #b9cbbb; line-height: 1.55; font-size: 16px; }
-    a { display: inline-flex; margin-top: 24px; color: #061108; background: #39ff14; text-decoration: none; font-weight: 900; padding: 12px 18px; border-radius: 999px; }
-  </style>
+  <title>SmartSleeve Portfolio OS</title>
+  <meta name="description" content="SmartSleeve portfolio operating system for accounts, sleeves, risk, Sage recommendations, and trade review.">
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="theme-color" content="#020617">
+  <meta name="sqts-analytics-endpoint" content="__SQTS_SITE_ANALYTICS_ENDPOINT__">
+  <meta name="smartsleeve-auth-endpoint" content="https://auth.smartsleeve.ai">
+  <meta name="smartsleeve-order-intent-endpoint" content="https://auth.smartsleeve.ai/order-intents">
+  <!-- SmartSleeve Console Prototype: secure backend integration surface. Custom Sage (Grand Sage). -->
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
+  <link rel="stylesheet" href="/app/styles.css">
 </head>
 <body>
-  <main aria-label="SmartSleeve private access locked">
-    <img src="/brand/smartsleeve-apparel-logo-cropped.png" alt="SmartSleeve">
-    <h1>Private Access Locked</h1>
-    <p>SmartSleeve account dashboards are not served from the public website. Sign-in will return after the private application gateway is enabled.</p>
-    <a href="/">Back to SmartSleeve</a>
-  </main>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="SmartSleeve navigation">
+      <a class="brand-lockup" href="#dashboard" data-nav="dashboard" aria-label="SmartSleeve dashboard">
+        <img src="/sqts-logo-green.png" alt="SmartSleeve SS neon-chip mark">
+      </a>
+      <div class="session-box">
+        <span id="edition-label">SmartSleeve</span>
+        <strong id="session-title">Loading account</strong>
+        <small id="session-detail">Syncing portfolio snapshot.</small>
+      </div>
+      <nav class="primary-nav" aria-label="Primary">
+        <a href="#dashboard" data-nav="dashboard" class="active">Dashboard</a>
+        <a href="#sleeves" data-nav="sleeves">Sleeves</a>
+        <a href="#trade" data-nav="trade">Trade Center</a>
+        <a href="#sage" data-nav="sage">Sage</a>
+        <a href="#risk" data-nav="risk">Risk</a>
+      </nav>
+      <div class="sidebar-status">
+        <b>Data source</b>
+        <span id="snapshot-source">Analytics snapshot</span>
+        <span id="snapshot-time">Loading...</span>
+      </div>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Portfolio Operating System</p>
+          <h1 id="page-title">Dashboard</h1>
+          <p id="page-subtitle">What you own, why you own it, what changed, and what needs review.</p>
+        </div>
+        <div class="sync-pill" id="sync-pill">Syncing</div>
+      </header>
+
+      <section id="dashboard" class="panel active" data-section="dashboard">
+        <div class="dashboard-grid">
+          <article class="metric-card primary-metric">
+            <span id="portfolio-value-label">Portfolio value</span>
+            <strong id="portfolio-value">Loading...</strong>
+            <p id="portfolio-scope">Combined tracked equity.</p>
+          </article>
+          <article class="metric-card">
+            <span>Cash</span>
+            <strong id="cash-value">Loading...</strong>
+            <p>Broker-reported cash across visible accounts.</p>
+          </article>
+          <article class="metric-card">
+            <span>Buying power</span>
+            <strong id="buying-power">Loading...</strong>
+            <p>Available buying power where brokers report it.</p>
+          </article>
+          <article class="metric-card">
+            <span>Margin usage</span>
+            <strong id="margin-usage">Loading...</strong>
+            <p>Negative cash and explicit margin exposure.</p>
+          </article>
+          <article class="metric-card">
+            <span>Daily P/L</span>
+            <strong id="daily-pl">Needs sync</strong>
+            <p>Intraday P/L is awaiting broker-level sync.</p>
+          </article>
+          <article class="metric-card">
+            <span>Total P/L</span>
+            <strong id="total-pl">Needs basis</strong>
+            <p>Cost basis sync is required before total P/L is shown.</p>
+          </article>
+          <article class="metric-card">
+            <span>Portfolio return</span>
+            <strong id="portfolio-return">Needs history</strong>
+            <p>Return requires time-series equity and cash-flow history.</p>
+          </article>
+          <article class="metric-card">
+            <span>Sage reviews</span>
+            <strong id="sage-review-count">Loading...</strong>
+            <p>Specific recommendations awaiting review.</p>
+          </article>
+        </div>
+
+        <div class="content-grid two-columns">
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Top holdings</span>
+                <h2>What you own</h2>
+              </div>
+              <button type="button" class="text-button" data-nav-button="risk">View risk</button>
+            </div>
+            <div id="top-holdings" class="stack-list"></div>
+          </article>
+
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Review queue</span>
+                <h2>What needs attention</h2>
+              </div>
+              <button type="button" class="text-button" data-nav-button="sage">Ask Sage</button>
+            </div>
+            <div id="review-queue" class="stack-list"></div>
+          </article>
+        </div>
+
+        <div class="content-grid two-columns">
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Accounts</span>
+                <h2>Broker status</h2>
+              </div>
+              <button type="button" class="text-button" data-nav-button="trade">Trade Center</button>
+            </div>
+            <div id="account-cards" class="account-grid"></div>
+          </article>
+
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Allocation</span>
+                <h2>Active sleeves</h2>
+              </div>
+              <button type="button" class="text-button" data-nav-button="sleeves">Manage sleeves</button>
+            </div>
+            <div id="sleeve-summary" class="stack-list"></div>
+          </article>
+        </div>
+
+        <div class="content-grid two-columns">
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Performance reports</span>
+                <h2>Daily report archive</h2>
+              </div>
+              <span class="status-chip">Cloud archived</span>
+            </div>
+            <div id="report-archive-list" class="stack-list"></div>
+          </article>
+
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Stock picks</span>
+                <h2>Algo report archive</h2>
+              </div>
+              <span class="status-chip">Algo active days</span>
+            </div>
+            <div id="stock-pick-report-list" class="stack-list"></div>
+          </article>
+        </div>
+
+        <article class="panel-card">
+          <div class="card-head">
+            <div>
+              <span>Holdings table</span>
+              <h2>Cross-account positions</h2>
+            </div>
+            <select id="holdings-sort" aria-label="Sort holdings">
+              <option value="value">Sort by value</option>
+              <option value="weight">Sort by weight</option>
+              <option value="symbol">Sort by ticker</option>
+              <option value="account">Sort by account count</option>
+            </select>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Ticker</th>
+                  <th>Quantity</th>
+                  <th>Market value</th>
+                  <th>Weight</th>
+                  <th>Accounts</th>
+                  <th>Thesis status</th>
+                </tr>
+              </thead>
+              <tbody id="holdings-table"></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <section id="sleeves" class="panel" data-section="sleeves">
+        <div class="section-heading">
+          <p class="eyebrow">Sleeves</p>
+          <h2>Strategy buckets with targets, drift, risk, and actions</h2>
+          <p>Sleeves are capital buckets. Multi-sleeve accounts need the live sleeve ledger before SmartSleeve should show exact sleeve-level P/L.</p>
+        </div>
+
+        <div id="sleeve-cards" class="sleeve-grid"></div>
+
+        <article class="panel-card">
+          <div class="card-head">
+            <div>
+              <span>Rebalance</span>
+              <h2>Recommended sleeve actions</h2>
+            </div>
+            <button type="button" class="text-button" data-create-rebalance>Draft rebalance</button>
+          </div>
+          <div id="rebalance-list" class="stack-list"></div>
+        </article>
+
+        <article class="panel-card">
+          <div class="card-head">
+            <div>
+              <span>Sleeve holdings</span>
+              <h2>Position provenance</h2>
+            </div>
+            <span class="status-chip">Ledger-aware</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Sleeve</th>
+                  <th>Account</th>
+                  <th>Holdings</th>
+                  <th>Known value</th>
+                  <th>Next action</th>
+                </tr>
+              </thead>
+              <tbody id="sleeve-table"></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <section id="trade" class="panel" data-section="trade">
+        <div class="section-heading">
+          <p class="eyebrow">Trade Center</p>
+          <h2>Draft, review, approve, reject, and audit trades</h2>
+          <p>Build user-directed or Sage-assisted order intents, check broker/session compatibility, and route eligible orders through server-side preview before any live placement.</p>
+        </div>
+
+        <div class="content-grid trade-layout">
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Order ticket</span>
+                <h2>Prepare intent</h2>
+              </div>
+              <span class="status-chip">Preview first</span>
+            </div>
+            <form id="trade-form" class="trade-form">
+              <label>Account
+                <select id="trade-account"></select>
+              </label>
+              <label>Sleeve
+                <select id="trade-sleeve"></select>
+              </label>
+              <label>Strategy
+                <select id="trade-strategy">
+                  <option value="single_order">Single order</option>
+                  <option value="autoguard_window">autoGuard window</option>
+                  <option value="reallocation">Reallocation</option>
+                  <option value="protective_exit">Protective exit</option>
+                  <option value="bracket">Bracket</option>
+                  <option value="ladder">Ladder</option>
+                </select>
+              </label>
+              <label>Asset class
+                <select id="trade-asset-type">
+                  <option value="equity">Stock / ETF</option>
+                  <option value="option">Option</option>
+                </select>
+              </label>
+              <label>Ticker
+                <input id="trade-ticker" value="MU" autocomplete="off">
+              </label>
+              <label>Intent
+                <select id="trade-action">
+                  <option value="buy">Buy / build</option>
+                  <option value="sell">Sell / trim</option>
+                  <option value="exit">Exit position</option>
+                  <option value="reallocate">Reallocate</option>
+                  <option value="protect">Protect position</option>
+                </select>
+              </label>
+              <label>Target ticker
+                <input id="trade-target-ticker" placeholder="For reallocations">
+              </label>
+              <label>Sizing
+                <select id="trade-sizing">
+                  <option value="notional">Dollar amount</option>
+                  <option value="quantity">Shares/contracts</option>
+                  <option value="percent">Portfolio percent</option>
+                </select>
+              </label>
+              <label>Shares / contracts
+                <input id="trade-quantity" inputmode="decimal" placeholder="Optional">
+              </label>
+              <label>Dollar amount
+                <input id="trade-notional" inputmode="decimal" value="1500">
+              </label>
+              <label>Portfolio %
+                <input id="trade-percent" inputmode="decimal" placeholder="Optional">
+              </label>
+              <label>Order type
+                <select id="trade-order-type">
+                  <option value="limit">Limit</option>
+                  <option value="market">Market</option>
+                  <option value="stop_market">Stop loss</option>
+                  <option value="stop_limit">Stop limit</option>
+                  <option value="trailing_stop_market">Trailing stop loss</option>
+                  <option value="trailing_stop_limit">Trailing stop limit</option>
+                  <option value="bracket">Bracket</option>
+                  <option value="pair_switch">Pair switch</option>
+                </select>
+              </label>
+              <label>Limit price
+                <input id="trade-limit" inputmode="decimal" value="1200">
+              </label>
+              <label>Stop price
+                <input id="trade-stop" inputmode="decimal" placeholder="Stop trigger">
+              </label>
+              <label>Trail
+                <input id="trade-trail" inputmode="decimal" placeholder="Dollar or %">
+              </label>
+              <label>Trail unit
+                <select id="trade-trail-unit">
+                  <option value="percent">Percent</option>
+                  <option value="amount">Dollars</option>
+                </select>
+              </label>
+              <label>Session
+                <select id="trade-session">
+                  <option value="regular">Regular market</option>
+                  <option value="extended">Extended hours</option>
+                  <option value="all_day">Overnight / 24 Hour Market</option>
+                </select>
+              </label>
+              <label>Time in force
+                <select id="trade-tif">
+                  <option value="day">GFD / day</option>
+                  <option value="gtc">GTC</option>
+                </select>
+              </label>
+              <label>autoGuard end time
+                <input id="trade-window-end" type="datetime-local">
+              </label>
+              <label>Margin cap
+                <input id="trade-margin-limit" inputmode="decimal" placeholder="Optional">
+              </label>
+              <label>Operator/source
+                <select id="trade-operator">
+                  <option value="USER_DIRECTED">User-directed</option>
+                  <option value="SAGE_RECOMMEND">Sage recommendation</option>
+                  <option value="SAGE_ASSISTED">Sage assisted</option>
+                  <option value="SAGE_AUTOGUARD">Sage autoGuard</option>
+                  <option value="SQTS_REBALANCE">SmartSleeve rebalance</option>
+                  <option value="SQTS_RISK_EXIT">Risk exit</option>
+                </select>
+              </label>
+              <label>Execution mode
+                <select id="trade-execution-mode">
+                  <option value="draft">Draft only</option>
+                  <option value="server_preview">Server preview</option>
+                  <option value="assisted_place">Preview then request placement</option>
+                  <option value="autoguard">autoGuard supervised</option>
+                </select>
+              </label>
+              <label class="wide">Reason for trade
+                <textarea id="trade-reason" rows="3">Deploy approved cash into MU within Sage guardrails.</textarea>
+              </label>
+              <div class="check-row wide">
+                <input id="trade-confirm" type="checkbox">
+                <label for="trade-confirm">I understand this creates an auditable SmartSleeve order intent. Live placement still requires broker preview, authorization, and account guardrails.</label>
+              </div>
+              <div class="button-row wide">
+                <button type="submit" class="primary">Create draft intent</button>
+                <button type="button" class="text-button" id="server-preview-button">Send for server preview</button>
+              </div>
+            </form>
+          </article>
+
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Pre-trade review</span>
+                <h2>Before submission</h2>
+              </div>
+              <span class="status-chip warning">Approval required</span>
+            </div>
+            <div id="trade-preview" class="preview-box"></div>
+          </article>
+        </div>
+
+        <div class="content-grid two-columns">
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Broker compatibility</span>
+                <h2>Broker session rules</h2>
+              </div>
+              <span id="broker-rule-status" class="status-chip">Checking</span>
+            </div>
+            <div id="broker-compatibility" class="stack-list compact-list"></div>
+          </article>
+
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Intent payload</span>
+                <h2>Backend handoff</h2>
+              </div>
+              <button type="button" class="text-button" id="copy-intent-json">Copy JSON</button>
+            </div>
+            <pre id="intent-json" class="intent-json"></pre>
+          </article>
+        </div>
+
+        <div class="content-grid two-columns">
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Orders</span>
+                <h2>Pending and recent</h2>
+              </div>
+              <span id="order-count" class="status-chip">0</span>
+            </div>
+            <div id="order-list" class="stack-list"></div>
+          </article>
+
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Audit trail</span>
+                <h2>Manual vs Sage vs automated</h2>
+              </div>
+              <button type="button" class="text-button" data-export-audit>Export</button>
+            </div>
+            <div id="activity-log" class="stack-list compact-list"></div>
+          </article>
+        </div>
+
+        <article class="panel-card">
+          <div class="card-head">
+            <div>
+              <span>Server trade history</span>
+              <h2>Submitted trades from analytics ledger</h2>
+            </div>
+            <span class="status-chip">CLI trades feed</span>
+          </div>
+          <div id="server-trade-history" class="stack-list"></div>
+        </article>
+      </section>
+
+      <section id="sage" class="panel" data-section="sage">
+        <div class="section-heading sage-heading">
+          <div>
+            <p class="eyebrow">Sage by SmartSleeve</p>
+            <h2>Portfolio chief investment officer, not a chatbot</h2>
+            <p>Sage reviews holdings, flags drift, drafts recommendations, and explains trade risk. Automation is never enabled by default.</p>
+          </div>
+          <img src="/app/sage-logo.png" alt="Sage by SmartSleeve logo">
+        </div>
+
+        <div class="content-grid sage-layout">
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Operating mode</span>
+                <h2>Permission level</h2>
+              </div>
+              <span id="sage-mode-status" class="status-chip">Recommend</span>
+            </div>
+            <div class="mode-list" id="sage-modes"></div>
+            <button type="button" class="danger-button" id="kill-switch">Automation kill switch</button>
+          </article>
+
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Portfolio review</span>
+                <h2>Specific findings</h2>
+              </div>
+              <button type="button" class="text-button" id="run-review">Run review</button>
+            </div>
+            <div id="sage-review" class="stack-list"></div>
+          </article>
+        </div>
+
+        <article class="panel-card">
+          <div class="card-head">
+            <div>
+              <span>Recommendations</span>
+              <h2>Actions Sage wants reviewed</h2>
+            </div>
+            <span class="status-chip">Draftable</span>
+          </div>
+          <div id="sage-recommendations" class="recommendation-grid"></div>
+        </article>
+
+        <article class="panel-card">
+          <div class="card-head">
+            <div>
+              <span>Brain</span>
+              <h2>Latest sleeve decisions</h2>
+            </div>
+            <span class="status-chip">CLI brain feed</span>
+          </div>
+          <div id="brain-decisions" class="recommendation-grid"></div>
+        </article>
+
+        <article class="panel-card">
+          <div class="card-head">
+            <div>
+              <span>Execution diagnostics</span>
+              <h2>HEB and basis capture</h2>
+            </div>
+            <span class="status-chip">After window close</span>
+          </div>
+          <div id="basis-gauges" class="gauge-grid"></div>
+        </article>
+      </section>
+
+      <section id="risk" class="panel" data-section="risk">
+        <div class="section-heading">
+          <p class="eyebrow">Risk</p>
+          <h2>Concentration, margin, broker, sleeve, and event risk</h2>
+          <p>Risk findings produce concrete actions: trim, rebalance, raise cash, reduce margin, reconnect a broker, or review earnings exposure.</p>
+        </div>
+
+        <div class="dashboard-grid risk-metrics">
+          <article class="metric-card">
+            <span>Largest holding</span>
+            <strong id="largest-position">Loading...</strong>
+            <p id="largest-position-note">Position concentration.</p>
+          </article>
+          <article class="metric-card">
+            <span>Top 3 concentration</span>
+            <strong id="top-three-risk">Loading...</strong>
+            <p>Portfolio impact if leaders move together.</p>
+          </article>
+          <article class="metric-card">
+            <span>Margin risk</span>
+            <strong id="risk-margin">Loading...</strong>
+            <p>Negative cash and account leverage pressure.</p>
+          </article>
+          <article class="metric-card">
+            <span>Broker status</span>
+            <strong id="broker-health">Loading...</strong>
+            <p>Connected, view-only, pending, or disconnected.</p>
+          </article>
+        </div>
+
+        <div class="content-grid two-columns">
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Risk actions</span>
+                <h2>What to review</h2>
+              </div>
+              <button type="button" class="text-button" data-nav-button="trade">Draft action</button>
+            </div>
+            <div id="risk-actions" class="stack-list"></div>
+          </article>
+
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Broker connections</span>
+                <h2>Permissions and sync</h2>
+              </div>
+              <span class="status-chip">Read-only default</span>
+            </div>
+            <div id="broker-connections" class="stack-list"></div>
+          </article>
+        </div>
+
+        <article class="panel-card">
+          <div class="card-head">
+            <div>
+              <span>Risk table</span>
+              <h2>Exposure by account</h2>
+            </div>
+            <button type="button" class="danger-button small" id="risk-kill-switch">Kill automation</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Account</th>
+                  <th>Broker</th>
+                  <th>Equity</th>
+                  <th>Cash</th>
+                  <th>Buying power</th>
+                  <th>Risk note</th>
+                </tr>
+              </thead>
+              <tbody id="risk-account-table"></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <nav class="bottom-nav" aria-label="Primary mobile">
+    <a href="#dashboard" data-nav="dashboard" class="active">Dashboard</a>
+    <a href="#sleeves" data-nav="sleeves">Sleeves</a>
+    <a href="#trade" data-nav="trade">Trade</a>
+    <a href="#sage" data-nav="sage">Sage</a>
+    <a href="#risk" data-nav="risk">Risk</a>
+  </nav>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="/app/app.js" defer></script>
 </body>
 </html>
