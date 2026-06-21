@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SmartSleeve Dashboard Prototype</title>
-  <meta name="description" content="SmartSleeve account, sleeve, broker, execution, and cross-account dashboard prototype.">
-  <!-- SmartSleeve Console Prototype: secure backend integration surface. -->
+  <title>SmartSleeve Portfolio OS</title>
+  <meta name="description" content="SmartSleeve portfolio operating system for accounts, sleeves, risk, Sage recommendations, and trade review.">
   <meta name="robots" content="noindex,nofollow">
   <meta name="theme-color" content="#020617">
   <meta name="sqts-analytics-endpoint" content="__SQTS_SITE_ANALYTICS_ENDPOINT__">
   <meta name="smartsleeve-auth-endpoint" content="__SMARTSLEEVE_AUTH_ENDPOINT__">
+  <!-- SmartSleeve Console Prototype: secure backend integration surface. Custom Sage (Grand Sage). -->
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
@@ -17,1257 +17,469 @@
   <link rel="stylesheet" href="/app/styles.css">
 </head>
 <body>
-  <div class="shell">
-    <aside class="sidebar" aria-label="SmartSleeve console navigation">
-      <a class="brand-lockup" href="#overview" data-nav="overview" aria-label="SmartSleeve console home">
-        <img src="/sqts-logo-green.png" alt="SQTS - SmartSleeve Quantitative Trading Systems">
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="SmartSleeve navigation">
+      <a class="brand-lockup" href="#dashboard" data-nav="dashboard" aria-label="SmartSleeve dashboard">
+        <img src="/sqts-logo-green.png" alt="SmartSleeve SS neon-chip mark">
       </a>
-      <div class="prototype-pill">Private UI prototype</div>
-      <nav>
-        <a href="#overview" data-nav="overview" class="active">Overview</a>
-        <a href="#sage" data-nav="sage">Sage Execute</a>
-        <a href="#diagnostics" data-nav="diagnostics">Diagnostics</a>
-        <a href="#reporting" data-nav="reporting">Reports & Cadence</a>
-        <a href="#portfolio" data-nav="portfolio">SmartSleeve Dashboard</a>
-        <a href="#onboarding" data-nav="onboarding">Create Account</a>
-        <a href="#plans" data-nav="plans">Plans & Billing</a>
-        <a href="#shop" data-nav="shop">Shop</a>
-        <a href="#funding" data-nav="funding">Funding</a>
-        <a href="#broker" data-nav="broker">Broker Links</a>
+      <div class="session-box">
+        <span id="edition-label">SmartSleeve</span>
+        <strong id="session-title">Loading account</strong>
+        <small id="session-detail">Syncing portfolio snapshot.</small>
+      </div>
+      <nav class="primary-nav" aria-label="Primary">
+        <a href="#dashboard" data-nav="dashboard" class="active">Dashboard</a>
         <a href="#sleeves" data-nav="sleeves">Sleeves</a>
-        <a href="#behaviors" data-nav="behaviors">Trading Behaviors</a>
-        <a href="#advanced-orders" data-nav="advanced-orders">Advanced Orders</a>
-        <a href="#universe" data-nav="universe">Custom Sage</a>
-        <a href="#research" data-nav="research">Research & Tuning</a>
-        <a href="#transfers" data-nav="transfers">Absorb / Lateral / Spinoff</a>
-        <a href="#daemon" data-nav="daemon">Daemon Control</a>
-        <a href="#security" data-nav="security">Security</a>
-        <a href="#platforms" data-nav="platforms">Apps & Command</a>
-        <a href="#support" data-nav="support">Help & Support</a>
+        <a href="#trade" data-nav="trade">Trade Center</a>
+        <a href="#sage" data-nav="sage">Sage</a>
+        <a href="#risk" data-nav="risk">Risk</a>
       </nav>
-      <p class="sidebar-note">This console can register email-verified accounts when the secure auth Worker is configured. It still does not collect payment, bank, or broker credentials.</p>
+      <div class="sidebar-status">
+        <b>Data source</b>
+        <span id="snapshot-source">Analytics snapshot</span>
+        <span id="snapshot-time">Loading...</span>
+      </div>
     </aside>
 
     <main>
       <header class="topbar">
         <div>
-          <p class="eyebrow">SmartSleeve Dashboard</p>
-          <h1>You invest. Sage executes.</h1>
+          <p class="eyebrow">Portfolio Operating System</p>
+          <h1 id="page-title">Dashboard</h1>
+          <p id="page-subtitle">What you own, why you own it, what changed, and what needs review.</p>
         </div>
-        <div class="status-card">
-          <span class="status-dot"></span>
-          <div>
-            <strong id="session-title">Signed out</strong>
-            <span id="session-detail">Create or sign in to a verified SmartSleeve account.</span>
-          </div>
-        </div>
+        <div class="sync-pill" id="sync-pill">Syncing</div>
       </header>
 
-      <section id="overview" class="panel active" data-section="overview">
-        <div class="hero-card">
-          <div>
-            <p class="eyebrow">SmartSleeve Dashboard</p>
-            <h2>Smarter execution. Built-in guardrails. Your call.</h2>
-            <p>SmartSleeve brings cross-account holdings, broker health, execution mandates, HEB diagnostics, and investor decision feedback into one operator-grade dashboard.</p>
-            <div class="action-row">
-              <a class="button primary" href="#sage" data-nav="sage">Build a Sage mandate</a>
-              <a class="button ghost" href="#portfolio" data-nav="portfolio">Open dashboard</a>
+      <section id="dashboard" class="panel active" data-section="dashboard">
+        <div class="dashboard-grid">
+          <article class="metric-card primary-metric">
+            <span id="portfolio-value-label">Portfolio value</span>
+            <strong id="portfolio-value">Loading...</strong>
+            <p id="portfolio-scope">Combined tracked equity.</p>
+          </article>
+          <article class="metric-card">
+            <span>Cash</span>
+            <strong id="cash-value">Loading...</strong>
+            <p>Broker-reported cash across visible accounts.</p>
+          </article>
+          <article class="metric-card">
+            <span>Buying power</span>
+            <strong id="buying-power">Loading...</strong>
+            <p>Available buying power where brokers report it.</p>
+          </article>
+          <article class="metric-card">
+            <span>Margin usage</span>
+            <strong id="margin-usage">Loading...</strong>
+            <p>Negative cash and explicit margin exposure.</p>
+          </article>
+          <article class="metric-card">
+            <span>Daily P/L</span>
+            <strong id="daily-pl">Needs sync</strong>
+            <p>Intraday P/L is awaiting broker-level sync.</p>
+          </article>
+          <article class="metric-card">
+            <span>Total P/L</span>
+            <strong id="total-pl">Needs basis</strong>
+            <p>Cost basis sync is required before total P/L is shown.</p>
+          </article>
+          <article class="metric-card">
+            <span>Portfolio return</span>
+            <strong id="portfolio-return">Needs history</strong>
+            <p>Return requires time-series equity and cash-flow history.</p>
+          </article>
+          <article class="metric-card">
+            <span>Sage reviews</span>
+            <strong id="sage-review-count">Loading...</strong>
+            <p>Specific recommendations awaiting review.</p>
+          </article>
+        </div>
+
+        <div class="content-grid two-columns">
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Top holdings</span>
+                <h2>What you own</h2>
+              </div>
+              <button type="button" class="text-button" data-nav-button="risk">View risk</button>
             </div>
-          </div>
-          <div class="sage-brand-panel" aria-label="Sage logo preview">
-            <img src="/app/sage-logo.png" alt="Sage by SmartSleeve four-leaf luminous green plant logo with extensive roots">
+            <div id="top-holdings" class="stack-list"></div>
+          </article>
+
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Review queue</span>
+                <h2>What needs attention</h2>
+              </div>
+              <button type="button" class="text-button" data-nav-button="sage">Ask Sage</button>
+            </div>
+            <div id="review-queue" class="stack-list"></div>
+          </article>
+        </div>
+
+        <div class="content-grid two-columns">
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Accounts</span>
+                <h2>Broker status</h2>
+              </div>
+              <button type="button" class="text-button" data-nav-button="trade">Trade Center</button>
+            </div>
+            <div id="account-cards" class="account-grid"></div>
+          </article>
+
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Allocation</span>
+                <h2>Active sleeves</h2>
+              </div>
+              <button type="button" class="text-button" data-nav-button="sleeves">Manage sleeves</button>
+            </div>
+            <div id="sleeve-summary" class="stack-list"></div>
+          </article>
+        </div>
+
+        <article class="panel-card">
+          <div class="card-head">
             <div>
-              <span>Sage</span>
-              <b>Human-directed, Sage-guarded</b>
+              <span>Holdings table</span>
+              <h2>Cross-account positions</h2>
             </div>
-          </div>
-        </div>
-
-        <div class="grid three">
-          <article class="metric-card">
-            <span>Cross-account command</span>
-            <strong>Dashboard</strong>
-            <p>Composite holdings first, then broker accounts, sleeve ownership, and execution history.</p>
-          </article>
-          <article class="metric-card">
-            <span>Sage by SmartSleeve</span>
-            <strong>Execute</strong>
-            <p>User chooses ticker, size, deadline, and limits. Sage handles pacing, syntax, and guardrails.</p>
-          </article>
-          <article class="metric-card">
-            <span>E*TRADE mode</span>
-            <strong>Enabled</strong>
-            <p>Preview, place, reconcile, settlement-aware cash handling, margin limits, and Edge Sage options permissions.</p>
-          </article>
-          <article class="metric-card">
-            <span>Fidelity / Schwab</span>
-            <strong>Roadmap</strong>
-            <p>Fidelity is view-only via Plaid access; Schwab PCRA remains pending official API onboarding.</p>
-          </article>
-        </div>
-
-        <div class="workflow">
-          <h3>Account Journey</h3>
-          <ol>
-            <li><b>Create profile:</b> name, email, risk disclosures, report preferences.</li>
-            <li><b>Select plan:</b> Basic SmartSleeve or Premium with Grand Sage.</li>
-            <li><b>Link brokers:</b> Robinhood, IBKR, E*TRADE, Plaid/Fidelity view-only, and Schwab when approved.</li>
-            <li><b>Allocate sleeves:</b> set limits, fund strategies, configure behaviors.</li>
-            <li><b>Review and launch:</b> daemon on/off control with guardrails and audit logs.</li>
-          </ol>
-        </div>
-      </section>
-
-      <section id="sage" class="panel" data-section="sage">
-        <div class="section-heading">
-          <p class="eyebrow">Sage Execute</p>
-          <h2>User-directed execution mandates</h2>
-          <p>You choose the trade. Sage plans staged execution inside user-approved limits, then records the audit trail needed to explain every order.</p>
-        </div>
-        <div class="grid two">
-          <article class="card">
-            <h3>Mandate builder</h3>
-            <div class="order-form">
-              <label>Intent
-                <select id="sage-intent">
-                  <option value="open">Open position</option>
-                  <option value="close">Close position</option>
-                  <option value="reallocate">Reallocate basket</option>
-                  <option value="guard">Guard existing position</option>
-                </select>
-              </label>
-              <label>Algo model
-                <select id="sage-model">
-                  <option value="sage">Sage by SmartSleeve</option>
-                  <option value="grand_sage">Grand Sage</option>
-                  <option value="general_sage">General Sage</option>
-                  <option value="value_sage">Value Sage</option>
-                  <option value="edge_sage">Edge Sage</option>
-                  <option value="honey_badger">Honey Badger</option>
-                  <option value="savage_sage">Savage Sage</option>
-                  <option value="hyper_savage">Covered Sage</option>
-                  <option value="convex_sage">Convex Sage</option>
-                </select>
-              </label>
-              <label>Broker/account
-                <select id="sage-broker">
-                  <option value="john_etrade">John E*TRADE</option>
-                  <option value="john_rh">John Robinhood</option>
-                  <option value="john_ibkr_margin">John IBKR Margin</option>
-                  <option value="john_ibkr_roth">John IBKR Roth</option>
-                </select>
-              </label>
-              <label>Agent instance<input id="sage-instance" placeholder="mu_sage1" value="mu_sage1"></label>
-              <label>Symbols<input id="sage-symbols" placeholder="MU, SNDK, SKHYNIX" value="MU"></label>
-              <label>Target<input id="sage-target" placeholder="$10,000 or MU=60,SNDK=40" value="$10000"></label>
-              <label>Margin limit<input id="sage-margin-limit" type="number" min="0" step="1" value="0"></label>
-              <label class="wide">Deadline<input id="sage-deadline" placeholder="2026-06-24 15:30 ET"></label>
-              <label>Urgency
-                <select id="sage-urgency">
-                  <option>patient</option>
-                  <option selected>balanced</option>
-                  <option>urgent</option>
-                </select>
-              </label>
-              <label class="wide">Guardrail<input id="sage-guardrail" placeholder="Do not chase >2% above arrival price"></label>
-            </div>
-          </article>
-          <article class="card">
-            <h3>Sage execution loop</h3>
-            <ol class="numbered-list">
-              <li>User defines ticker, side, size, deadline, and constraints.</li>
-              <li>Sage builds an execution plan from spread, volatility, session, and event context.</li>
-              <li>Optional research/tuning improves pacing when the deadline allows.</li>
-              <li>After the window closes, HEB and basis-capture scoring compare actual execution against the best observed reachable basis.</li>
-              <li>Orders are tagged with operator, ATS, algo model, agent instance, version, and broker reference.</li>
-              <li>If Gateway/API health fails, Sage pauses new risk and alerts the operator.</li>
-            </ol>
-          </article>
-        </div>
-        <div class="preview-card">
-          <h3>Draft Sage mandate</h3>
-          <pre id="sage-mandate-preview"></pre>
-        </div>
-      </section>
-
-      <section id="diagnostics" class="panel" data-section="diagnostics">
-        <div class="section-heading">
-          <p class="eyebrow">Cross-account Diagnostics</p>
-          <h2>Health, execution, and Gateway visibility</h2>
-          <p>The operator view should make failures explicit across John, IBKR, and household accounts before they become mystery breakage.</p>
-        </div>
-        <div class="grid three">
-          <article class="metric-card">
-            <span>IBKR Gateway</span>
-            <strong>Port watch</strong>
-            <p>Java process, VNC, API listener, managed accounts, and daemon connectivity.</p>
-          </article>
-          <article class="metric-card">
-            <span>Execution risk</span>
-            <strong>Reconcile</strong>
-            <p>Open orders, canceled orders, unknown statuses, and stale heartbeats.</p>
-          </article>
-          <article class="metric-card">
-            <span>Alert path</span>
-            <strong>Email + phone</strong>
-            <p>Operator-visible alerts for Gateway down, daemon stop, order errors, and drift.</p>
-          </article>
-        </div>
-        <div class="table-card">
-          <table>
-            <thead><tr><th>Diagnostic</th><th>Signal</th><th>Failure action</th><th>Operator evidence</th></tr></thead>
-            <tbody id="diagnostics-table"></tbody>
-          </table>
-        </div>
-      </section>
-
-      <section id="reporting" class="panel" data-section="reporting">
-        <div class="section-heading">
-          <p class="eyebrow">Reports & Cadence</p>
-          <h2>Daily performance reports and interval controls</h2>
-          <p>Expose the same cadence language the cloud now uses: active Sage account reporting, developer fallback recipients, daemon heartbeat windows, research refresh intervals, and Spaces-hosted chart/logo assets.</p>
-        </div>
-        <div class="grid three">
-          <article class="metric-card">
-            <span>Daily report</span>
-            <strong>01:15 UTC</strong>
-            <p>Runs Tuesday through Saturday after the regular US market close.</p>
-          </article>
-          <article class="metric-card">
-            <span>Recipients</span>
-            <strong>Sage-aware</strong>
-            <p>Developer fallback plus every user with active Sage exposure or explicit report subscription.</p>
-          </article>
-          <article class="metric-card">
-            <span>Image mode</span>
-            <strong>URL first</strong>
-            <p>Reports prefer hosted Spaces images, then fall back to image-free email when needed.</p>
-          </article>
-        </div>
-        <div class="grid two">
-          <article class="card">
-            <h3>Interval settings</h3>
-            <div class="order-form">
-              <label>Daemon heartbeat seconds<input id="cadence-daemon-heartbeat" type="number" min="5" step="5" value="60"></label>
-              <label>Portfolio snapshot minutes<input id="cadence-portfolio-snapshot" type="number" min="1" step="1" value="15"></label>
-              <label>Research refresh minutes<input id="cadence-research-refresh" type="number" min="5" step="5" value="60"></label>
-              <label>Daily report UTC time<input id="cadence-daily-report" value="01:15"></label>
-              <label>Active Sage scan minutes<input id="cadence-sage-scan" type="number" min="1" step="1" value="15"></label>
-              <label>Gateway stale seconds<input id="cadence-gateway-stale" type="number" min="15" step="15" value="120"></label>
-            </div>
-          </article>
-          <article class="card">
-            <h3>Report delivery scope</h3>
-            <ul class="check-list">
-              <li>Developer/operator recipient remains included for daily performance reports.</li>
-              <li>Accounts with <code>sage_mode=active</code> or <code>sage_limit_usd &gt; 0</code> are included.</li>
-              <li>Sage, Covered Sage, and Convex Sage charts/logos appear where applicable.</li>
-              <li>Active Sage by SmartSleeve sections are framed as human-directed account telemetry, not advisor output.</li>
-            </ul>
-          </article>
-        </div>
-        <div class="preview-card">
-          <h3>Draft cadence payload</h3>
-          <pre id="cadence-preview"></pre>
-        </div>
-        <div class="table-card">
-          <table>
-            <thead><tr><th>Report surface</th><th>Audience</th><th>Includes</th><th>Fallback behavior</th></tr></thead>
-            <tbody id="reporting-table"></tbody>
-          </table>
-        </div>
-      </section>
-
-      <section id="portfolio" class="panel" data-section="portfolio">
-        <div class="section-heading">
-          <p class="eyebrow">SmartSleeve Dashboard</p>
-          <h2>Cross-account holdings, diagnostics, and execution intelligence</h2>
-          <p>Show the household composite first, then drill into broker accounts, sleeve ownership, HEB diagnostics, investor decision quality, and counterfactual autoGuard savings.</p>
-        </div>
-        <div class="grid three">
-          <article class="metric-card">
-            <span id="composite-equity-label">Tracked account value</span>
-            <strong id="composite-equity-total">Loading...</strong>
-            <p id="composite-equity-note">Combined tracked broker equity, including view-only external accounts when available.</p>
-          </article>
-          <article class="metric-card">
-            <span>Cross-account holdings</span>
-            <strong>MU / SNDK</strong>
-            <p>Composite symbol rows aggregate shares and dollar value across accounts.</p>
-          </article>
-          <article class="metric-card">
-            <span>Sleeve provenance</span>
-            <strong>Visible</strong>
-            <p>Sleeve subdivisions show which algo owns which shares inside each account.</p>
-          </article>
-          <article class="metric-card">
-            <span>Basis capture</span>
-            <strong>HEB %</strong>
-            <p>Fuel gauges show how close Sage execution came to the hindsight-efficient basis.</p>
-          </article>
-        </div>
-        <div class="toolbar-card">
-          <div>
-            <h3>Cross-account portfolio view</h3>
-            <p id="portfolio-scope-summary">Composite holdings at the top; account-specific holdings and sleeve provenance below.</p>
-          </div>
-          <span id="portfolio-data-source" class="health-pill ok">Analytics snapshot</span>
-        </div>
-        <div class="tablet-command-grid" aria-label="Tablet command board">
-          <article class="tablet-command-card featured">
-            <div class="tablet-card-head">
-              <div>
-                <span>Live execution</span>
-                <h3>Sage mandate queue</h3>
-              </div>
-              <b>4</b>
-            </div>
-            <div id="tablet-execution-queue" class="tablet-list"></div>
-          </article>
-          <article class="tablet-command-card">
-            <div class="tablet-card-head">
-              <div>
-                <span>Broker daemons</span>
-                <h3>Connector matrix</h3>
-              </div>
-              <b>6</b>
-            </div>
-            <div id="tablet-broker-matrix" class="tablet-list"></div>
-          </article>
-          <article class="tablet-command-card">
-            <div class="tablet-card-head">
-              <div>
-                <span>Server control</span>
-                <h3>Cycle optimizer</h3>
-              </div>
-              <b>Auto</b>
-            </div>
-            <div id="tablet-cycle-optimizer" class="tablet-list"></div>
-          </article>
-          <article class="tablet-command-card">
-            <div class="tablet-card-head">
-              <div>
-                <span>Cash / margin</span>
-                <h3>Risk envelope</h3>
-              </div>
-              <b>$500</b>
-            </div>
-            <div id="tablet-risk-envelope" class="tablet-list"></div>
-          </article>
-        </div>
-        <div class="table-card">
-          <table>
-            <thead>
-              <tr><th>Symbol</th><th>Shares</th><th>Avg price</th><th>Value</th><th>% stocks</th><th>Accounts</th></tr>
-            </thead>
-            <tbody id="cross-account-holdings"></tbody>
-          </table>
-        </div>
-        <div class="grid two">
-          <article class="table-card embedded-table">
-            <h3>Accounts</h3>
-            <table>
-              <thead><tr><th>Account</th><th>Broker</th><th>Equity</th><th>Cash</th><th>Buy cap</th><th>Sleeves</th></tr></thead>
-              <tbody id="cross-account-accounts"></tbody>
-            </table>
-          </article>
-          <article class="table-card embedded-table">
-            <h3>Sleeve holdings</h3>
-            <table>
-              <thead><tr><th>Sleeve</th><th>Account</th><th>Symbol</th><th>Shares</th><th>Value</th></tr></thead>
-              <tbody id="cross-account-sleeves"></tbody>
-            </table>
-          </article>
-        </div>
-        <div class="toolbar-card">
-          <div>
-            <h3>Hindsight Efficient Basis diagnostics</h3>
-            <p>HEB means Hindsight Efficient Basis: the best observed reachable basis inside a user-approved mandate window. Basis capture is how much of that hindsight-efficient opportunity Sage captured.</p>
-          </div>
-          <span class="health-pill ok">HEB v1</span>
-        </div>
-        <div id="heb-gauges" class="basis-gauge-grid" aria-label="Basis capture fuel gauges"></div>
-        <div class="grid three">
-          <article class="card compact">
-            <h3>Entry HEB</h3>
-            <p>For buys, HEB is the lowest reachable buy basis during the approved window. Higher capture means less avoidable entry slippage.</p>
-          </article>
-          <article class="card compact">
-            <h3>Exit HEB</h3>
-            <p>For sells, HEB is the highest reachable sale basis during the approved window. Higher capture means better realized exit timing.</p>
-          </article>
-          <article class="card compact">
-            <h3>Reallocation HEB</h3>
-            <p>For reallocations, HEB scores the best observed source sale and target buy relationship across the mandate window.</p>
-          </article>
-        </div>
-        <div class="table-card">
-          <table>
-            <thead>
-              <tr><th>Mandate type</th><th>Basis capture</th><th>Sample</th><th>Definition</th></tr>
-            </thead>
-            <tbody id="heb-diagnostics-table"></tbody>
-          </table>
-        </div>
-        <div class="toolbar-card">
-          <div>
-            <h3>Investor decision performance</h3>
-            <p>Separate end-user feedback evaluates the investor’s selected stock, direction, reallocation pair, and timescale. Sage execution quality remains measured above.</p>
-          </div>
-          <span class="health-pill ok">User choice telemetry</span>
-        </div>
-        <div id="investor-decision-cards" class="decision-card-grid" aria-label="Investor decision performance cards"></div>
-        <div class="toolbar-card">
-          <div>
-            <h3>autoGuard counterfactuals</h3>
-            <p>After a mandate closes, SmartSleeve can estimate what the user could have saved or made versus a plausible autoGuard-managed path. These are analytics estimates, not promises.</p>
-          </div>
-          <span class="health-pill warn">Counterfactual model</span>
-        </div>
-        <div id="autoguard-counterfactuals" class="decision-card-grid" aria-label="autoGuard counterfactual cards"></div>
-        <div class="table-card">
-          <table>
-            <thead>
-              <tr><th>Choice type</th><th>Return over chosen window</th><th>Timescale</th><th>Feedback</th></tr>
-            </thead>
-            <tbody id="investor-decision-table"></tbody>
-          </table>
-        </div>
-        <div class="toolbar-card">
-          <div>
-            <h3>Behavior breakdown</h3>
-            <p>Filter the demo portfolio by sleeve to preview how held assets, lots, and behavior rules should be exposed.</p>
-          </div>
-          <label>Display sleeve
-            <select id="portfolio-filter">
-              <option value="all">All sleeves</option>
-              <option value="Sage by SmartSleeve">Sage by SmartSleeve</option>
-              <option value="Semi Sage">Semi Sage</option>
-              <option value="Honey Badger">Honey Badger</option>
-              <option value="Grand Sage">Grand Sage</option>
-              <option value="General Sage">General Sage</option>
-              <option value="Value Sage">Value Sage</option>
-              <option value="Edge Sage">Edge Sage</option>
-              <option value="Savage Sage">Savage Sage</option>
-              <option value="Covered Sage">Covered Sage</option>
-              <option value="Convex Sage">Convex Sage</option>
-              <option value="Non-sleeve">Non-sleeve</option>
+            <select id="holdings-sort" aria-label="Sort holdings">
+              <option value="value">Sort by value</option>
+              <option value="weight">Sort by weight</option>
+              <option value="symbol">Sort by ticker</option>
+              <option value="account">Sort by account count</option>
             </select>
-          </label>
-        </div>
-        <div class="table-card">
-          <table>
-            <thead>
-              <tr><th>Sleeve</th><th>Asset</th><th>Quantity</th><th>Value</th><th>Behaviors</th><th>Touch permission</th></tr>
-            </thead>
-            <tbody id="portfolio-breakdown"></tbody>
-          </table>
-        </div>
-        <div class="grid two">
-          <article class="card">
-            <h3>Ledger hygiene</h3>
-            <p>Absorbed assets raise sleeve limits at absorption value. Spinoffs lower sleeve limits at current value. Laterals move value between sleeve limits atomically.</p>
-          </article>
-          <article class="card">
-            <h3>Accounting views</h3>
-            <p>Daily reports should separate strategy P&amp;L from absorbed P&amp;L, spinoff value transfer, lateral transfers, and non-sleeve holdings.</p>
-          </article>
-        </div>
-      </section>
-
-      <section id="onboarding" class="panel" data-section="onboarding">
-        <div class="section-heading">
-          <p class="eyebrow">Account</p>
-          <h2>Sign in or create a SmartSleeve profile</h2>
-          <p>Verified SmartSleeve users and developer accounts can sign in from any internet-connected app shell.</p>
-        </div>
-        <div class="auth-grid">
-          <form class="form-grid auth-form" id="login-form">
-            <label class="wide">Email or username<input name="identity" autocomplete="username" placeholder="jpsheppard or john@smartsleeve.ai"></label>
-            <label class="wide">Password<input name="password" type="password" autocomplete="current-password" placeholder="Account password"></label>
-            <div class="wide form-actions">
-              <button type="submit" class="button primary">Sign in</button>
-              <button type="button" class="button ghost" id="logout-button" hidden>Sign out</button>
-              <p id="login-status" class="form-status" role="status" aria-live="polite"></p>
-            </div>
-          </form>
-          <article class="card account-card">
-            <span class="plan-kicker">Current session</span>
-            <h3 id="account-name">No verified session</h3>
-            <p id="account-email">Use the sign-in form after verifying your email.</p>
-            <p id="account-role" class="role-pill">signed out</p>
-          </article>
-        </div>
-        <form class="form-grid" id="profile-form">
-          <label>Username<input name="username" autocomplete="username" placeholder="crissy-sleeve"></label>
-          <label>Email<input name="email" type="email" autocomplete="email" placeholder="crissy@example.com"></label>
-          <label>First name<input name="first_name" autocomplete="given-name" placeholder="Criselda"></label>
-          <label>Middle name<input name="middle_name" autocomplete="additional-name" placeholder="Agenes"></label>
-          <label>Last name<input name="last_name" autocomplete="family-name" placeholder="Sarenas"></label>
-          <label>Nickname<input name="nickname" placeholder="Crissy"></label>
-          <label>Password<input name="password" type="password" autocomplete="new-password" minlength="12" placeholder="At least 12 characters"></label>
-          <label>Confirm password<input name="password_confirm" type="password" autocomplete="new-password" minlength="12" placeholder="Re-enter password"></label>
-          <label class="wide">Daily report recipients<input name="report_recipients" placeholder="criseldasarenas@gmail.com, john@smartsleeve.ai"></label>
-          <label class="wide">Investor notes<textarea name="notes" rows="4" placeholder="Risk tolerance, favorite sectors, strategy preferences..."></textarea></label>
-          <label class="wide checkbox-line">
-            <input name="accepted_terms" type="checkbox">
-            <span>I understand this is an early SmartSleeve account request, not permission to collect broker credentials, charge payment, or start live trading.</span>
-          </label>
-          <div class="wide form-actions">
-            <button type="submit" class="button primary">Create account and send verification email</button>
-            <p id="registration-status" class="form-status" role="status" aria-live="polite"></p>
           </div>
-        </form>
-        <div class="callout">
-          <b>Security boundary:</b> account registration uses the backend auth Worker when configured. Broker, bank, billing, sleeve ledger, and daemon actions still require separate secure provider flows and explicit authorization.
-        </div>
-      </section>
-
-      <section id="plans" class="panel" data-section="plans">
-        <div class="section-heading">
-          <p class="eyebrow">Plans & Billing</p>
-          <h2>Subscription selection</h2>
-          <p>Billing controls are placeholders until Stripe, Paddle, or another payment provider is wired in.</p>
-        </div>
-        <div class="pricing-grid">
-          <article class="plan-card">
-            <span class="plan-kicker">Basic</span>
-            <h3>SmartSleeve Core</h3>
-            <strong><span data-price="core">$20</span><span>/month</span></strong>
-            <ul>
-              <li>Semi Sage and Honey Badger strategy access</li>
-              <li>Daily portfolio reports</li>
-              <li>Absorb, spinoff, and lateral transfer controls</li>
-              <li>Trading behavior configuration</li>
-            </ul>
-            <button type="button" class="button ghost" data-prototype-action="Basic plan selected. A production build would open hosted checkout next.">Select Basic</button>
-          </article>
-          <article class="plan-card featured">
-            <span class="plan-kicker">Premium</span>
-            <h3>SmartSleeve Grand Sage</h3>
-            <strong><span data-price="grand-sage">$100</span><span>/month</span></strong>
-            <ul>
-              <li>Everything in Basic</li>
-              <li>Grand Sage daily universe generation</li>
-              <li>Custom Sage universe tuning and priors</li>
-              <li>Expanded research and model calibration workflows</li>
-            </ul>
-            <button type="button" class="button primary" data-prototype-action="Premium Grand Sage plan selected. A production build would open hosted checkout next.">Select Premium</button>
-          </article>
-        </div>
-        <div class="secure-placeholder">
-          <h3>Payment method</h3>
-          <p>Use a hosted checkout page in production. Card and billing data should never touch this static site.</p>
-          <div class="checkout-preview" aria-label="Subscription checkout preview">
-            <label class="switch">
-              <input id="checkout-core" type="checkbox" checked disabled>
-              <span>SmartSleeve Core subscription</span>
-            </label>
-            <label class="switch">
-              <input id="checkout-grand-sage" type="checkbox" checked>
-              <span>Add optional Grand Sage subscription</span>
-            </label>
-            <label class="discount-field">
-              Discount code
-              <span class="discount-entry">
-                <input id="discount-code" autocomplete="off" placeholder="BFF4LYFE">
-                <button type="button" class="button ghost" id="apply-discount">Apply</button>
-              </span>
-            </label>
-            <div id="discount-summary" class="discount-summary" role="status" aria-live="polite"></div>
-            <dl class="checkout-totals">
-              <div><dt>SmartSleeve Core</dt><dd id="core-total">$20.00/mo</dd></div>
-              <div><dt>Grand Sage add-on</dt><dd id="grand-sage-total">$100.00/mo</dd></div>
-              <div class="checkout-grand-total"><dt>Total</dt><dd id="checkout-total">$120.00/mo</dd></div>
-            </dl>
-            <p class="billing-note">Discount codes must be validated again by the billing backend before payment or subscription activation.</p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Ticker</th>
+                  <th>Quantity</th>
+                  <th>Market value</th>
+                  <th>Weight</th>
+                  <th>Accounts</th>
+                  <th>Thesis status</th>
+                </tr>
+              </thead>
+              <tbody id="holdings-table"></tbody>
+            </table>
           </div>
-          <button type="button" disabled>Secure checkout connector required</button>
-        </div>
-      </section>
-
-      <section id="shop" class="panel" data-section="shop">
-        <div class="section-heading">
-          <p class="eyebrow">SQTS Shop</p>
-          <h2>SmartSleeve merch, starting with black tees</h2>
-          <p>Merch checkout is designed for SmartSleeve Quantitative Trading Systems, LLC to be the merchant of record. Customers pay SmartSleeve through hosted Stripe Checkout; after payment clears, a server-side fulfillment webhook sends the order to Printify, Printful, or another print-on-demand vendor.</p>
-        </div>
-
-        <div class="merch-grid featured-merch">
-          <article class="merch-card featured">
-            <img src="/merch/sqts-original-tee-preview.png" alt="Preview of the SQTS Circuit Logo black tee">
-            <div class="merch-copy">
-              <span class="plan-kicker">Launch tee</span>
-              <h3>SQTS Circuit Logo Tee</h3>
-              <strong>$19.99 <span>+ shipping</span></strong>
-              <p>Black men's or women's tee with the original SQTS neon circuit logo on the front.</p>
-              <ul class="check-list">
-                <li>Value tee target: $19.99 before shipping when provider base cost allows.</li>
-                <li>Premium tee option can use higher-grade cotton or embroidery where available.</li>
-                <li>Print art: <code>/merch/sqts-original-front-print.png</code></li>
-              </ul>
-              <div class="action-row">
-                <button type="button" class="button primary" data-merch-checkout="sqts-tee">Order SQTS tee</button>
-                <a class="button ghost" href="/merch/sqts-original-front-print.png">Open print art</a>
-              </div>
-            </div>
-          </article>
-
-          <article class="merch-card featured">
-            <img src="/merch/semisage-signature-tee-preview.png" alt="Preview of the Semi Sage Signature black tee">
-            <div class="merch-copy">
-              <span class="plan-kicker">Signature tee</span>
-              <h3>Semi Sage Signature Tee</h3>
-              <strong>$19.99 <span>+ shipping</span></strong>
-              <p>Black tee with the high-resolution Semi Sage artwork and SmartSleeve Quantitative Trading Systems lockup.</p>
-              <ul class="check-list">
-                <li>Designed for the same men's and women's black tee product family.</li>
-                <li>Green typography and guide lines are baked into the print-ready artwork.</li>
-                <li>Print art: <code>/merch/semisage-signature-front-print.png</code></li>
-              </ul>
-              <div class="action-row">
-                <button type="button" class="button primary" data-merch-checkout="semisage-tee">Order Semi Sage tee</button>
-                <a class="button ghost" href="/merch/semisage-signature-front-print.png">Open print art</a>
-              </div>
-            </div>
-          </article>
-        </div>
-
-        <div class="merch-grid compact-merch">
-          <article class="merch-mini-card">
-            <span>Next product</span>
-            <h3>Black hoodie</h3>
-            <p>Same two logo variants, likely priced above tee range because blanks and shipping cost more.</p>
-          </article>
-          <article class="merch-mini-card">
-            <span>Next product</span>
-            <h3>Black tank top</h3>
-            <p>Summer cut with SQTS or Semi Sage front art.</p>
-          </article>
-          <article class="merch-mini-card">
-            <span>Embroidery-first</span>
-            <h3>Black baseball cap</h3>
-            <p>Best with the compact SQTS chip/favicon mark or small SQTS wordmark.</p>
-          </article>
-          <article class="merch-mini-card">
-            <span>Desk gear</span>
-            <h3>Mug, mouse pad, pen</h3>
-            <p>Black accessories with either full SQTS logo or Semi Sage signature art.</p>
-          </article>
-        </div>
-
-        <div class="grid two">
-          <article class="card">
-            <h3>Fulfillment setup path</h3>
-            <ol class="numbered-list">
-              <li>Create a Stripe account under SmartSleeve Quantitative Trading Systems, LLC and connect a SmartSleeve business bank account.</li>
-              <li>Create the two tee products in a print-on-demand vendor account owned or paid by SmartSleeve, using the print PNGs above.</li>
-              <li>Configure the server-side merch checkout endpoint to create hosted Stripe Checkout Sessions for each product.</li>
-              <li>Configure the Stripe payment-success webhook to submit the paid order to the fulfillment vendor and store the vendor order id.</li>
-            </ol>
-          </article>
-          <article class="card">
-            <h3>Quality note</h3>
-            <p>For lowest friction, launch with direct-to-garment black tees. For a premium drop, use embroidered caps or embroidered chest marks where the provider supports it; large full-color art is usually better printed than embroidered.</p>
-            <p class="billing-note">Current checkout buttons are merchant-of-record ready but disabled until <code>MERCH_STRIPE_CHECKOUT_ENDPOINT</code> is configured. Card data must stay in Stripe-hosted checkout, never on this static site.</p>
-          </article>
-        </div>
-      </section>
-
-      <section id="funding" class="panel" data-section="funding">
-        <div class="section-heading">
-          <p class="eyebrow">Funding</p>
-          <h2>Bank connection and deposits</h2>
-          <p>Users need a clean place to connect funding sources, deposit cash, and assign buying power to sleeves.</p>
-        </div>
-        <div class="grid two">
-          <article class="card">
-            <h3>Bank account</h3>
-            <p>Production should use Plaid, Stripe Financial Connections, or broker-native funding flows.</p>
-            <button type="button" disabled>Connect bank securely</button>
-          </article>
-          <article class="card">
-            <h3>Deposit request</h3>
-            <label>Amount<input type="number" min="0" step="1" placeholder="2500"></label>
-            <label>Destination sleeve
-              <select>
-                <option>Unallocated account cash</option>
-                <option>Sage by SmartSleeve</option>
-                <option>Semi Sage</option>
-                <option>Honey Badger</option>
-                <option>Grand Sage</option>
-                <option>General Sage</option>
-                <option>Value Sage</option>
-                <option>Savage Sage</option>
-                <option>Covered Sage</option>
-                <option>Convex Sage</option>
-              </select>
-            </label>
-            <button type="button" class="button ghost" data-prototype-action="Deposit draft captured locally. Production still needs bank verification, funding preview, and explicit confirmation.">Draft deposit request</button>
-          </article>
-        </div>
-      </section>
-
-      <section id="broker" class="panel" data-section="broker">
-        <div class="section-heading">
-          <p class="eyebrow">Broker Links</p>
-          <h2>Broker authorization and connector status</h2>
-          <p>SmartSleeve should show each broker’s live/read-only/pending status, supported execution path, settlement constraints, and revocation controls without collecting raw credentials in the UI.</p>
-        </div>
-        <div class="security-panel">
-          <div>
-            <h3>Do not paste live broker credentials here.</h3>
-            <p>Production connectors should use OAuth, broker-native keys, Plaid-style consent, or server-side secret vaulting with token rotation and explicit revocation.</p>
-          </div>
-          <span>LOCKED</span>
-        </div>
-        <div class="grid three">
-          <article class="metric-card">
-            <span>Robinhood</span>
-            <strong>Agentic</strong>
-            <p>Live-capable with strict order syntax, reconciliation, and cancellation diagnostics.</p>
-          </article>
-          <article class="metric-card">
-            <span>IBKR</span>
-            <strong>Gateway</strong>
-            <p>Margin/Roth daemon support with managed-account visibility and Gateway watchdogs.</p>
-          </article>
-          <article class="metric-card">
-            <span>E*TRADE</span>
-            <strong>Preview / place / reconcile</strong>
-            <p>Live-capable daemon on the IBKR server, with settlement-aware cash and options permissions.</p>
-          </article>
-          <article class="metric-card">
-            <span>Fidelity</span>
-            <strong>View-only</strong>
-            <p>Plaid/Fidelity Access can support balances and positions when production access is approved.</p>
-          </article>
-          <article class="metric-card">
-            <span>Schwab PCRA</span>
-            <strong>Pending</strong>
-            <p>Official Schwab API onboarding remains the clean path for retirement PCRA monitoring or trading.</p>
-          </article>
-          <article class="metric-card">
-            <span>Edge Sage</span>
-            <strong>Options L1-3</strong>
-            <p>Enabled only up to the broker account’s approved option level and SmartSleeve risk limits.</p>
-          </article>
-        </div>
-        <div class="table-card">
-          <table>
-            <thead><tr><th>Connector</th><th>Status</th><th>Capabilities</th><th>Constraints</th></tr></thead>
-            <tbody id="broker-connection-table"></tbody>
-          </table>
-        </div>
+        </article>
       </section>
 
       <section id="sleeves" class="panel" data-section="sleeves">
         <div class="section-heading">
-          <p class="eyebrow">Sleeve Strategy Allocation</p>
-          <h2>Set sleeve limits and enabled agents</h2>
-          <p>These controls should eventually compile to safe profile changes with server-side validation before the daemon reads them.</p>
+          <p class="eyebrow">Sleeves</p>
+          <h2>Strategy buckets with targets, drift, risk, and actions</h2>
+          <p>Sleeves are capital buckets. Multi-sleeve accounts need the live sleeve ledger before SmartSleeve should show exact sleeve-level P/L.</p>
         </div>
-        <div class="sleeve-grid">
-          <article class="sleeve-card featured-sage">
-            <img class="sleeve-logo" src="/app/sage-logo.png" alt="Sage by SmartSleeve four-leaf luminous green plant logo with extensive roots">
-            <h3>Sage by SmartSleeve</h3>
-            <p>Human-directed execution sleeve. The user supplies intent; Sage handles syntax, pacing, guardrails, and telemetry.</p>
-            <label>Sleeve limit<input type="number" value="2500"></label>
-            <label class="switch"><input type="checkbox" checked><span>Active Sage mode</span></label>
-          </article>
-          <article class="sleeve-card">
-            <div class="agent-orb semi">SS</div>
-            <h3>Semi Sage</h3>
-            <p>Focused semiconductor and AI infrastructure long strategy.</p>
-            <label>Sleeve limit<input type="number" value="5000"></label>
-            <label class="switch"><input type="checkbox" checked><span>Enabled</span></label>
-          </article>
-          <article class="sleeve-card">
-            <div class="agent-orb hb">HB</div>
-            <h3>Honey Badger</h3>
-            <p>Directional pair-switching strategy for SOXL/SOXS-style market direction.</p>
-            <label>Sleeve limit<input type="number" value="750"></label>
-            <label class="switch"><input type="checkbox" checked><span>Enabled</span></label>
-          </article>
-          <article class="sleeve-card">
-            <div class="agent-orb grand">GS</div>
-            <h3>Grand Sage</h3>
-            <p>Custom 1-20 asset universe, optionally fed by daily Grand Sage research.</p>
-            <label>Sleeve limit<input type="number" value="10000"></label>
-            <label class="switch"><input type="checkbox" checked><span>Grand Sage mode</span></label>
-          </article>
-          <article class="sleeve-card">
-            <div class="agent-orb general">GEN</div>
-            <h3>General Sage</h3>
-            <p>Broad-market AI stock-picker sleeve with defensive inverse assets available.</p>
-            <label>Sleeve limit<input type="number" value="0"></label>
-            <label class="switch"><input type="checkbox"><span>Enabled</span></label>
-          </article>
-          <article class="sleeve-card">
-            <div class="agent-orb value">VAL</div>
-            <h3>Value Sage</h3>
-            <p>Patient fair-value sleeve that prefers cash when prices are rich.</p>
-            <label>Sleeve limit<input type="number" value="0"></label>
-            <label class="switch"><input type="checkbox"><span>Enabled</span></label>
-          </article>
-          <article class="sleeve-card">
-            <div class="agent-orb edge">EDG</div>
-            <h3>Edge Sage</h3>
-            <p>Options-aware companion sleeve for covered, defined-risk, and account-approved Level 1-3 options strategies.</p>
-            <label>Sleeve limit<input type="number" value="500"></label>
-            <label class="switch"><input type="checkbox" checked><span>E*TRADE options L1-3 enabled</span></label>
-          </article>
-          <article class="sleeve-card">
-            <div class="agent-orb savage">SAV</div>
-            <h3>Savage Sage</h3>
-            <p>Tactical buy-low/sell-high sleeve with profit-taking and re-entry discipline.</p>
-            <label>Sleeve limit<input type="number" value="0"></label>
-            <label class="switch"><input type="checkbox"><span>Enabled</span></label>
-          </article>
-          <article class="sleeve-card">
-            <div class="agent-orb covered">COV</div>
-            <h3>Covered Sage</h3>
-            <p>Covered-call and buy-write shaped sleeve; live options require explicit permissions.</p>
-            <label>Sleeve limit<input type="number" value="0"></label>
-            <label class="switch"><input type="checkbox"><span>Options permission gated</span></label>
-          </article>
-          <article class="sleeve-card">
-            <div class="agent-orb convex">CVX</div>
-            <h3>Convex Sage</h3>
-            <p>Defined-risk convex options sleeve for asymmetric exposure with bounded premium risk.</p>
-            <label>Sleeve limit<input type="number" value="0"></label>
-            <label class="switch"><input type="checkbox"><span>Options permission gated</span></label>
-          </article>
-        </div>
+
+        <div id="sleeve-cards" class="sleeve-grid"></div>
+
+        <article class="panel-card">
+          <div class="card-head">
+            <div>
+              <span>Rebalance</span>
+              <h2>Recommended sleeve actions</h2>
+            </div>
+            <button type="button" class="text-button" data-create-rebalance>Draft rebalance</button>
+          </div>
+          <div id="rebalance-list" class="stack-list"></div>
+        </article>
+
+        <article class="panel-card">
+          <div class="card-head">
+            <div>
+              <span>Sleeve holdings</span>
+              <h2>Position provenance</h2>
+            </div>
+            <span class="status-chip">Ledger-aware</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Sleeve</th>
+                  <th>Account</th>
+                  <th>Holdings</th>
+                  <th>Known value</th>
+                  <th>Next action</th>
+                </tr>
+              </thead>
+              <tbody id="sleeve-table"></tbody>
+            </table>
+          </div>
+        </article>
       </section>
 
-      <section id="behaviors" class="panel" data-section="behaviors">
+      <section id="trade" class="panel" data-section="trade">
         <div class="section-heading">
-          <p class="eyebrow">Trading Behaviors</p>
-          <h2>Per-sleeve and per-asset operating style</h2>
-          <p>Behavior controls are designed to apply globally, by sleeve, by asset, or by specific held lots.</p>
+          <p class="eyebrow">Trade Center</p>
+          <h2>Draft, review, approve, reject, and audit trades</h2>
+          <p>No live order is submitted from this screen without a server-side broker preview and explicit approval.</p>
         </div>
-        <div class="behavior-builder">
-          <div class="behavior-form">
-            <label>Sleeve
-              <select id="behavior-sleeve">
-                <option>Sage by SmartSleeve</option>
-                <option>Semi Sage</option>
-                <option>Honey Badger</option>
-                <option>Grand Sage</option>
-                <option>General Sage</option>
-                <option>Value Sage</option>
-                <option>Edge Sage</option>
-                <option>Savage Sage</option>
-                <option>Covered Sage</option>
-                <option>Convex Sage</option>
-              </select>
-            </label>
-            <label>Asset symbol<input id="behavior-symbol" placeholder="MU"></label>
-            <label>Scope
-              <select id="behavior-scope">
-                <option>All future purchases</option>
-                <option>Current held shares</option>
-                <option>Specific fractional share lot</option>
-              </select>
-            </label>
-            <label>Quantity<input id="behavior-quantity" type="number" min="0" step="0.000001" placeholder="Optional"></label>
-          </div>
-          <div class="sliders">
-            <label>Clinginess / Flip resistance <output id="clinginess-out">100%</output><input id="clinginess" type="range" min="0" max="100" value="100"></label>
-            <label>Diversity <output id="diversity-out">0%</output><input id="diversity" type="range" min="0" max="100" value="0"></label>
-            <label>Attraction <output id="attraction-out">50%</output><input id="attraction" type="range" min="0" max="100" value="50"></label>
-            <label>Bullishness <output id="bullishness-out">50%</output><input id="bullishness" type="range" min="0" max="100" value="50"></label>
-            <label>Stickiness <output id="stickiness-out">100%</output><input id="stickiness" type="range" min="0" max="100" value="100"></label>
-            <label>Gain-locking <output id="gain-locking-out">0%</output><input id="gain-locking" type="range" min="0" max="100" value="0"></label>
-            <label class="checkbox-line"><input id="hard-hold" type="checkbox"> Hard hold scoped shares; never sell until removed</label>
-          </div>
-        </div>
-        <div class="preview-card">
-          <h3>Draft behavior rule</h3>
-          <pre id="behavior-preview"></pre>
-        </div>
-      </section>
 
-      <section id="advanced-orders" class="panel" data-section="advanced-orders">
-        <div class="section-heading">
-          <p class="eyebrow">Advanced Order Intents</p>
-          <h2>Draft market, limit, stop, trailing, bracket, and conditional orders</h2>
-          <p>These controls model orders a user may want SmartSleeve to manage. Complex orders remain draft-only until the broker adapter or SmartSleeve synthetic order supervisor is enabled.</p>
-        </div>
-        <div class="grid two">
-          <article class="card">
-            <h3>Order ticket</h3>
-            <div class="order-form">
+        <div class="content-grid trade-layout">
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Trade ticket</span>
+                <h2>Prepare order</h2>
+              </div>
+              <span class="status-chip">Draft only</span>
+            </div>
+            <form id="trade-form" class="trade-form">
+              <label>Account
+                <select id="trade-account"></select>
+              </label>
               <label>Sleeve
-                <select id="advanced-order-sleeve">
-                  <option value="safer_v1">Semi Sage</option>
-                  <option value="honey_badger">Honey Badger</option>
-                  <option value="grand_sage">Custom Sage (Grand Sage)</option>
-                  <option value="general_sage">General Sage</option>
-                  <option value="value_sage">Value Sage</option>
-                  <option value="sage">Sage by SmartSleeve</option>
-                  <option value="savage_sage">Savage Sage</option>
-                  <option value="hyper_savage">Covered Sage</option>
-                  <option value="convex_sage">Convex Sage</option>
+                <select id="trade-sleeve"></select>
+              </label>
+              <label>Ticker
+                <input id="trade-ticker" value="MU" autocomplete="off">
+              </label>
+              <label>Action
+                <select id="trade-action">
+                  <option>Buy</option>
+                  <option>Sell</option>
+                  <option>Trim</option>
+                  <option>Add</option>
+                  <option>Exit</option>
+                  <option>Rebalance</option>
                 </select>
               </label>
-              <label>Symbol<input id="advanced-order-symbol" placeholder="MU" value="MU"></label>
-              <label>Side
-                <select id="advanced-order-side">
-                  <option value="buy">Buy</option>
-                  <option value="sell">Sell</option>
-                </select>
+              <label>Quantity
+                <input id="trade-quantity" inputmode="decimal" placeholder="Optional">
+              </label>
+              <label>Dollar amount
+                <input id="trade-notional" inputmode="decimal" value="1500">
               </label>
               <label>Order type
-                <select id="advanced-order-type">
-                  <option value="market">Market</option>
-                  <option value="limit">Limit</option>
-                  <option value="stop_market">Stop market</option>
-                  <option value="stop_limit">Stop limit</option>
-                  <option value="trailing_stop_market">Trailing stop market</option>
-                  <option value="trailing_stop_limit">Synthetic trailing stop limit</option>
-                  <option value="oco">OCO</option>
-                  <option value="oto">OTO</option>
-                  <option value="otoco">OTOCO</option>
-                  <option value="bracket">Bracket</option>
-                  <option value="if_then">If / then</option>
-                  <option value="ladder">Ladder</option>
-                  <option value="pair_switch">Pair switch</option>
+                <select id="trade-order-type">
+                  <option>Limit</option>
+                  <option>Market</option>
+                  <option>Stop limit</option>
                 </select>
               </label>
-              <label>Quantity<input id="advanced-order-quantity" type="number" min="0" step="0.000001" placeholder="1"></label>
-              <label>Notional USD<input id="advanced-order-notional" type="number" min="0" step="0.01" placeholder="Optional"></label>
-              <label>Limit price<input id="advanced-order-limit-price" type="number" min="0" step="0.01" placeholder="Optional"></label>
-              <label>Stop price<input id="advanced-order-stop-price" type="number" min="0" step="0.01" placeholder="Optional"></label>
-              <label>Trailing amount<input id="advanced-order-trailing-amount" type="number" min="0" step="0.01" placeholder="Optional"></label>
-              <label>Trailing percent<input id="advanced-order-trailing-percent" type="number" min="0" max="100" step="0.01" placeholder="3 = 3%"></label>
-              <label>Limit offset<input id="advanced-order-limit-offset" type="number" min="0" step="0.01" placeholder="Optional"></label>
-              <label>Session
-                <select id="advanced-order-session">
-                  <option value="regular_hours">Regular hours</option>
-                  <option value="extended_hours">Extended hours</option>
-                  <option value="all_day_hours">All day hours</option>
+              <label>Limit price
+                <input id="trade-limit" inputmode="decimal" value="1200">
+              </label>
+              <label>Time in force
+                <select id="trade-tif">
+                  <option>Day</option>
+                  <option>GTC</option>
+                  <option>Extended hours where broker allows</option>
                 </select>
               </label>
-              <label class="wide">Notes<textarea id="advanced-order-notes" rows="3" placeholder="Reason, trigger context, or user instruction."></textarea></label>
-            </div>
+              <label>Operator/source
+                <select id="trade-operator">
+                  <option>JPS_MANUAL</option>
+                  <option>SAGE_RECOMMEND</option>
+                  <option>SAGE_ASSISTED</option>
+                  <option>SQTS_REBALANCE</option>
+                  <option>SQTS_RISK_EXIT</option>
+                </select>
+              </label>
+              <label class="wide">Reason for trade
+                <textarea id="trade-reason" rows="3">Deploy approved cash into MU within Sage guardrails.</textarea>
+              </label>
+              <button type="submit" class="primary wide">Create draft order</button>
+            </form>
           </article>
-          <article class="card">
-            <h3>Professional order patterns</h3>
-            <ul class="check-list">
-              <li><b>Trailing stop limit:</b> SmartSleeve trails the trigger, then submits a limit order instead of a market order.</li>
-              <li><b>Bracket / OTOCO:</b> entry order with linked take-profit and stop-loss children.</li>
-              <li><b>OCO:</b> first filled exit cancels the sibling exit.</li>
-              <li><b>If / then:</b> price, time, P&amp;L, or sleeve-state condition arms another order.</li>
-              <li><b>Ladder:</b> staged buys or sells at multiple prices or quantities.</li>
-              <li><b>Pair switch:</b> coordinated sell/buy transition such as SOXL to SOXS when a regime trigger fires.</li>
-            </ul>
-            <div class="callout small">Advanced intents are not submitted live from this prototype. Production needs quote monitoring, stale-price checks, sibling cancellation, sleeve ownership checks, and audit-state transitions.</div>
+
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Pre-trade review</span>
+                <h2>Before submission</h2>
+              </div>
+              <span class="status-chip warning">Approval required</span>
+            </div>
+            <div id="trade-preview" class="preview-box"></div>
           </article>
         </div>
-        <div class="preview-card">
-          <h3>Draft advanced order intent</h3>
-          <div id="advanced-order-route" class="route-pill">direct_proposed_order</div>
-          <pre id="advanced-order-preview"></pre>
+
+        <div class="content-grid two-columns">
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Orders</span>
+                <h2>Pending and recent</h2>
+              </div>
+              <span id="order-count" class="status-chip">0</span>
+            </div>
+            <div id="order-list" class="stack-list"></div>
+          </article>
+
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Audit trail</span>
+                <h2>Manual vs Sage vs automated</h2>
+              </div>
+              <button type="button" class="text-button" data-export-audit>Export</button>
+            </div>
+            <div id="activity-log" class="stack-list compact-list"></div>
+          </article>
         </div>
       </section>
 
-      <section id="universe" class="panel" data-section="universe">
-        <div class="section-heading">
-          <p class="eyebrow">Custom Sage Universe Builder</p>
-          <h2>Choose up to 20 assets, with optional bear asset coverage</h2>
-          <p>Search the starter index, add long assets, and keep SOXS or another inverse/bear ETF available for pullback regimes.</p>
-        </div>
-        <div class="universe-layout">
-          <aside class="search-card">
-            <label>Search asset index<input id="asset-search" placeholder="Search MU, NBIS, SOXL, hedge..."></label>
-            <div id="asset-results" class="asset-results" aria-live="polite"></div>
-          </aside>
-          <div class="collection-card">
-            <div class="collection-header">
-              <h3>Selected universe</h3>
-              <span id="universe-count">0 / 20</span>
-            </div>
-            <ul id="selected-universe" class="selected-universe"></ul>
-            <div class="callout small">Bear/inverse exposure is recommended. If no bear asset is selected, Grand Sage mode can inject SOXS by default.</div>
+      <section id="sage" class="panel" data-section="sage">
+        <div class="section-heading sage-heading">
+          <div>
+            <p class="eyebrow">Sage by SmartSleeve</p>
+            <h2>Portfolio chief investment officer, not a chatbot</h2>
+            <p>Sage reviews holdings, flags drift, drafts recommendations, and explains trade risk. Automation is never enabled by default.</p>
           </div>
+          <img src="/app/sage-logo.png" alt="Sage by SmartSleeve logo">
         </div>
-      </section>
 
-      <section id="research" class="panel" data-section="research">
-        <div class="section-heading">
-          <p class="eyebrow">Research & Bayesian Tuning</p>
-          <h2>Grand Sage, priors, simulations, and model calibration</h2>
-          <p>This is the user-facing control room for daily universe generation, market research priors, stress simulations, and cloud-side tuning jobs.</p>
-        </div>
-        <div class="research-timeline">
-          <article class="timeline-step complete">
-            <span>1</span>
-            <div>
-              <h3>Grand Sage collection</h3>
-              <p>Daily universe picks arrive before market open. Custom Sage keeps the latest successful universe if the morning run fails.</p>
+        <div class="content-grid sage-layout">
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Operating mode</span>
+                <h2>Permission level</h2>
+              </div>
+              <span id="sage-mode-status" class="status-chip">Recommend</span>
             </div>
+            <div class="mode-list" id="sage-modes"></div>
+            <button type="button" class="danger-button" id="kill-switch">Automation kill switch</button>
           </article>
-          <article class="timeline-step complete">
-            <span>2</span>
-            <div>
-              <h3>Custom priors</h3>
-              <p>Research focuses on the exact universe in play, plus any still-held off-universe assets that need graceful exit coverage.</p>
-            </div>
-          </article>
-          <article class="timeline-step">
-            <span>3</span>
-            <div>
-              <h3>Bayesian tuning</h3>
-              <p>Coefficient updates should be bounded, archived, and validated against the prior 24-hour market cycle before the open.</p>
-            </div>
-          </article>
-          <article class="timeline-step">
-            <span>4</span>
-            <div>
-              <h3>Intraday monitoring</h3>
-              <p>Hourly research and stress checks watch for market-regime changes, stuck workflows, and unexpected daemon behavior.</p>
-            </div>
-          </article>
-        </div>
-        <div class="grid three">
-          <article class="card">
-            <h3>Simulation library</h3>
-            <p>Replay pullbacks, rebounds, sideways chop, cash-only starts, concentrated holdings, and sleeve-limit edge cases before accepting new behavior code.</p>
-          </article>
-          <article class="card">
-            <h3>Daily artifacts</h3>
-            <p>Expose latest Grand Sage universe, tuning deltas, priors summary, stress result, and fallback status in one place.</p>
-          </article>
-          <article class="card">
-            <h3>Human override</h3>
-            <p>Let a user freeze a universe, force yesterday's list, mark an asset sticky, or put a sleeve in observe-only mode.</p>
-          </article>
-        </div>
-        <div class="table-card">
-          <table>
-            <thead><tr><th>Workflow</th><th>Schedule</th><th>Expected artifact</th><th>Failure behavior</th></tr></thead>
-            <tbody id="automation-health"></tbody>
-          </table>
-        </div>
-      </section>
 
-      <section id="transfers" class="panel" data-section="transfers">
-        <div class="section-heading">
-          <p class="eyebrow">Portfolio Flexibility</p>
-          <h2>Absorptions, laterals, and spinoffs</h2>
-          <p>Move assets between non-sleeve holdings and sleeve management with explicit accounting treatment.</p>
-        </div>
-        <div class="grid three">
-          <article class="card">
-            <h3>Absorb</h3>
-            <p>Bring non-sleeve shares or cash into a sleeve. Sleeve limit rises by the value absorbed.</p>
-            <label>Asset / cash<input placeholder="MU or cash"></label>
-            <label>Quantity / amount<input type="number" min="0" step="0.000001"></label>
-            <label>Target sleeve<select><option>Sage by SmartSleeve</option><option>Semi Sage</option><option>Honey Badger</option><option>Grand Sage</option><option>General Sage</option><option>Value Sage</option><option>Savage Sage</option><option>Covered Sage</option><option>Convex Sage</option></select></label>
-          </article>
-          <article class="card">
-            <h3>Lateral</h3>
-            <p>Transfer sleeve-managed assets or cash from one sleeve to another. Giving sleeve limit falls; receiving sleeve limit rises.</p>
-            <label>From<select><option>Sage by SmartSleeve</option><option>Semi Sage</option><option>Honey Badger</option><option>Grand Sage</option><option>General Sage</option><option>Value Sage</option><option>Savage Sage</option><option>Covered Sage</option><option>Convex Sage</option></select></label>
-            <label>To<select><option>Sage by SmartSleeve</option><option>Grand Sage</option><option>Semi Sage</option><option>Honey Badger</option><option>General Sage</option><option>Value Sage</option><option>Savage Sage</option><option>Covered Sage</option><option>Convex Sage</option></select></label>
-            <label>Amount<input type="number" min="0" step="0.000001"></label>
-          </article>
-          <article class="card">
-            <h3>Spinoff</h3>
-            <p>Remove sleeve-managed assets into non-sleeve holdings. Sleeve limit falls by the spun-off value.</p>
-            <label>Sleeve<select><option>Sage by SmartSleeve</option><option>Semi Sage</option><option>Honey Badger</option><option>Grand Sage</option><option>General Sage</option><option>Value Sage</option><option>Savage Sage</option><option>Covered Sage</option><option>Convex Sage</option></select></label>
-            <label>Asset<input placeholder="SNDK"></label>
-            <label>Quantity<input type="number" min="0" step="0.000001"></label>
-          </article>
-        </div>
-        <div class="grid two">
-          <article class="card">
-            <h3>Cross-account rebalance</h3>
-            <div class="order-form">
-              <label>Source symbol<input id="rebalance-source-symbol" value="SNDK"></label>
-              <label>Target symbol<input id="rebalance-target-symbol" value="MU"></label>
-              <label>Source value<input id="rebalance-source-value" type="number" min="0" step="0.01" value="60670.88"></label>
-              <label>Target value<input id="rebalance-target-value" type="number" min="0" step="0.01" value="73425.67"></label>
-              <label>Target %<input id="rebalance-target-pct" type="number" min="1" max="99" step="0.01" value="80"></label>
-              <label>Source acct price<input id="rebalance-source-price" type="number" min="0" step="0.01" value="2209.87"></label>
-              <label>Source acct shares<input id="rebalance-source-shares" type="number" min="0" step="0.000001" value="20.78775"></label>
-              <label>Deadline<input id="rebalance-deadline" value="2026-06-24T15:59:00-04:00"></label>
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Portfolio review</span>
+                <h2>Specific findings</h2>
+              </div>
+              <button type="button" class="text-button" id="run-review">Run review</button>
             </div>
+            <div id="sage-review" class="stack-list"></div>
           </article>
-          <div class="preview-card">
-            <h3>Rebalance expression</h3>
-            <pre id="rebalance-preview"></pre>
+        </div>
+
+        <article class="panel-card">
+          <div class="card-head">
+            <div>
+              <span>Recommendations</span>
+              <h2>Actions Sage wants reviewed</h2>
+            </div>
+            <span class="status-chip">Draftable</span>
           </div>
-        </div>
-        <div class="callout">All transfer actions need a server-side preview, current price lock, audit entry, and explicit confirmation before changing live sleeve ledgers.</div>
-      </section>
+          <div id="sage-recommendations" class="recommendation-grid"></div>
+        </article>
 
-      <section id="daemon" class="panel" data-section="daemon">
-        <div class="section-heading">
-          <p class="eyebrow">Daemon Control</p>
-          <h2>Start, pause, and audit trading automation</h2>
-          <p>This should become the safe frontend for daemon status, kill switch, market-session mode, and recent action logs.</p>
-        </div>
-        <div class="daemon-board">
-          <article class="daemon-status">
-            <span class="status-dot warning"></span>
+        <article class="panel-card">
+          <div class="card-head">
             <div>
-              <h3>Trading daemon control is not wired</h3>
-              <p>Production must require authentication, confirmation, and explicit server authorization before start/stop actions.</p>
+              <span>Execution diagnostics</span>
+              <h2>HEB and basis capture</h2>
             </div>
-          </article>
-          <div class="action-row">
-            <button type="button" disabled>Turn daemon on</button>
-            <button type="button" disabled>Pause daemon</button>
-            <button type="button" disabled>Emergency stop</button>
+            <span class="status-chip">After window close</span>
           </div>
-          <table>
-            <thead><tr><th>Timestamp</th><th>Event</th><th>Scope</th><th>Status</th></tr></thead>
-            <tbody>
-              <tr><td>Prototype</td><td>Awaiting secure backend</td><td>User account</td><td>Read-only</td></tr>
-              <tr><td>Prototype</td><td>Guardrail preview</td><td>Sleeve limits</td><td>Planned</td></tr>
-            </tbody>
-          </table>
-        </div>
+          <div id="basis-gauges" class="gauge-grid"></div>
+        </article>
       </section>
 
-      <section id="security" class="panel" data-section="security">
+      <section id="risk" class="panel" data-section="risk">
         <div class="section-heading">
-          <p class="eyebrow">Security & Compliance Readiness</p>
-          <h2>Trust surfaces before this becomes a real-money product</h2>
-          <p>The UI should teach the system to move slowly around identity, payments, broker authorization, and trading-control permissions.</p>
+          <p class="eyebrow">Risk</p>
+          <h2>Concentration, margin, broker, sleeve, and event risk</h2>
+          <p>Risk findings produce concrete actions: trim, rebalance, raise cash, reduce margin, reconnect a broker, or review earnings exposure.</p>
         </div>
-        <div class="grid two">
-          <article class="card">
-            <h3>Identity and sessions</h3>
-            <ul class="check-list">
-              <li>Email verification before account activation</li>
-              <li>Passkeys or MFA before broker connection</li>
-              <li>Session timeout and device management</li>
-              <li>Biometric unlock in mobile apps after backend auth exists</li>
-            </ul>
-          </article>
-          <article class="card">
-            <h3>Money movement boundaries</h3>
-            <ul class="check-list">
-              <li>Provider-hosted checkout only</li>
-              <li>No card or bank credentials in static UI</li>
-              <li>Signed server preview before sleeve transfer commits</li>
-              <li>Immutable audit trail for every portfolio control change</li>
-            </ul>
-          </article>
-        </div>
-        <div class="grid three">
-          <article class="card compact">
-            <h3>Read-only first</h3>
-            <p>New users should begin with portfolio import, reports, and dry-run suggestions before live daemon enablement.</p>
-          </article>
-          <article class="card compact">
-            <h3>Scoped daemon tokens</h3>
-            <p>Daemon control should use short-lived, sleeve-scoped approvals rather than broad account permissions.</p>
-          </article>
-          <article class="card compact">
-            <h3>Incident mode</h3>
-            <p>Emergency stop, postmortem export, and order reconciliation should be one click away for a verified owner.</p>
-          </article>
-        </div>
-      </section>
 
-      <section id="platforms" class="panel" data-section="platforms">
-        <div class="section-heading">
-          <p class="eyebrow">Apps & SmartSleeve Command</p>
-          <h2>Website, Android tablets, iPad, Windows, macOS, and Linux from one console</h2>
-          <p>One secure command surface now drives phone, tablet, desktop, and installed shortcut experiences. Native shells add app identity, device ergonomics, and platform distribution without splitting the product brain.</p>
-        </div>
-        <div class="platform-grid">
-          <article class="platform-card">
-            <span>Web</span>
-            <h3>SmartSleeve Console</h3>
-            <p>Primary product surface for account setup, strategy configuration, reports, support, and daemon status.</p>
-            <code>http://127.0.0.1:8765/app/</code>
+        <div class="dashboard-grid risk-metrics">
+          <article class="metric-card">
+            <span>Largest holding</span>
+            <strong id="largest-position">Loading...</strong>
+            <p id="largest-position-note">Position concentration.</p>
           </article>
-          <article class="platform-card">
-            <span>Android</span>
-            <h3>Phone + tablet</h3>
-            <p>Samsung-ready shell with tablet command density, persistent navigation, cross-account dashboard, HEB gauges, and broker status views.</p>
-            <button type="button" class="button ghost" data-install-command="android">Copy Android workflow</button>
+          <article class="metric-card">
+            <span>Top 3 concentration</span>
+            <strong id="top-three-risk">Loading...</strong>
+            <p>Portfolio impact if leaders move together.</p>
           </article>
-          <article class="platform-card">
-            <span>iOS</span>
-            <h3>iPhone + iPad</h3>
-            <p>Universal WKWebView app with iPad orientations, pointer input support, AppIcon catalog, signing, trusted device, and TestFlight path.</p>
-            <button type="button" class="button ghost" data-install-command="ios">Copy iOS workflow</button>
+          <article class="metric-card">
+            <span>Margin risk</span>
+            <strong id="risk-margin">Loading...</strong>
+            <p>Negative cash and account leverage pressure.</p>
           </article>
-          <article class="platform-card featured">
-            <span>Desktop</span>
-            <h3>SmartSleeve Command</h3>
-            <p>Cross-platform Windows, macOS, and Linux command console for power users who want persistent monitoring beside the trading stack.</p>
-            <button type="button" class="button primary" data-install-command="desktop">Copy desktop workflow</button>
-          </article>
-          <article class="platform-card">
-            <span>Android Tablet</span>
-            <h3>Operator tablet</h3>
-            <p>Launcher icon, large-screen manifest support, resizeable activity, and local debug workflow for physical tablets.</p>
-            <button type="button" class="button ghost" data-install-command="android_tablet">Copy tablet workflow</button>
-          </article>
-          <article class="platform-card">
-            <span>iPad</span>
-            <h3>iPad command board</h3>
-            <p>Universal iOS target with full iPad orientation support and icon assets ready for simulator, device, and TestFlight.</p>
-            <button type="button" class="button ghost" data-install-command="ios_tablet">Copy iPad workflow</button>
-          </article>
-          <article class="platform-card">
-            <span>Linux</span>
-            <h3>Industry desktops</h3>
-            <p>AppImage, deb, rpm, and tar.gz targets for Ubuntu, Debian, Fedora, RHEL-family, openSUSE, Arch-family, and generic Linux.</p>
-            <button type="button" class="button ghost" data-install-command="linux">Copy Linux workflow</button>
-          </article>
-          <article class="platform-card">
-            <span>App identity</span>
-            <h3>SS neon-chip icon</h3>
-            <p>Web shortcuts, Android launcher, iOS/iPad AppIcon, and desktop installers share the official SmartSleeve SS mark.</p>
-            <code>/favicon-512x512.png</code>
+          <article class="metric-card">
+            <span>Broker status</span>
+            <strong id="broker-health">Loading...</strong>
+            <p>Connected, view-only, pending, or disconnected.</p>
           </article>
         </div>
-        <div class="preview-card">
-          <h3>Install command preview</h3>
-          <pre id="install-command-preview">Select a platform workflow to copy the next-step commands.</pre>
-        </div>
-      </section>
 
-      <section id="support" class="panel" data-section="support">
-        <div class="section-heading">
-          <p class="eyebrow">Help / Support / About</p>
-          <h2>SmartSleeve support center</h2>
-          <p>Give users a calm place to understand risks, contact support, and learn what each sleeve does.</p>
-        </div>
-        <div class="grid two">
-          <article class="card">
-            <h3>Contact us</h3>
-            <p>Email support, account help, billing, and trading questions.</p>
-            <ul class="contact-list">
-              <li><b>Support:</b> support@smartsleeve.ai</li>
-              <li><b>Hello:</b> hello@smartsleeve.ai</li>
-              <li><b>Analytics:</b> analytics@smartsleeve.ai</li>
-            </ul>
+        <div class="content-grid two-columns">
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Risk actions</span>
+                <h2>What to review</h2>
+              </div>
+              <button type="button" class="text-button" data-nav-button="trade">Draft action</button>
+            </div>
+            <div id="risk-actions" class="stack-list"></div>
           </article>
-          <article class="card">
-            <h3>About SmartSleeve</h3>
-            <p>SmartSleeve Quantitative Trading Systems builds adaptive agentic trading sleeves with transparent daily reporting, user-configurable behaviors, and strict separation between managed sleeve capital and broader account holdings.</p>
+
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Broker connections</span>
+                <h2>Permissions and sync</h2>
+              </div>
+              <span class="status-chip">Read-only default</span>
+            </div>
+            <div id="broker-connections" class="stack-list"></div>
           </article>
         </div>
-        <div class="faq">
-          <details open><summary>Is this live yet?</summary><p>No. This is a static prototype for layout, product flow, and terminology.</p></details>
-          <details><summary>Can this collect broker credentials?</summary><p>Not safely as a static site. Production needs a secure backend, secret vault, session auth, and explicit broker consent flow.</p></details>
-          <details><summary>Can a user run Semi Sage, Honey Badger, and Custom Sage together?</summary><p>That is the intended product direction: multiple strategy sleeves under one SmartSleeve account allocation layer.</p></details>
-        </div>
+
+        <article class="panel-card">
+          <div class="card-head">
+            <div>
+              <span>Risk table</span>
+              <h2>Exposure by account</h2>
+            </div>
+            <button type="button" class="danger-button small" id="risk-kill-switch">Kill automation</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Account</th>
+                  <th>Broker</th>
+                  <th>Equity</th>
+                  <th>Cash</th>
+                  <th>Buying power</th>
+                  <th>Risk note</th>
+                </tr>
+              </thead>
+              <tbody id="risk-account-table"></tbody>
+            </table>
+          </div>
+        </article>
       </section>
     </main>
   </div>
-  <div id="prototype-toast" class="prototype-toast" role="status" aria-live="polite" hidden></div>
 
-  <script src="/app/app.js"></script>
+  <nav class="bottom-nav" aria-label="Primary mobile">
+    <a href="#dashboard" data-nav="dashboard" class="active">Dashboard</a>
+    <a href="#sleeves" data-nav="sleeves">Sleeves</a>
+    <a href="#trade" data-nav="trade">Trade</a>
+    <a href="#sage" data-nav="sage">Sage</a>
+    <a href="#risk" data-nav="risk">Risk</a>
+  </nav>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="/app/app.js" defer></script>
 </body>
 </html>

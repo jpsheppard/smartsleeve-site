@@ -15,7 +15,8 @@ The route is intentionally not linked from the public placeholder homepage yet.
 - Discount-code pricing preview
 - Bank funding/deposit intent UI
 - Robinhood connection placeholder
-- Sleeve limit controls for Semi Sage, Honey Badger, and Custom Sage in Grand Sage mode
+- Sleeve limit controls for Sage by SmartSleeve, Semi Sage, Honey Badger, Grand Sage, General Sage, Value Sage, Savage Sage, Covered Sage, and Convex Sage
+- Daily report and cadence controls for active Sage by SmartSleeve users, developer fallback recipients, hosted chart/logo assets, and daemon/research refresh intervals
 - Trading behavior controls for clinginess/flip resistance, diversity, attraction, bullishness, stickiness, gain-locking, and hard hold
 - Custom Sage universe builder
 - Portfolio behavior breakdowns and sleeve-owned touch permissions
