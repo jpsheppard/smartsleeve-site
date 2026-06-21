@@ -1,31 +1,427 @@
 (function () {
   "use strict";
 
+  var assetIndex = [
+    {
+      symbol: "MU",
+      name: "Micron Technology",
+      type: "Long stock",
+      price: "$192.00",
+      stats: "Memory, HBM, DRAM, AI infrastructure",
+      description: "Cyclical semiconductor memory leader with AI data-center exposure."
+    },
+    {
+      symbol: "SNDK",
+      name: "SanDisk",
+      type: "Long stock",
+      price: "$2,000.00",
+      stats: "NAND, storage, high volatility",
+      description: "Storage and NAND exposure with large intraday swings."
+    },
+    {
+      symbol: "NBIS",
+      name: "Nebius Group",
+      type: "Long stock",
+      price: "$55.00",
+      stats: "AI cloud, high beta",
+      description: "AI infrastructure and cloud compute candidate."
+    },
+    {
+      symbol: "CRDO",
+      name: "Credo Technology",
+      type: "Long stock",
+      price: "$130.00",
+      stats: "Connectivity, AI networking",
+      description: "High-growth AI networking and connectivity exposure."
+    },
+    {
+      symbol: "AMD",
+      name: "Advanced Micro Devices",
+      type: "Long stock",
+      price: "$165.00",
+      stats: "AI accelerators, CPU, GPU",
+      description: "Large-cap semiconductor and AI accelerator exposure."
+    },
+    {
+      symbol: "NVDA",
+      name: "NVIDIA",
+      type: "Long stock",
+      price: "$145.00",
+      stats: "AI accelerator bellwether",
+      description: "Dominant GPU and AI infrastructure platform."
+    },
+    {
+      symbol: "TSM",
+      name: "Taiwan Semiconductor",
+      type: "Long stock",
+      price: "$210.00",
+      stats: "Foundry, global semis",
+      description: "Leading global foundry at the center of advanced-node supply."
+    },
+    {
+      symbol: "ALAB",
+      name: "Astera Labs",
+      type: "Long stock",
+      price: "$95.00",
+      stats: "AI connectivity, PCIe, CXL",
+      description: "AI connectivity and data-center interconnect candidate."
+    },
+    {
+      symbol: "VRT",
+      name: "Vertiv",
+      type: "Long stock",
+      price: "$120.00",
+      stats: "Data-center power and thermal",
+      description: "Data-center infrastructure beneficiary."
+    },
+    {
+      symbol: "SOXL",
+      name: "Direxion Daily Semiconductor Bull 3x",
+      type: "Levered long ETF",
+      price: "$205.00",
+      stats: "3x semiconductor bull exposure",
+      description: "Tactical leveraged long semiconductor basket."
+    },
+    {
+      symbol: "SOXS",
+      name: "Direxion Daily Semiconductor Bear 3x",
+      type: "Inverse / bear ETF",
+      price: "$5.00",
+      stats: "3x inverse semiconductor exposure",
+      description: "Tactical bear semiconductor ETF for pullback regimes."
+    },
+    {
+      symbol: "SQQQ",
+      name: "ProShares UltraPro Short QQQ",
+      type: "Inverse / bear ETF",
+      price: "$9.00",
+      stats: "3x inverse Nasdaq-100",
+      description: "Tactical broad tech bear ETF for Nasdaq drawdown protection."
+    },
+    {
+      symbol: "QQQ",
+      name: "Invesco QQQ Trust",
+      type: "Long ETF",
+      price: "$540.00",
+      stats: "Nasdaq-100 large-cap tech",
+      description: "Broad large-cap technology and growth exposure."
+    },
+    {
+      symbol: "VOO",
+      name: "Vanguard S&P 500 ETF",
+      type: "Long ETF",
+      price: "$560.00",
+      stats: "S&P 500 core market",
+      description: "Broad US equity market exposure."
+    }
+  ];
+
+  var defaultUniverse = ["MU", "SNDK", "NBIS", "CRDO", "AMD", "NVDA", "TSM", "ALAB", "VRT", "SOXS"];
+  var selectedUniverse = [];
   var MERCH_MERCHANT_OF_RECORD = "SmartSleeve Quantitative Trading Systems, LLC";
+  var MERCH_STRIPE_CHECKOUT_ENDPOINT = "";
+  var MERCH_PROVIDER_STORE_URL = "";
   var MERCH_PRODUCT_URLS = {
-    "smartsleeve-ss-tee-brand": "",
-    "smartsleeve-ss-tee": "",
-    "smartsleeve-ss-tank-brand": "",
-    "smartsleeve-ss-tank": "",
-    "sqts-llc-tee-brand": "",
-    "sqts-llc-tee": "",
-    "sqts-llc-tank-brand": "",
-    "sqts-llc-tank": "",
-    "smartsleeve-ss-tee-promo": "",
-    "smartsleeve-ss-tank-promo": "",
-    "sqts-llc-tee-promo": "",
-    "sqts-llc-tank-promo": ""
+    "sqts-tee": "",
+    "semisage-tee": ""
   };
-  var MERCH_CATALOG = {};
-  var MERCH_CART_STORAGE_KEY = "smartsleeve_merch_cart_v1";
-  var MERCH_CART = [];
+  var checkoutBasePrices = {
+    core: 20,
+    grand_sage: 100
+  };
+  var discountCodes = {
+    BFF4LYFE: {
+      label: "BFF4LYFE",
+      description: "Free SmartSleeve Core and free Grand Sage subscription.",
+      core_discount_pct: 1,
+      grand_sage_discount_pct: 1
+    },
+    OG2026FOUNDER: {
+      label: "OG2026FOUNDER",
+      description: "Free SmartSleeve Core and 50% off optional Grand Sage.",
+      core_discount_pct: 1,
+      grand_sage_discount_pct: 0.5
+    },
+    OG2026USER: {
+      label: "OG2026USER",
+      description: "20% off SmartSleeve Core and 20% off optional Grand Sage.",
+      core_discount_pct: 0.2,
+      grand_sage_discount_pct: 0.2
+    }
+  };
+  var portfolioRows = [
+    {
+      sleeve: "Semi Sage",
+      asset: "MU",
+      quantity: "4.000000",
+      value: "$768.00",
+      behaviors: ["stickiness 100%", "clinginess 100%", "diversity 0%", "gain-locking 0%"],
+      permission: "Sleeve-owned only"
+    },
+    {
+      sleeve: "Semi Sage",
+      asset: "SNDK",
+      quantity: "3.000000",
+      value: "$6,000.00",
+      behaviors: ["stickiness 100%", "clinginess 100%", "attraction 50%"],
+      permission: "Sleeve-owned only"
+    },
+    {
+      sleeve: "Honey Badger",
+      asset: "Cash",
+      quantity: "$750.00",
+      value: "$750.00",
+      behaviors: ["flip resistance", "bullishness tunable"],
+      permission: "Cash limit locked"
+    },
+    {
+      sleeve: "Custom Sage (Grand Sage)",
+      asset: "Cash",
+      quantity: "$10,889.38",
+      value: "$10,889.38",
+      behaviors: ["Grand Sage universe", "SOXS bear coverage", "daily tuning"],
+      permission: "Universe-scoped buys"
+    },
+    {
+      sleeve: "Non-sleeve",
+      asset: "Manual holdings",
+      quantity: "Read-only",
+      value: "$--",
+      behaviors: ["not managed"],
+      permission: "Never sell"
+    }
+  ];
+  var automationRows = [
+    {
+      workflow: "Grand Sage collection",
+      schedule: "Weekdays before market open",
+      artifact: "analytics_exports/grand_philosophe_robinhood.json",
+      behavior: "Reuse latest successful universe"
+    },
+    {
+      workflow: "Custom priors refresh",
+      schedule: "After universe assignment, then intraday",
+      artifact: "research_priors_history.jsonl",
+      behavior: "Keep prior coefficients if research fails"
+    },
+    {
+      workflow: "Bayesian tuning",
+      schedule: "Before market open and daily cloud loop",
+      artifact: "analytics_exports/daily_bayesian_tuning.json",
+      behavior: "Reject unsafe or stale updates"
+    },
+    {
+      workflow: "Execution stress matrix",
+      schedule: "On demand and pre-launch",
+      artifact: "analytics_exports/execution_stress_matrix.json",
+      behavior: "Fail closed on sleeve-limit violations"
+    }
+  ];
+  var diagnosticsRows = [
+    {
+      diagnostic: "IBKR Gateway API",
+      signal: "4001/4002 listener plus ib_insync managedAccounts()",
+      action: "Pause new orders; keep daemons alive in retry mode",
+      evidence: "Email alert, daemon_error, health snapshot"
+    },
+    {
+      diagnostic: "Open-order reconciliation",
+      signal: "Broker open orders matched to SmartSleeve order_id/order_ref",
+      action: "Cancel only SmartSleeve-owned stale orders; preserve external orders",
+      evidence: "open_orders_canceled or external_open_orders_preserved event"
+    },
+    {
+      diagnostic: "Unknown order status",
+      signal: "Timeout or disconnect after order review/submission",
+      action: "Halt further submissions until broker state is reconciled",
+      evidence: "order_error with unknown_after_successful_review_timeout"
+    },
+    {
+      diagnostic: "Operator alerting",
+      signal: "Daemon/Gateway/order health events",
+      action: "Send email alert and require phone-visible notification",
+      evidence: "alert delivery log and latest diagnostics export"
+    }
+  ];
+  var installCommands = {
+    android: [
+      ".venv/bin/python scripts/smartsleeve_app_workflow.py doctor",
+      ".venv/bin/python scripts/smartsleeve_app_workflow.py serve-web",
+      ".venv/bin/python scripts/smartsleeve_app_workflow.py android-devices",
+      ".venv/bin/python scripts/smartsleeve_app_workflow.py android-install --apk mobile/android/app/build/outputs/apk/debug/app-debug.apk"
+    ].join("\n"),
+    ios: [
+      ".venv/bin/python scripts/smartsleeve_app_workflow.py ios-simulators",
+      ".venv/bin/python scripts/smartsleeve_app_workflow.py serve-web",
+      "Set SMARTSLEEVE_CONSOLE_URL=http://127.0.0.1:8765/app/ in the Xcode scheme.",
+      "Use TestFlight for cleaner iPhone beta distribution."
+    ].join("\n"),
+    desktop: [
+      "cd desktop/smartsleeve-command",
+      "npm install",
+      "npm run dev",
+      "SMARTSLEEVE_COMMAND_URL=http://127.0.0.1:8765/app/ npm run dev"
+    ].join("\n")
+  };
+  var appliedDiscountCode = "";
+
+  function byId(id) {
+    return document.getElementById(id);
+  }
 
   function all(selector, root) {
     return Array.prototype.slice.call((root || document).querySelectorAll(selector));
   }
 
-  function byId(id) {
-    return document.getElementById(id);
+  function escapeHtml(value) {
+    return String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function canonicalSectionName(name) {
+    return name === "store" ? "shop" : name;
+  }
+
+  function activateSection(name) {
+    var fallback = "overview";
+    var requested = canonicalSectionName(name || fallback);
+    var section = document.querySelector('[data-section="' + requested + '"]') ? requested : fallback;
+    all("[data-section]").forEach(function (item) {
+      item.classList.toggle("active", item.getAttribute("data-section") === section);
+    });
+    all("[data-nav]").forEach(function (item) {
+      item.classList.toggle("active", item.getAttribute("data-nav") === section);
+    });
+  }
+
+  function wireNavigation() {
+    all("[data-nav]").forEach(function (item) {
+      item.addEventListener("click", function (event) {
+        var target = item.getAttribute("data-nav");
+        if (!target) {
+          return;
+        }
+        event.preventDefault();
+        window.location.hash = target;
+        activateSection(target);
+      });
+    });
+    window.addEventListener("hashchange", function () {
+      activateSection((window.location.hash || "#overview").slice(1));
+    });
+    activateSection((window.location.hash || "#overview").slice(1));
+  }
+
+  function showPrototypeToast(message) {
+    var toast = byId("prototype-toast");
+    if (!toast) {
+      return;
+    }
+    toast.textContent = message;
+    toast.hidden = false;
+    toast.classList.add("show");
+    window.clearTimeout(showPrototypeToast.timeoutId);
+    showPrototypeToast.timeoutId = window.setTimeout(function () {
+      toast.classList.remove("show");
+      toast.hidden = true;
+    }, 4200);
+  }
+
+  function wirePrototypeActions() {
+    all("[data-prototype-action]").forEach(function (button) {
+      button.addEventListener("click", function () {
+        showPrototypeToast(button.getAttribute("data-prototype-action"));
+      });
+    });
+  }
+
+  function money(value) {
+    return "$" + Number(value || 0).toFixed(2) + "/mo";
+  }
+
+  function normalizedDiscountCode() {
+    var input = byId("discount-code");
+    return input ? input.value.trim().toUpperCase() : "";
+  }
+
+  function checkoutSelection() {
+    var grandSage = byId("checkout-grand-sage");
+    return {
+      core: true,
+      grand_sage: grandSage ? grandSage.checked : true
+    };
+  }
+
+  function discountedAmount(price, discountPct) {
+    return Math.max(0, price * (1 - Number(discountPct || 0)));
+  }
+
+  function updateCheckoutPreview() {
+    var coreTotal = byId("core-total");
+    var grandSageTotal = byId("grand-sage-total");
+    var checkoutTotal = byId("checkout-total");
+    var summary = byId("discount-summary");
+    if (!coreTotal || !grandSageTotal || !checkoutTotal || !summary) {
+      return;
+    }
+    var selected = checkoutSelection();
+    var discount = appliedDiscountCode ? discountCodes[appliedDiscountCode] : null;
+    var core = selected.core
+      ? discountedAmount(checkoutBasePrices.core, discount && discount.core_discount_pct)
+      : 0;
+    var grandSage = selected.grand_sage
+      ? discountedAmount(checkoutBasePrices.grand_sage, discount && discount.grand_sage_discount_pct)
+      : 0;
+
+    coreTotal.textContent = money(core);
+    grandSageTotal.textContent = selected.grand_sage ? money(grandSage) : "Not selected";
+    checkoutTotal.textContent = money(core + grandSage);
+    summary.classList.remove("ok", "error");
+    if (discount) {
+      summary.textContent = "Applied " + discount.label + ": " + discount.description;
+      summary.classList.add("ok");
+    } else if (appliedDiscountCode) {
+      summary.textContent = "Discount code not recognized.";
+      summary.classList.add("error");
+    } else {
+      summary.textContent = "Enter a discount code to preview eligible subscription pricing.";
+    }
+  }
+
+  function applyDiscountCode() {
+    var code = normalizedDiscountCode();
+    appliedDiscountCode = code && discountCodes[code] ? code : code;
+    updateCheckoutPreview();
+  }
+
+  function wireCheckoutPreview() {
+    var apply = byId("apply-discount");
+    var input = byId("discount-code");
+    var grandSage = byId("checkout-grand-sage");
+    if (apply) {
+      apply.addEventListener("click", applyDiscountCode);
+    }
+    if (input) {
+      input.addEventListener("keydown", function (event) {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          applyDiscountCode();
+        }
+      });
+      input.addEventListener("input", function () {
+        if (!input.value.trim()) {
+          appliedDiscountCode = "";
+          updateCheckoutPreview();
+        }
+      });
+    }
+    if (grandSage) {
+      grandSage.addEventListener("change", updateCheckoutPreview);
+    }
+    updateCheckoutPreview();
   }
 
   function configuredMetaContent(name) {
@@ -33,50 +429,661 @@
     return meta && meta.content && meta.content.indexOf("__") !== 0 ? meta.content.trim() : "";
   }
 
-  function showToast(message) {
-    var toast = byId("prototype-toast");
-    if (!toast) {
+  function authRegisterUrl() {
+    var base = authBaseUrl();
+    return base ? base + "/register" : "";
+  }
+
+  function authBaseUrl() {
+    var endpoint = configuredMetaContent("smartsleeve-auth-endpoint");
+    if (!endpoint) {
+      return "";
+    }
+    return endpoint.replace(/\/$/, "").replace(/\/(register|login|me|logout)$/, "");
+  }
+
+  function authUrl(path) {
+    var base = authBaseUrl();
+    return base ? base + path : "";
+  }
+
+  function setRegistrationStatus(message, kind) {
+    var status = byId("registration-status");
+    if (!status) {
       return;
     }
-    toast.textContent = message;
-    toast.classList.add("toast-visible");
-    window.setTimeout(function () {
-      toast.classList.remove("toast-visible");
-    }, 4200);
+    status.textContent = message;
+    status.classList.remove("ok", "error");
+    if (kind) {
+      status.classList.add(kind);
+    }
+  }
+
+  function setLoginStatus(message, kind) {
+    var status = byId("login-status");
+    if (!status) {
+      return;
+    }
+    status.textContent = message;
+    status.classList.remove("ok", "error");
+    if (kind) {
+      status.classList.add(kind);
+    }
+  }
+
+  function displaySession(profile) {
+    var signedIn = Boolean(profile && profile.email);
+    var sessionTitle = byId("session-title");
+    var sessionDetail = byId("session-detail");
+    var accountName = byId("account-name");
+    var accountEmail = byId("account-email");
+    var accountRole = byId("account-role");
+    var logoutButton = byId("logout-button");
+
+    if (sessionTitle) {
+      sessionTitle.textContent = signedIn ? "Signed in" : "Signed out";
+    }
+    if (sessionDetail) {
+      sessionDetail.textContent = signedIn
+        ? (profile.role === "developer" ? "Developer account active." : "Verified user account active.")
+        : "Create or sign in to a verified SmartSleeve account.";
+    }
+    if (accountName) {
+      accountName.textContent = signedIn
+        ? (profile.nickname || profile.first_name || profile.username || "SmartSleeve user")
+        : "No verified session";
+    }
+    if (accountEmail) {
+      accountEmail.textContent = signedIn ? profile.email : "Use the sign-in form after verifying your email.";
+    }
+    if (accountRole) {
+      accountRole.textContent = signedIn ? profile.role : "signed out";
+    }
+    if (logoutButton) {
+      logoutButton.hidden = !signedIn;
+    }
+  }
+
+  function parseAuthError(body, fallback) {
+    if (!body) {
+      return fallback;
+    }
+    if (body.errors && body.errors.length) {
+      return body.errors.join(", ");
+    }
+    return body.error || fallback;
+  }
+
+  function authFetch(path, options) {
+    var url = authUrl(path);
+    if (!url || !window.fetch) {
+      return Promise.reject(new Error("auth_backend_not_configured"));
+    }
+    return fetch(url, Object.assign({
+      mode: "cors",
+      credentials: "include",
+      headers: {"Content-Type": "application/json"}
+    }, options || {})).then(function (response) {
+      return response.json().then(function (body) {
+        if (!response.ok || !body.ok) {
+          throw new Error(parseAuthError(body, "request_failed"));
+        }
+        return body;
+      });
+    });
+  }
+
+  function loadCurrentSession() {
+    if (!authUrl("/me") || !window.fetch) {
+      displaySession(null);
+      return;
+    }
+    authFetch("/me", {method: "GET", headers: {}})
+      .then(function (body) {
+        displaySession(body.profile);
+      })
+      .catch(function () {
+        displaySession(null);
+      });
+  }
+
+  function wireLoginForm() {
+    var form = byId("login-form");
+    var logoutButton = byId("logout-button");
+    if (form) {
+      form.addEventListener("submit", function (event) {
+        event.preventDefault();
+        var data = new FormData(form);
+        var payload = {
+          identity: String(data.get("identity") || "").trim(),
+          password: String(data.get("password") || "")
+        };
+        if (!payload.identity || !payload.password) {
+          setLoginStatus("Enter your email or username and password.", "error");
+          return;
+        }
+        var submit = form.querySelector('button[type="submit"]');
+        if (submit) {
+          submit.disabled = true;
+        }
+        setLoginStatus("Signing in...", "");
+        authFetch("/login", {method: "POST", body: JSON.stringify(payload)})
+          .then(function (body) {
+            form.reset();
+            displaySession(body.profile);
+            setLoginStatus("Signed in.", "ok");
+          })
+          .catch(function (err) {
+            displaySession(null);
+            setLoginStatus("Sign-in failed: " + err.message + ".", "error");
+          })
+          .finally(function () {
+            if (submit) {
+              submit.disabled = false;
+            }
+          });
+      });
+    }
+    if (logoutButton) {
+      logoutButton.addEventListener("click", function () {
+        authFetch("/logout", {method: "POST", body: "{}"})
+          .then(function () {
+            displaySession(null);
+            setLoginStatus("Signed out.", "ok");
+          })
+          .catch(function (err) {
+            setLoginStatus("Sign-out failed: " + err.message + ".", "error");
+          });
+      });
+    }
+  }
+
+  function registrationPayload(form) {
+    var data = new FormData(form);
+    return {
+      username: String(data.get("username") || "").trim(),
+      email: String(data.get("email") || "").trim(),
+      first_name: String(data.get("first_name") || "").trim(),
+      middle_name: String(data.get("middle_name") || "").trim(),
+      last_name: String(data.get("last_name") || "").trim(),
+      nickname: String(data.get("nickname") || "").trim(),
+      password: String(data.get("password") || ""),
+      password_confirm: String(data.get("password_confirm") || ""),
+      report_recipients: String(data.get("report_recipients") || "").trim(),
+      notes: String(data.get("notes") || "").trim(),
+      accepted_terms: Boolean(data.get("accepted_terms"))
+    };
+  }
+
+  function validateRegistrationPayload(payload) {
+    var errors = [];
+    if (payload.username.length < 3) {
+      errors.push("username");
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.email)) {
+      errors.push("valid email");
+    }
+    if (!payload.first_name) {
+      errors.push("first name");
+    }
+    if (!payload.last_name) {
+      errors.push("last name");
+    }
+    if (payload.password.length < 12) {
+      errors.push("12+ character password");
+    }
+    if (payload.password !== payload.password_confirm) {
+      errors.push("matching passwords");
+    }
+    if (!payload.accepted_terms) {
+      errors.push("acknowledgement checkbox");
+    }
+    return errors;
+  }
+
+  function wireRegistrationForm() {
+    var form = byId("profile-form");
+    if (!form) {
+      return;
+    }
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+      var payload = registrationPayload(form);
+      var errors = validateRegistrationPayload(payload);
+      if (errors.length) {
+        setRegistrationStatus("Please check: " + errors.join(", ") + ".", "error");
+        return;
+      }
+      var endpoint = authRegisterUrl();
+      if (!endpoint || !window.fetch) {
+        setRegistrationStatus(
+          "Registration backend is not connected yet. Configure SMARTSLEEVE_AUTH_ENDPOINT to send verification emails.",
+          "error"
+        );
+        showPrototypeToast("Account details validated locally. The auth Worker endpoint still needs to be configured before verification emails can send.");
+        return;
+      }
+      var submit = form.querySelector('button[type="submit"]');
+      if (submit) {
+        submit.disabled = true;
+      }
+      setRegistrationStatus("Sending verification email...", "");
+      fetch(endpoint, {
+        method: "POST",
+        mode: "cors",
+        credentials: "include",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(payload)
+      })
+        .then(function (response) {
+          return response.json().then(function (body) {
+            if (!response.ok || !body.ok) {
+              var detail = body.errors && body.errors.length ? body.errors.join(", ") : body.error || "registration_failed";
+              throw new Error(detail);
+            }
+            return body;
+          });
+        })
+        .then(function () {
+          form.reset();
+          setRegistrationStatus("Verification email sent. Check your inbox and click the SmartSleeve verification link.", "ok");
+        })
+        .catch(function (err) {
+          setRegistrationStatus("Could not send verification email: " + err.message + ".", "error");
+        })
+        .finally(function () {
+          if (submit) {
+            submit.disabled = false;
+          }
+        });
+    });
+  }
+
+  function updateSliderOutput(input) {
+    var output = byId(input.id + "-out");
+    if (output) {
+      output.textContent = input.value + "%";
+    }
+  }
+
+  function numberOrNull(id) {
+    var input = byId(id);
+    if (!input || input.value === "") {
+      return null;
+    }
+    var parsed = Number(input.value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  function orderRouteForType(orderType) {
+    if (orderType === "market" || orderType === "limit") {
+      return "direct_proposed_order";
+    }
+    if (orderType === "stop_market" || orderType === "stop_limit" || orderType === "trailing_stop_market") {
+      return "broker_native_adapter_required";
+    }
+    return "synthetic_supervised";
+  }
+
+  function advancedOrderPreview() {
+    var preview = byId("advanced-order-preview");
+    var route = byId("advanced-order-route");
+    if (!preview) {
+      return;
+    }
+    var type = byId("advanced-order-type") ? byId("advanced-order-type").value : "market";
+    var routeValue = orderRouteForType(type);
+    var trailingPercent = numberOrNull("advanced-order-trailing-percent");
+    var payload = {
+      sleeve: byId("advanced-order-sleeve") ? byId("advanced-order-sleeve").value : "safer_v1",
+      symbol: (byId("advanced-order-symbol") && byId("advanced-order-symbol").value ? byId("advanced-order-symbol").value : "MU").toUpperCase(),
+      side: byId("advanced-order-side") ? byId("advanced-order-side").value : "buy",
+      order_type: type,
+      route: routeValue,
+      session: byId("advanced-order-session") ? byId("advanced-order-session").value : "regular_hours",
+      quantity: numberOrNull("advanced-order-quantity"),
+      notional_usd: numberOrNull("advanced-order-notional"),
+      limit_price: numberOrNull("advanced-order-limit-price"),
+      stop_price: numberOrNull("advanced-order-stop-price"),
+      trailing_amount: numberOrNull("advanced-order-trailing-amount"),
+      trailing_percent: trailingPercent === null ? null : trailingPercent / 100,
+      limit_offset: numberOrNull("advanced-order-limit-offset"),
+      notes: byId("advanced-order-notes") ? byId("advanced-order-notes").value : "",
+      status: "draft_only_requires_secure_backend_commit"
+    };
+    if (type === "bracket") {
+      payload.child_intents = [
+        {role: "entry", type: payload.limit_price === null ? "market" : "limit"},
+        {role: "take_profit", type: "limit", limit_price: payload.limit_price},
+        {role: "stop_loss", type: "stop_market", stop_price: payload.stop_price}
+      ];
+    } else if (type === "oco") {
+      payload.child_intents = [
+        {role: "first_exit", type: "limit_or_stop"},
+        {role: "sibling_exit", type: "cancelled_when_first_fills"}
+      ];
+    } else if (type === "if_then") {
+      payload.trigger = {reference: "last", operator: "gte_or_lte", threshold: payload.stop_price};
+    }
+    if (route) {
+      route.textContent = routeValue;
+      route.classList.toggle("synthetic", routeValue === "synthetic_supervised");
+      route.classList.toggle("adapter", routeValue === "broker_native_adapter_required");
+    }
+    preview.textContent = JSON.stringify(payload, null, 2);
+  }
+
+  function wireAdvancedOrderControls() {
+    all("#advanced-orders input, #advanced-orders select, #advanced-orders textarea").forEach(function (input) {
+      input.addEventListener("input", advancedOrderPreview);
+      input.addEventListener("change", advancedOrderPreview);
+    });
+    advancedOrderPreview();
+  }
+
+  function sageMandatePreview() {
+    var preview = byId("sage-mandate-preview");
+    if (!preview) {
+      return;
+    }
+    var payload = {
+      product: "Sage by SmartSleeve",
+      mode: byId("sage-intent") ? byId("sage-intent").value : "open",
+      algo_model_id: byId("sage-model") ? byId("sage-model").value : "sage",
+      agent_instance_id: byId("sage-instance") ? byId("sage-instance").value : "mu_sage1",
+      user_directed: true,
+      symbols: byId("sage-symbols") ? byId("sage-symbols").value : "MU",
+      target: byId("sage-target") ? byId("sage-target").value : "$10000",
+      deadline: byId("sage-deadline") ? byId("sage-deadline").value : "",
+      urgency: byId("sage-urgency") ? byId("sage-urgency").value : "balanced",
+      guardrail: byId("sage-guardrail") ? byId("sage-guardrail").value : "",
+      execution_policy: {
+        recommendation_boundary: "user chooses security/size/deadline; Sage optimizes implementation only",
+        gateway_failure_mode: "pause_new_risk_reconcile_before_resume",
+        identity_tags: ["operator_id", "ats_id", "algo_model_id", "agent_instance_id", "order_ref", "version"]
+      },
+      status: "draft_only_requires_user_approval_and_secure_backend_commit"
+    };
+    preview.textContent = JSON.stringify(payload, null, 2);
+  }
+
+  function wireSageMandateControls() {
+    all("#sage input, #sage select, #sage textarea").forEach(function (input) {
+      input.addEventListener("input", sageMandatePreview);
+      input.addEventListener("change", sageMandatePreview);
+    });
+    sageMandatePreview();
+  }
+
+  function behaviorPreview() {
+    var sleeve = byId("behavior-sleeve");
+    var symbol = byId("behavior-symbol");
+    var scope = byId("behavior-scope");
+    var quantity = byId("behavior-quantity");
+    var preview = byId("behavior-preview");
+    if (!preview) {
+      return;
+    }
+    var payload = {
+      sleeve: sleeve ? sleeve.value : "Semi Sage",
+      symbol: (symbol && symbol.value ? symbol.value : "MU").toUpperCase(),
+      scope: scope ? scope.value : "All future purchases",
+      quantity: quantity && quantity.value ? Number(quantity.value) : null,
+      behaviors: {
+        clinginess_or_flip_resistance: Number(byId("clinginess").value) / 100,
+        diversity: Number(byId("diversity").value) / 100,
+        attraction: Number(byId("attraction").value) / 100,
+        bullishness: Number(byId("bullishness").value) / 100,
+        stickiness: Number(byId("stickiness").value) / 100,
+        gain_locking: Number(byId("gain-locking").value) / 100,
+        hold: Boolean(byId("hard-hold") && byId("hard-hold").checked)
+      },
+      status: "draft_only_requires_secure_backend_commit"
+    };
+    preview.textContent = JSON.stringify(payload, null, 2);
+  }
+
+  function wireBehaviorControls() {
+    all("#behaviors input, #behaviors select").forEach(function (input) {
+      if (input.type === "range") {
+        updateSliderOutput(input);
+      }
+      input.addEventListener("input", function () {
+        if (input.type === "range") {
+          updateSliderOutput(input);
+        }
+        behaviorPreview();
+      });
+      input.addEventListener("change", behaviorPreview);
+    });
+    behaviorPreview();
+  }
+
+  function getSelectedAsset(symbol) {
+    return assetIndex.find(function (item) {
+      return item.symbol === symbol;
+    });
+  }
+
+  function saveUniverse() {
+    try {
+      window.localStorage.setItem("sqts_selected_universe_v1", JSON.stringify(selectedUniverse));
+    } catch (_err) {
+      // Non-sensitive preference only; failing silently is fine.
+    }
+  }
+
+  function loadUniverse() {
+    try {
+      var raw = window.localStorage.getItem("sqts_selected_universe_v1");
+      var parsed = raw ? JSON.parse(raw) : null;
+      selectedUniverse = Array.isArray(parsed) && parsed.length ? parsed.slice(0, 20) : defaultUniverse.slice();
+    } catch (_err) {
+      selectedUniverse = defaultUniverse.slice();
+    }
+  }
+
+  function renderSelectedUniverse() {
+    var list = byId("selected-universe");
+    var count = byId("universe-count");
+    if (!list || !count) {
+      return;
+    }
+    list.innerHTML = "";
+    selectedUniverse.forEach(function (symbol, index) {
+      var asset = getSelectedAsset(symbol) || {symbol: symbol, name: "Custom asset", type: "User selected", price: "-", stats: ""};
+      var item = document.createElement("li");
+      item.innerHTML = "<b>" + (index + 1) + ". " + asset.symbol + "</b><span>" + asset.name + " - " + asset.type + " - " + asset.price + "</span>";
+      var remove = document.createElement("button");
+      remove.type = "button";
+      remove.textContent = "Remove";
+      remove.addEventListener("click", function () {
+        selectedUniverse = selectedUniverse.filter(function (value) {
+          return value !== symbol;
+        });
+        saveUniverse();
+        renderSelectedUniverse();
+        renderAssetResults();
+      });
+      item.appendChild(remove);
+      list.appendChild(item);
+    });
+    count.textContent = selectedUniverse.length + " / 20";
+  }
+
+  function addAsset(symbol) {
+    if (selectedUniverse.indexOf(symbol) !== -1 || selectedUniverse.length >= 20) {
+      return;
+    }
+    selectedUniverse.push(symbol);
+    saveUniverse();
+    renderSelectedUniverse();
+    renderAssetResults();
+  }
+
+  function renderAssetResults() {
+    var search = byId("asset-search");
+    var results = byId("asset-results");
+    if (!search || !results) {
+      return;
+    }
+    var query = search.value.trim().toLowerCase();
+    var filtered = assetIndex.filter(function (asset) {
+      var haystack = [asset.symbol, asset.name, asset.type, asset.stats, asset.description].join(" ").toLowerCase();
+      return !query || haystack.indexOf(query) !== -1;
+    });
+    results.innerHTML = "";
+    filtered.slice(0, 12).forEach(function (asset) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "asset-button";
+      button.disabled = selectedUniverse.indexOf(asset.symbol) !== -1 || selectedUniverse.length >= 20;
+      button.innerHTML = "<b>" + asset.symbol + "</b><span>" + asset.name + "<br>" + asset.description + "</span><em>" + asset.price + "</em>";
+      button.addEventListener("click", function () {
+        addAsset(asset.symbol);
+      });
+      results.appendChild(button);
+    });
+  }
+
+  function wireUniverseBuilder() {
+    loadUniverse();
+    var search = byId("asset-search");
+    if (search) {
+      search.addEventListener("input", renderAssetResults);
+    }
+    renderSelectedUniverse();
+    renderAssetResults();
+  }
+
+  function behaviorTags(tags) {
+    return '<span class="behavior-tags">' + tags.map(function (tag) {
+      return "<span>" + escapeHtml(tag) + "</span>";
+    }).join("") + "</span>";
+  }
+
+  function renderPortfolioBreakdown() {
+    var table = byId("portfolio-breakdown");
+    var filter = byId("portfolio-filter");
+    if (!table) {
+      return;
+    }
+    var selected = filter ? filter.value : "all";
+    var rows = portfolioRows.filter(function (row) {
+      return selected === "all" || row.sleeve === selected;
+    });
+    table.innerHTML = rows.map(function (row) {
+      var locked = row.permission === "Never sell" || row.permission === "Cash limit locked";
+      return "<tr>"
+        + "<td>" + escapeHtml(row.sleeve) + "</td>"
+        + "<td><b>" + escapeHtml(row.asset) + "</b></td>"
+        + "<td>" + escapeHtml(row.quantity) + "</td>"
+        + "<td>" + escapeHtml(row.value) + "</td>"
+        + "<td>" + behaviorTags(row.behaviors) + "</td>"
+        + '<td><span class="permission-pill ' + (locked ? "locked" : "") + '">' + escapeHtml(row.permission) + "</span></td>"
+        + "</tr>";
+    }).join("");
+  }
+
+  function wirePortfolioBreakdown() {
+    var filter = byId("portfolio-filter");
+    if (filter) {
+      filter.addEventListener("change", renderPortfolioBreakdown);
+    }
+    renderPortfolioBreakdown();
+  }
+
+  function renderAutomationHealth() {
+    var table = byId("automation-health");
+    if (!table) {
+      return;
+    }
+    table.innerHTML = automationRows.map(function (row, index) {
+      var kind = index < 2 ? "ok" : "warn";
+      return "<tr>"
+        + "<td>" + escapeHtml(row.workflow) + "</td>"
+        + "<td>" + escapeHtml(row.schedule) + "</td>"
+        + "<td><code>" + escapeHtml(row.artifact) + "</code></td>"
+        + '<td><span class="health-pill ' + kind + '">' + escapeHtml(row.behavior) + "</span></td>"
+        + "</tr>";
+    }).join("");
+  }
+
+  function renderDiagnosticsTable() {
+    var table = byId("diagnostics-table");
+    if (!table) {
+      return;
+    }
+    table.innerHTML = diagnosticsRows.map(function (row) {
+      return "<tr>"
+        + "<td>" + escapeHtml(row.diagnostic) + "</td>"
+        + "<td>" + escapeHtml(row.signal) + "</td>"
+        + "<td>" + escapeHtml(row.action) + "</td>"
+        + "<td>" + escapeHtml(row.evidence) + "</td>"
+        + "</tr>";
+    }).join("");
+  }
+
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text);
+    }
+    return new Promise(function (resolve, reject) {
+      var textArea = document.createElement("textarea");
+      textArea.value = text;
+      textArea.setAttribute("readonly", "readonly");
+      textArea.style.position = "fixed";
+      textArea.style.opacity = "0";
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand("copy");
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        document.body.removeChild(textArea);
+      }
+    });
+  }
+
+  function wireCommandCenter() {
+    var preview = byId("install-command-preview");
+    all("[data-install-command]").forEach(function (button) {
+      button.addEventListener("click", function () {
+        var key = button.getAttribute("data-install-command");
+        var command = installCommands[key] || "";
+        if (preview) {
+          preview.textContent = command;
+        }
+        copyText(command)
+          .then(function () {
+            showPrototypeToast("Copied " + key + " workflow commands.");
+          })
+          .catch(function () {
+            showPrototypeToast("Showing " + key + " workflow commands. Copy manually from the preview.");
+          });
+      });
+    });
   }
 
   function merchCheckoutUrl(productKey) {
-    return MERCH_PRODUCT_URLS[productKey] || "";
+    return MERCH_PRODUCT_URLS[productKey] || MERCH_PROVIDER_STORE_URL || "";
   }
 
-  function startMerchantCheckout(itemsOrProductKey, fallbackUrl, size) {
-    var endpoint = configuredMetaContent("smartsleeve-merch-checkout-endpoint");
-    if (!endpoint || !window.fetch) {
+  function startMerchantCheckout(productKey, fallbackUrl) {
+    if (!MERCH_STRIPE_CHECKOUT_ENDPOINT || !window.fetch) {
       return Promise.resolve(false);
     }
-    var payload = Array.isArray(itemsOrProductKey)
-      ? {
-          items: itemsOrProductKey.map(function (item) {
-            return {
-              product_key: item.product_key,
-              quantity: item.quantity || 1,
-              size: item.size || "M"
-            };
-          }),
-          merchant_of_record: MERCH_MERCHANT_OF_RECORD,
-          fallback_url: fallbackUrl || window.location.href
-        }
-      : {
-          product_key: itemsOrProductKey,
-          quantity: 1,
-          size: size || "M",
-          merchant_of_record: MERCH_MERCHANT_OF_RECORD,
-          fallback_url: fallbackUrl || window.location.href
-        };
-    return window.fetch(endpoint, {
+    return window.fetch(MERCH_STRIPE_CHECKOUT_ENDPOINT, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        product_key: productKey,
+        quantity: 1,
+        merchant_of_record: MERCH_MERCHANT_OF_RECORD,
+        fallback_url: fallbackUrl || window.location.href
+      })
     })
       .then(function (response) {
         if (!response.ok) {
@@ -93,617 +1100,35 @@
       });
   }
 
-  function merchProduct(productKey) {
-    return MERCH_CATALOG[productKey] || null;
-  }
-
-  function selectedMerchSize(button) {
-    var root = button.closest("[data-merch-product-card]") || button.closest("article") || document;
-    var select = root.querySelector("[data-merch-size]");
-    return select && select.value ? select.value : "M";
-  }
-
-  function priceForSize(product, size) {
-    if (!product || !product.prices) {
-      return "";
-    }
-    return product.prices[size] || product.prices.M || "";
-  }
-
-  function centsFromPrice(price) {
-    var value = Number(price || 0);
-    if (!Number.isFinite(value) || value <= 0) {
-      return 0;
-    }
-    return Math.round(value * 100);
-  }
-
-  function formatUsd(cents) {
-    return "$" + (Math.max(0, cents || 0) / 100).toFixed(2);
-  }
-
-  function cartLineKey(productKey, size) {
-    return String(productKey || "") + "|" + String(size || "M");
-  }
-
-  function clampCartQuantity(quantity) {
-    var parsed = Math.floor(Number(quantity || 1));
-    if (!Number.isFinite(parsed) || parsed < 1) {
-      return 1;
-    }
-    return Math.min(parsed, 6);
-  }
-
-  function readCart() {
-    try {
-      var parsed = JSON.parse(localStorage.getItem(MERCH_CART_STORAGE_KEY) || "[]");
-      MERCH_CART = Array.isArray(parsed)
-        ? parsed
-            .map(function (item) {
-              return {
-                product_key: String(item.product_key || ""),
-                size: String(item.size || "M"),
-                quantity: clampCartQuantity(item.quantity)
-              };
-            })
-            .filter(function (item) {
-              return item.product_key;
-            })
-        : [];
-    } catch (_err) {
-      MERCH_CART = [];
-    }
-  }
-
-  function writeCart() {
-    try {
-      localStorage.setItem(MERCH_CART_STORAGE_KEY, JSON.stringify(MERCH_CART));
-    } catch (_err) {
-      // Cart persistence is a convenience; checkout still works without it.
-    }
-  }
-
-  function selectedMerchQuantity(button) {
-    var root = button.closest("[data-merch-product-card]") || button.closest("article") || document;
-    var input = root.querySelector("[data-merch-quantity]");
-    return clampCartQuantity(input && input.value ? input.value : 1);
-  }
-
-  function addMerchToCart(productKey, size, quantity) {
-    var normalizedSize = size || "M";
-    var key = cartLineKey(productKey, normalizedSize);
-    var existing = MERCH_CART.find(function (item) {
-      return cartLineKey(item.product_key, item.size) === key;
-    });
-    if (existing) {
-      existing.quantity = clampCartQuantity(existing.quantity + quantity);
-    } else {
-      MERCH_CART.push({
-        product_key: productKey,
-        size: normalizedSize,
-        quantity: clampCartQuantity(quantity)
-      });
-    }
-    writeCart();
-    renderCart();
-  }
-
-  function cartLineUnitCents(item) {
-    var product = merchProduct(item.product_key);
-    return centsFromPrice(priceForSize(product, item.size));
-  }
-
-  function cartSubtotalCents() {
-    return MERCH_CART.reduce(function (total, item) {
-      return total + cartLineUnitCents(item) * clampCartQuantity(item.quantity);
-    }, 0);
-  }
-
-  function renderCart() {
-    var itemsRoot = document.querySelector("[data-merch-cart-items]");
-    var empty = document.querySelector("[data-merch-cart-empty]");
-    var count = document.querySelector("[data-merch-cart-count]");
-    var subtotal = document.querySelector("[data-merch-cart-subtotal]");
-    var checkout = document.querySelector("[data-merch-cart-checkout]");
-    var clear = document.querySelector("[data-merch-cart-clear]");
-    if (!itemsRoot) {
-      return;
-    }
-    itemsRoot.innerHTML = "";
-    var totalQuantity = MERCH_CART.reduce(function (total, item) {
-      return total + clampCartQuantity(item.quantity);
-    }, 0);
-    if (count) {
-      count.textContent = totalQuantity === 1 ? "1 item" : totalQuantity + " items";
-    }
-    if (subtotal) {
-      subtotal.textContent = formatUsd(cartSubtotalCents());
-    }
-    if (empty) {
-      empty.hidden = MERCH_CART.length > 0;
-    }
-    if (checkout) {
-      checkout.disabled = MERCH_CART.length === 0;
-    }
-    if (clear) {
-      clear.disabled = MERCH_CART.length === 0;
-    }
-    MERCH_CART.forEach(function (item) {
-      var product = merchProduct(item.product_key);
-      var row = document.createElement("div");
-      row.className = "merch-cart-row";
-      row.setAttribute("data-cart-line", cartLineKey(item.product_key, item.size));
-
-      var copy = document.createElement("div");
-      var title = document.createElement("strong");
-      title.textContent = product ? product.name : item.product_key;
-      var meta = document.createElement("span");
-      meta.textContent = item.size + " · Qty " + item.quantity + " · " + formatUsd(cartLineUnitCents(item) * item.quantity);
-      copy.appendChild(title);
-      copy.appendChild(meta);
-
-      var controls = document.createElement("div");
-      controls.className = "merch-cart-controls";
-      [
-        { label: "-", action: "decrement" },
-        { label: "+", action: "increment" },
-        { label: "Remove", action: "remove" }
-      ].forEach(function (control) {
-        var button = document.createElement("button");
-        button.type = "button";
-        button.textContent = control.label;
-        button.setAttribute("data-cart-action", control.action);
-        button.setAttribute("data-cart-line-key", cartLineKey(item.product_key, item.size));
-        controls.appendChild(button);
-      });
-
-      row.appendChild(copy);
-      row.appendChild(controls);
-      itemsRoot.appendChild(row);
-    });
-  }
-
-  function merchText(product) {
-    return String((product && (product.name || product.printful_name)) || "").toLowerCase();
-  }
-
-  function merchLogoMeta(product) {
-    var text = merchText(product);
-    if (text.indexOf("sqts") >= 0) {
-      return { rank: 1, label: "SQTS" };
-    }
-    return { rank: 0, label: "SS" };
-  }
-
-  function merchBackMeta(product) {
-    var text = merchText(product);
-    if (text.indexOf("website+qr") >= 0 || text.indexOf("website qr") >= 0 || text.indexOf("qr back") >= 0) {
-      return { rank: 2, label: "Website + QR back" };
-    }
-    if (text.indexOf("website back") >= 0) {
-      return { rank: 1, label: "Website back" };
-    }
-    if (text.indexOf("plain back") >= 0 || text.indexOf("blank back") >= 0) {
-      return { rank: 0, label: "Plain back" };
-    }
-    return { rank: 3, label: "Other back" };
-  }
-
-  function merchGenderMeta(product) {
-    var text = merchText(product);
-    if (text.indexOf("women") >= 0) {
-      return { rank: 1, label: "Women's" };
-    }
-    if (text.indexOf("men") >= 0 || text.indexOf("muscle tee") >= 0) {
-      return { rank: 0, label: "Men's" };
-    }
-    if (text.indexOf("unisex") >= 0) {
-      return { rank: 2, label: "Unisex" };
-    }
-    return { rank: 3, label: "Apparel" };
-  }
-
-  function merchApparelMeta(product) {
-    var text = merchText(product);
-    if (text.indexOf("muscle tee") >= 0 || text.indexOf("muscle shirt") >= 0) {
-      return { rank: 1, label: "Muscle Tee" };
-    }
-    if (text.indexOf("tank") >= 0) {
-      return { rank: 2, label: "Tank top" };
-    }
-    if (text.indexOf("tee") >= 0 || text.indexOf("t-shirt") >= 0 || text.indexOf("shirt") >= 0) {
-      return { rank: 0, label: "T-shirt" };
-    }
-    return { rank: 9, label: "Item" };
-  }
-
-  function merchSortKey(product) {
-    var logo = merchLogoMeta(product);
-    var back = merchBackMeta(product);
-    var gender = merchGenderMeta(product);
-    var apparel = merchApparelMeta(product);
-    return [
-      gender.rank,
-      apparel.rank,
-      logo.rank,
-      back.rank,
-      merchText(product),
-      Number(product && product.printful_product_id) || 0
-    ];
-  }
-
-  function compareMerchProducts(a, b) {
-    var left = merchSortKey(a);
-    var right = merchSortKey(b);
-    for (var index = 0; index < left.length; index += 1) {
-      if (left[index] < right[index]) {
-        return -1;
-      }
-      if (left[index] > right[index]) {
-        return 1;
-      }
-    }
-    return 0;
-  }
-
-  function merchKicker(product) {
-    var logo = merchLogoMeta(product);
-    var back = merchBackMeta(product);
-    var gender = merchGenderMeta(product);
-    var apparel = merchApparelMeta(product);
-    return logo.label + " · " + back.label + " · " + gender.label + " " + apparel.label.toLowerCase();
-  }
-
-  function merchDescription(product) {
-    var back = merchBackMeta(product);
-    if (back.rank === 0) {
-      return "Front-only brand merch with a clean blank back. Price, sizes, and checkout mapping come from the synced Printful product.";
-    }
-    if (back.rank === 1) {
-      return "Website-promo merch with the SmartSleeve front design and a centered smartsleeve.ai back. Price and sizes come from Printful.";
-    }
-    if (back.rank === 2) {
-      return "Founder promo merch with the SmartSleeve front design plus smartsleeve.ai and a subtle QR code on the back.";
-    }
-    return "Published Printful product synced into SmartSleeve checkout. Price and size options come from Printful.";
-  }
-
-  function merchGenderSectionMeta(product) {
-    var gender = merchGenderMeta(product);
-    if (gender.rank === 0) {
-      return { rank: 0, key: "mens", label: "Men's Apparel" };
-    }
-    if (gender.rank === 1) {
-      return { rank: 1, key: "womens", label: "Women's Apparel" };
-    }
-    if (gender.rank === 2) {
-      return { rank: 2, key: "unisex", label: "Unisex Apparel" };
-    }
-    return { rank: 3, key: "other", label: "Other Apparel" };
-  }
-
-  function merchApparelSectionMeta(product) {
-    var apparel = merchApparelMeta(product);
-    if (apparel.rank === 0) {
-      return { rank: 0, key: "tshirts", label: "T-shirts" };
-    }
-    if (apparel.rank === 1) {
-      return { rank: 1, key: "muscle-tees", label: "Muscle Tees" };
-    }
-    if (apparel.rank === 2) {
-      return { rank: 2, key: "tank-tops", label: "Tank Tops" };
-    }
-    return { rank: 9, key: "other-items", label: "Other items" };
-  }
-
-  function createMerchGenderHeading(product) {
-    var gender = merchGenderSectionMeta(product);
-    var heading = document.createElement("div");
-    heading.className = "merch-section-heading";
-    var kicker = document.createElement("span");
-    kicker.className = "plan-kicker";
-    kicker.textContent = "SmartSleeve merch";
-    var title = document.createElement("h3");
-    title.textContent = gender.label;
-    var copy = document.createElement("p");
-    copy.textContent = "Browse by apparel type, then logo style and back design.";
-    heading.appendChild(kicker);
-    heading.appendChild(title);
-    heading.appendChild(copy);
-    return heading;
-  }
-
-  function createMerchApparelHeading(product) {
-    var apparel = merchApparelSectionMeta(product);
-    var heading = document.createElement("div");
-    heading.className = "merch-subsection-heading";
-    var title = document.createElement("h4");
-    title.textContent = apparel.label;
-    heading.appendChild(title);
-    return heading;
-  }
-
-  function createMerchCard(product) {
-    var article = document.createElement("article");
-    article.className = "merch-card featured";
-    article.setAttribute("data-merch-product-card", product.key);
-
-    var image = document.createElement("img");
-    image.src = product.preview || "/smartsleeve-ss-banner.png";
-    image.alt = "Preview of " + product.name;
-    article.appendChild(image);
-
-    var copy = document.createElement("div");
-    copy.className = "merch-copy";
-
-    var kicker = document.createElement("span");
-    kicker.className = "plan-kicker";
-    kicker.textContent = merchKicker(product);
-    copy.appendChild(kicker);
-
-    var title = document.createElement("h3");
-    title.textContent = product.name;
-    copy.appendChild(title);
-
-    var price = document.createElement("strong");
-    var priceValue = document.createElement("span");
-    priceValue.setAttribute("data-merch-price", "");
-    priceValue.textContent = product.price_label || "$19.99";
-    var shipping = document.createElement("span");
-    shipping.textContent = " + shipping";
-    price.appendChild(priceValue);
-    price.appendChild(shipping);
-    copy.appendChild(price);
-
-    var description = document.createElement("p");
-    description.textContent = merchDescription(product);
-    copy.appendChild(description);
-
-    var label = document.createElement("label");
-    label.className = "merch-size-picker";
-    label.textContent = "Size ";
-    var select = document.createElement("select");
-    select.setAttribute("data-merch-size", "");
-    select.setAttribute("aria-label", product.name + " size");
-    label.appendChild(select);
-    copy.appendChild(label);
-
-    var quantityLabel = document.createElement("label");
-    quantityLabel.className = "merch-size-picker merch-quantity-picker";
-    quantityLabel.textContent = "Qty ";
-    var quantity = document.createElement("input");
-    quantity.type = "number";
-    quantity.min = "1";
-    quantity.max = "6";
-    quantity.step = "1";
-    quantity.value = "1";
-    quantity.setAttribute("data-merch-quantity", "");
-    quantity.setAttribute("aria-label", product.name + " quantity");
-    quantityLabel.appendChild(quantity);
-    copy.appendChild(quantityLabel);
-
-    var actions = document.createElement("div");
-    actions.className = "action-row";
-    var button = document.createElement("button");
-    button.type = "button";
-    button.className = "button primary";
-    button.setAttribute("data-merch-checkout", product.key);
-    button.textContent = "Add to cart";
-    actions.appendChild(button);
-    copy.appendChild(actions);
-
-    article.appendChild(copy);
-    return article;
-  }
-
-  function renderPrintfulCatalog(catalog) {
-    if (!catalog || !Array.isArray(catalog.products) || catalog.products.length === 0) {
-      return;
-    }
-    var grid = document.querySelector("[data-printful-catalog-grid]");
-    if (!grid) {
-      return;
-    }
-    grid.innerHTML = "";
-    var lastGenderKey = "";
-    var lastApparelKey = "";
-    catalog.products.slice().sort(compareMerchProducts).forEach(function (product) {
-      if (product && product.key) {
-        var gender = merchGenderSectionMeta(product);
-        var apparel = merchApparelSectionMeta(product);
-        if (gender.key !== lastGenderKey) {
-          grid.appendChild(createMerchGenderHeading(product));
-          lastGenderKey = gender.key;
-          lastApparelKey = "";
-        }
-        if (apparel.key !== lastApparelKey) {
-          grid.appendChild(createMerchApparelHeading(product));
-          lastApparelKey = apparel.key;
-        }
-        grid.appendChild(createMerchCard(product));
-      }
-    });
-    var compact = document.querySelector("[data-static-merch-extras]");
-    if (compact) {
-      compact.hidden = true;
-    }
-  }
-
-  function updateCardPrice(root, productKey, size) {
-    var product = merchProduct(productKey);
-    all("[data-merch-checkout]", root).forEach(function (button) {
-      var buttonProductKey = button.getAttribute("data-merch-checkout") || "";
-      var buttonProduct = merchProduct(buttonProductKey);
-      var buttonPrice = priceForSize(buttonProduct, size);
-      if (!button.dataset.merchBaseLabel) {
-        button.dataset.merchBaseLabel = button.textContent;
-      }
-      if (buttonPrice) {
-        button.textContent = button.dataset.merchBaseLabel + " · $" + buttonPrice;
-      }
-    });
-    if (!product) {
-      return;
-    }
-    var priceNode = root.querySelector("[data-merch-price]");
-    var selectedPrice = priceForSize(product, size);
-    if (priceNode) {
-      priceNode.textContent = selectedPrice ? "$" + selectedPrice : product.price_label || "$19.99";
-    }
-    var rangeNode = root.querySelector("[data-merch-price-range]");
-    if (rangeNode) {
-      rangeNode.textContent = product.price_label || "";
-    }
-  }
-
-  function applyMerchCatalog(catalog) {
-    if (!catalog || !Array.isArray(catalog.products)) {
-      return;
-    }
-    catalog.products.forEach(function (product) {
-      if (product && product.key) {
-        MERCH_CATALOG[product.key] = product;
-      }
-    });
-    renderPrintfulCatalog(catalog);
-    all("[data-merch-product-card]").forEach(function (card) {
-      var productKey = card.getAttribute("data-merch-product-card") || "";
-      var product = merchProduct(productKey);
-      if (!product) {
-        return;
-      }
-      var select = card.querySelector("[data-merch-size]");
-      var sizes = Array.isArray(product.sizes) && product.sizes.length ? product.sizes : (catalog.sizes || ["S", "M", "L", "XL", "2XL"]);
-      if (select && select.options.length === 0) {
-        sizes.forEach(function (size) {
-          var option = document.createElement("option");
-          option.value = size;
-          option.textContent = size;
-          select.appendChild(option);
-        });
-        select.value = sizes.indexOf("M") >= 0 ? "M" : sizes[0];
-      }
-      updateCardPrice(card, productKey, select && select.value ? select.value : "M");
-    });
-    renderCart();
-  }
-
-  function fillFallbackSizes() {
-    all("[data-merch-size]").forEach(function (select) {
-      if (select.options.length > 0) {
-        return;
-      }
-      ["S", "M", "L", "XL", "2XL"].forEach(function (size) {
-        var option = document.createElement("option");
-        option.value = size;
-        option.textContent = size;
-        select.appendChild(option);
-      });
-      select.value = "M";
-    });
-  }
-
-  function loadMerchCatalog() {
-    if (!window.fetch) {
-      fillFallbackSizes();
-      return Promise.resolve();
-    }
-    return fetch("/merch/printful-storefront-catalog.json", { cache: "no-store" })
-      .then(function (response) {
-        if (!response.ok) {
-          throw new Error("catalog unavailable");
-        }
-        return response.json();
-      })
-      .then(applyMerchCatalog)
-      .catch(fillFallbackSizes);
-  }
-
   function wireMerchStore() {
-    all("[data-merch-size]").forEach(function (select) {
-      select.addEventListener("change", function () {
-        var root = select.closest("[data-merch-product-card]") || select.closest("article") || document;
-        var productKey = root.getAttribute("data-merch-product-card") || "";
-        updateCardPrice(root, productKey, select.value || "M");
-      });
-    });
     all("[data-merch-checkout]").forEach(function (button) {
       button.addEventListener("click", function () {
         var productKey = button.getAttribute("data-merch-checkout") || "";
-        var size = selectedMerchSize(button);
-        var quantity = selectedMerchQuantity(button);
-        addMerchToCart(productKey, size, quantity);
-        showToast("Added " + quantity + " item" + (quantity === 1 ? "" : "s") + " to your cart.");
-      });
-    });
-
-    var cart = document.querySelector("[data-merch-cart]");
-    if (cart) {
-      cart.addEventListener("click", function (event) {
-        var target = event.target;
-        if (!target || !target.getAttribute) {
-          return;
-        }
-        var action = target.getAttribute("data-cart-action");
-        var lineKey = target.getAttribute("data-cart-line-key") || "";
-        if (action) {
-          MERCH_CART = MERCH_CART.reduce(function (items, item) {
-            if (cartLineKey(item.product_key, item.size) !== lineKey) {
-              items.push(item);
-              return items;
-            }
-            if (action === "remove") {
-              return items;
-            }
-            var nextQuantity = item.quantity + (action === "increment" ? 1 : -1);
-            if (nextQuantity > 0) {
-              items.push({
-                product_key: item.product_key,
-                size: item.size,
-                quantity: clampCartQuantity(nextQuantity)
-              });
-            }
-            return items;
-          }, []);
-          writeCart();
-          renderCart();
-        }
-      });
-    }
-
-    var checkoutButton = document.querySelector("[data-merch-cart-checkout]");
-    if (checkoutButton) {
-      checkoutButton.addEventListener("click", function () {
-        if (MERCH_CART.length === 0) {
-          showToast("Add at least one SmartSleeve item before checkout.");
-          return;
-        }
-        checkoutButton.disabled = true;
-        checkoutButton.textContent = "Opening checkout...";
-        startMerchantCheckout(MERCH_CART)
+        var url = merchCheckoutUrl(productKey);
+        startMerchantCheckout(productKey, url)
           .then(function (openedMerchantCheckout) {
-            if (!openedMerchantCheckout) {
-              showToast("SmartSleeve cart checkout is not configured yet.");
+            if (openedMerchantCheckout) {
+              return;
             }
+            if (url) {
+              window.open(url, "_blank", "noopener,noreferrer");
+              return;
+            }
+            showPrototypeToast(
+              "SmartSleeve LLC merch checkout is ready for wiring, but MERCH_STRIPE_CHECKOUT_ENDPOINT or legacy provider product URLs still need to be configured."
+            );
           })
           .catch(function () {
-            showToast("SmartSleeve cart checkout could not start. Check the Stripe Checkout endpoint and fulfillment webhook configuration.");
-          })
-          .then(function () {
-            checkoutButton.textContent = "Checkout cart";
-            checkoutButton.disabled = MERCH_CART.length === 0;
+            if (url) {
+              window.open(url, "_blank", "noopener,noreferrer");
+              return;
+            }
+            showPrototypeToast(
+              "SmartSleeve LLC merchant checkout could not start. Check the Stripe Checkout endpoint and fulfillment webhook configuration."
+            );
           });
       });
-    }
-
-    var clearButton = document.querySelector("[data-merch-cart-clear]");
-    if (clearButton) {
-      clearButton.addEventListener("click", function () {
-        MERCH_CART = [];
-        writeCart();
-        renderCart();
-      });
-    }
+    });
   }
 
   function sendAnalytics() {
@@ -716,7 +1141,7 @@
     try {
       visitorId = localStorage.getItem(visitorKey) || "";
       if (!visitorId) {
-        visitorId = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + "-" + Math.random();
+        visitorId = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + "-" + Math.random());
         localStorage.setItem(visitorKey, visitorId);
       }
     } catch (_err) {
@@ -726,7 +1151,7 @@
       method: "POST",
       mode: "cors",
       keepalive: true,
-      headers: { "Content-Type": "application/json" },
+      headers: {"Content-Type": "application/json"},
       body: JSON.stringify({
         site: "smartsleeve.ai",
         path: window.location.pathname || "/app/",
@@ -738,14 +1163,21 @@
   }
 
   document.addEventListener("DOMContentLoaded", function () {
-    readCart();
-    loadMerchCatalog().then(wireMerchStore);
-    if (window.location.hash.indexOf("#shop-success") === 0) {
-      MERCH_CART = [];
-      writeCart();
-      showToast("Thanks for the SmartSleeve order. Stripe confirmed checkout; fulfillment will follow through SmartSleeve.");
-    }
-    renderCart();
+    wireNavigation();
+    wirePrototypeActions();
+    wireCheckoutPreview();
+    wireLoginForm();
+    loadCurrentSession();
+    wireRegistrationForm();
+    wireBehaviorControls();
+    wireAdvancedOrderControls();
+    wireSageMandateControls();
+    wireUniverseBuilder();
+    wirePortfolioBreakdown();
+    renderAutomationHealth();
+    renderDiagnosticsTable();
+    wireCommandCenter();
+    wireMerchStore();
     sendAnalytics();
   });
 })();
