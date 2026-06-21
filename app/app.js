@@ -28,6 +28,9 @@
     history: {accounts: [], positions: []},
     sageMode: "recommend",
     selectedTradeId: null,
+    orderNotificationSeen: {},
+    orderNotificationPrimed: false,
+    feedRefreshTimer: null,
     feedSource: "loading"
   };
 
@@ -764,6 +767,120 @@
     return badges.length ? "<span class=\"feature-badges\">" + badges.join("") + "</span>" : "";
   }
 
+  function notificationIconForOrder(order) {
+    if (tradeHasSage(order)) return "/app/sage-logo.png";
+    if (isUserDirectedOrder(order)) return "/app/user-trade-logo.svg";
+    return "/favicon-32x32.png";
+  }
+
+  function orderNotificationKey(order) {
+    return orderLifecycleId(order) + "|" + orderStatusLabel(order);
+  }
+
+  function orderNotificationTitle(order, verb) {
+    var actor = originLabel(order);
+    var titleVerb = verb || orderStatusLabel(order);
+    return actor + " order " + titleVerb;
+  }
+
+  function orderNotificationBody(order) {
+    var symbol = String(order.symbol || order.ticker || "?").split(" ")[0].toUpperCase();
+    var account = order.account || order.accountId || "Account";
+    var side = orderTypeLabel(order);
+    var value = money(orderNotional(order));
+    var status = orderStatusLabel(order);
+    return symbol + " / " + side + " / " + value + " / " + account + " / " + status;
+  }
+
+  function sendOrderNotification(order, verb) {
+    var title = orderNotificationTitle(order, verb);
+    var body = orderNotificationBody(order);
+    var icon = notificationIconForOrder(order);
+    toast(title + ": " + body);
+    if (window.SmartSleeveNative && typeof window.SmartSleeveNative.notify === "function") {
+      try {
+        window.SmartSleeveNative.notify(title, body, icon);
+        return;
+      } catch (_bridgeErr) {
+        // Fall through to browser notifications when the native bridge is not ready.
+      }
+    }
+    if (!("Notification" in window)) return;
+    var options = {
+      body: body,
+      icon: icon,
+      badge: "/favicon-32x32.png",
+      tag: orderNotificationKey(order),
+      renotify: true
+    };
+    if (Notification.permission === "granted") {
+      try { new Notification(title, options); } catch (_err) {}
+      return;
+    }
+    if (Notification.permission === "default") {
+      Notification.requestPermission().then(function (permission) {
+        if (permission === "granted") {
+          try { new Notification(title, options); } catch (_err) {}
+        }
+      });
+    }
+  }
+
+  function restoreOrderNotificationSeen() {
+    try {
+      state.orderNotificationSeen = JSON.parse(window.localStorage.getItem("smartsleeve_order_notification_seen") || "{}") || {};
+    } catch (_err) {
+      state.orderNotificationSeen = {};
+    }
+  }
+
+  function persistOrderNotificationSeen() {
+    try {
+      var entries = Object.keys(state.orderNotificationSeen).slice(-300).reduce(function (acc, key) {
+        acc[key] = state.orderNotificationSeen[key];
+        return acc;
+      }, {});
+      state.orderNotificationSeen = entries;
+      window.localStorage.setItem("smartsleeve_order_notification_seen", JSON.stringify(entries));
+    } catch (_err) {
+      // localStorage can be unavailable in locked-down webviews.
+    }
+  }
+
+  function notifyOrderFeedChanges(rows) {
+    var orders = (rows || []).map(function (trade) {
+      return Object.assign({}, trade, {lifecycleSource: "server", sourceLabel: "Broker/analytics feed"});
+    });
+    if (!state.orderNotificationPrimed) {
+      orders.forEach(function (order) {
+        state.orderNotificationSeen[orderNotificationKey(order)] = Date.now();
+      });
+      state.orderNotificationPrimed = true;
+      persistOrderNotificationSeen();
+      return;
+    }
+    orders.slice(0, 25).forEach(function (order) {
+      var key = orderNotificationKey(order);
+      if (state.orderNotificationSeen[key]) return;
+      var status = String(orderStatusLabel(order)).toLowerCase();
+      var verb = status.indexOf("fill") !== -1 || status.indexOf("execut") !== -1 || status.indexOf("complete") !== -1
+        ? "executed"
+        : status.indexOf("cancel") !== -1
+          ? "canceled"
+          : "placed";
+      state.orderNotificationSeen[key] = Date.now();
+      sendOrderNotification(order, verb);
+    });
+    persistOrderNotificationSeen();
+  }
+
+  function scheduleFeedRefresh() {
+    if (state.feedRefreshTimer || !appFeedEndpoint) return;
+    state.feedRefreshTimer = window.setInterval(function () {
+      if (!$("auth-gate")) loadFeed({silent: true});
+    }, 60000);
+  }
+
   function buildRecommendations() {
     var total = accountTotal("equity");
     var bySymbol = {};
@@ -1300,6 +1417,7 @@
     renderDraftOrders();
     renderServerTrades();
     renderActivity();
+    sendOrderNotification(order, "drafted");
     toast("Draft intent created. Broker preview and approval are still required.");
   }
 
@@ -1376,6 +1494,18 @@
         if (result && result.ok) {
           toast("Server accepted the order intent for preview.");
           addActivity("Order intent queued", built.intent.operator_id, built.intent.account_label, built.intent.symbol + " " + built.intent.order_type);
+          sendOrderNotification(Object.assign({}, built.intent, {
+            lifecycleSource: "preview",
+            sourceLabel: "Server preview",
+            account: built.intent.account_label,
+            orderType: built.intent.order_type,
+            limitPrice: built.intent.limit_price,
+            notionalUsd: built.intent.notional_usd,
+            timeInForce: built.intent.time_in_force,
+            operatorId: built.intent.operator_id,
+            placedAt: built.intent.created_at,
+            status: "Server preview accepted"
+          }), "queued");
           renderActivity();
         }
       })
@@ -1977,6 +2107,7 @@
                   persistDraftOrders();
                   renderDraftOrders();
                   renderServerTrades();
+                  sendOrderNotification(order, "queued");
                   toast("Server accepted the draft for preview.");
                 }
               })
@@ -2098,6 +2229,7 @@
       positions: visibleRows(history.positions || []).filter(function (row) { return visibleAccountIds[row.accountId]; })
     };
     state.serverTrades = visibleRows(payload.trades || []);
+    notifyOrderFeedChanges(state.serverTrades);
     state.brain = visibleRows(payload.brain || []);
     state.reports = visibleRows(payload.reports || []);
     text("snapshot-source", payload.source || "Private SmartSleeve API");
@@ -2106,6 +2238,7 @@
     addActivity("Cloud feed synced", "EXTERNAL_BROKER_SYNC", appEdition === "developer" ? "All accounts" : principalEmail, state.accounts.length + " account(s), " + state.serverTrades.length + " trades, " + state.brain.length + " brain rows.");
     renderAll();
     handleNav((window.location.hash || "#dashboard").replace("#", "") || "dashboard");
+    scheduleFeedRefresh();
   }
 
   function fetchAppFeed() {
@@ -2128,7 +2261,8 @@
       });
   }
 
-  function loadFeed() {
+  function loadFeed(options) {
+    options = options || {};
     fetchAppFeed()
       .then(function (result) { applyFeed(result.payload, result.url); })
       .catch(function (error) {
@@ -2144,12 +2278,13 @@
         } else {
           showAuthGate("Private feed unavailable: " + error.message);
         }
-        toast("Portfolio feed failed to load.");
+        if (!options.silent) toast("Portfolio feed failed to load.");
       });
   }
 
   document.addEventListener("DOMContentLoaded", function () {
     restoreDraftOrders();
+    restoreOrderNotificationSeen();
     renderSession();
     wireEvents();
     loadFeed();
