@@ -533,6 +533,7 @@ button.primary {
 
 .stack-list,
 .account-grid,
+.coverage-grid,
 .mode-list {
   display: grid;
   gap: 10px;
@@ -544,6 +545,7 @@ button.primary {
 
 .stack-item,
 .account-card,
+.coverage-card,
 .mode-row {
   display: grid;
   gap: 7px;
@@ -551,6 +553,32 @@ button.primary {
   border: 1px solid rgba(148, 163, 184, 0.14);
   border-radius: 8px;
   background: rgba(15, 23, 42, 0.62);
+}
+
+.coverage-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.coverage-card.coverage-missing {
+  border-color: rgba(251, 113, 133, 0.45);
+  background: rgba(127, 29, 29, 0.16);
+}
+
+.coverage-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.report-provenance {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.report-provenance.is-warning {
+  color: var(--amber);
 }
 
 .stack-item-head {
@@ -1147,6 +1175,7 @@ textarea:focus {
   .sleeve-grid,
   .recommendation-grid,
   .gauge-grid,
+  .coverage-grid,
   .brand-explainer,
   .two-columns,
   .trade-layout,
@@ -1195,7 +1224,8 @@ textarea:focus {
   }
 
   .dashboard-grid,
-  .account-grid {
+  .account-grid,
+  .coverage-grid {
     grid-template-columns: 1fr 1fr;
   }
 
@@ -1275,7 +1305,8 @@ textarea:focus {
 
 @media (max-width: 520px) {
   .dashboard-grid,
-  .account-grid {
+  .account-grid,
+  .coverage-grid {
     grid-template-columns: 1fr;
   }
 

@@ -503,6 +503,7 @@ async function login(request, env) {
   const token = randomToken(36);
   const sessionHash = await sha256Hex(token);
   const now = new Date().toISOString();
+  const expiresAt = new Date(Date.now() + SESSION_TTL_SECONDS * 1000).toISOString();
   await env.SMARTSLEEVE_AUTH.put(
     `session:${sessionHash}`,
     JSON.stringify({
@@ -510,7 +511,7 @@ async function login(request, env) {
       email_hash: account.emailHash,
       created_at: now,
       last_seen_at: now,
-      expires_at: new Date(Date.now() + SESSION_TTL_SECONDS * 1000).toISOString(),
+      expires_at: expiresAt,
     }),
     { expirationTtl: SESSION_TTL_SECONDS }
   );
@@ -518,7 +519,7 @@ async function login(request, env) {
   return jsonWithCookie(
     request,
     env,
-    { ok: true, status: "logged_in", session_token: token, profile: publicProfile(account.record, env) },
+    { ok: true, status: "logged_in", session_token: token, session_expires_at: expiresAt, profile: publicProfile(account.record, env) },
     sessionCookie(token)
   );
 }

@@ -12,6 +12,8 @@
   var registerEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/register" : "";
   var passwordResetEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/password-reset/request" : "";
   var sessionToken = params.get("session_token") || "";
+  var sessionExpiresAt = "";
+  var SESSION_STORAGE_KEY = "smartsleeve_private_session_v1";
 
   var state = {
     payload: null,
@@ -25,6 +27,8 @@
     serverTrades: [],
     brain: [],
     reports: [],
+    expectedAccounts: [],
+    accountDiagnostics: [],
     history: {accounts: [], positions: []},
     sageMode: "recommend",
     selectedTradeId: null,
@@ -161,14 +165,14 @@
       "<button type=\"button\" data-auth-mode=\"login\" aria-selected=\"true\">Sign in</button>",
       "<button type=\"button\" data-auth-mode=\"register\" aria-selected=\"false\">Create account</button>",
       "</div>",
-      "<label class=\"auth-register-field\">Username<input id=\"auth-username\" type=\"text\" autocomplete=\"username\" minlength=\"3\"></label>",
+      "<label class=\"auth-register-field\">Username<input id=\"auth-username\" type=\"text\" autocomplete=\"username\" autocapitalize=\"none\" spellcheck=\"false\" minlength=\"3\"></label>",
       "<div class=\"auth-name-grid auth-register-field\">",
-      "<label>First name<input id=\"auth-first-name\" type=\"text\" autocomplete=\"given-name\"></label>",
-      "<label>Last name<input id=\"auth-last-name\" type=\"text\" autocomplete=\"family-name\"></label>",
+      "<label>First name<input id=\"auth-first-name\" type=\"text\" autocomplete=\"given-name\" autocapitalize=\"words\"></label>",
+      "<label>Last name<input id=\"auth-last-name\" type=\"text\" autocomplete=\"family-name\" autocapitalize=\"words\"></label>",
       "</div>",
-      "<label>Email<input id=\"auth-email\" type=\"email\" autocomplete=\"username\" required></label>",
-      "<label>Password<input id=\"auth-password\" type=\"password\" autocomplete=\"off\" minlength=\"8\" data-lpignore=\"true\" data-1p-ignore=\"true\" autocapitalize=\"none\" spellcheck=\"false\" required></label>",
-      "<label class=\"auth-register-field\">Confirm password<input id=\"auth-password-confirm\" type=\"password\" autocomplete=\"off\" minlength=\"8\" data-lpignore=\"true\" data-1p-ignore=\"true\" autocapitalize=\"none\" spellcheck=\"false\"></label>",
+      "<label>Email<input id=\"auth-email\" type=\"email\" autocomplete=\"username\" inputmode=\"email\" autocapitalize=\"none\" spellcheck=\"false\" required></label>",
+      "<label>Password<input id=\"auth-password\" type=\"password\" autocomplete=\"current-password\" minlength=\"8\" autocapitalize=\"none\" spellcheck=\"false\" required></label>",
+      "<label class=\"auth-register-field\">Confirm password<input id=\"auth-password-confirm\" type=\"password\" autocomplete=\"new-password\" minlength=\"8\" autocapitalize=\"none\" spellcheck=\"false\"></label>",
       "<label class=\"auth-check auth-register-field\"><input id=\"auth-accepted-terms\" type=\"checkbox\"><span>I understand SmartSleeve account access is for verified users and does not itself authorize broker trading.</span></label>",
       "<button type=\"submit\" id=\"auth-submit-button\">Sign in</button>",
       "<button type=\"button\" class=\"auth-link-button\" id=\"auth-reset-button\">Reset password</button>",
@@ -197,6 +201,7 @@
       });
     });
     $("auth-reset-button").addEventListener("click", requestPasswordResetFromGate);
+    wireAuthInputs(gate);
   }
 
   function clearAuthPasswordFields() {
@@ -236,6 +241,10 @@
       button.setAttribute("aria-selected", button.getAttribute("data-auth-mode") === nextMode ? "true" : "false");
     });
     text("auth-submit-button", nextMode === "register" ? "Create account" : "Sign in");
+    var password = $("auth-password");
+    if (password) {
+      password.setAttribute("autocomplete", nextMode === "register" ? "new-password" : "current-password");
+    }
     text(
       "auth-gate-message",
       nextMode === "register"
@@ -264,6 +273,7 @@
             throw new Error(payload.error || "login_failed");
           }
           sessionToken = payload.session_token || sessionToken;
+          sessionExpiresAt = payload.session_expires_at || "";
           principalEmail = normalizeEmail((payload.profile || {}).email || email);
           if ((payload.profile || {}).role === "developer") {
             appEdition = "developer";
@@ -272,6 +282,7 @@
             appEdition = "web";
             accountScope = "user";
           }
+          persistSession(payload.profile || {});
           removeAuthGate();
           renderSession();
           loadFeed();
@@ -362,6 +373,17 @@
       .catch(function (error) {
         text("auth-gate-message", "Password reset failed: " + error.message);
       });
+  }
+
+  function wireAuthInputs(root) {
+    $all("input", root).forEach(function (input) {
+      input.addEventListener("pointerup", function () {
+        window.setTimeout(function () { input.focus(); }, 0);
+      });
+      input.addEventListener("focus", function () {
+        input.scrollIntoView({block: "center", behavior: "smooth"});
+      });
+    });
   }
 
   function $all(selector, root) {
@@ -456,6 +478,7 @@
       id: account.id || account.accountId || account.account_id || account.account,
       account: account.account || account.name || account.id || "Account",
       ownerEmail: account.ownerEmail || account.owner_email,
+      ownerName: account.ownerName || account.owner_name || account.userName || account.user_name || account.user,
       developerEmail: account.developerEmail || account.developer_email,
       broker: account.broker || "Broker",
       status: account.status || "synced",
@@ -477,6 +500,53 @@
       return normalizeEmail(row.ownerEmail || row.owner_email) === principalEmail
         || normalizeEmail(row.developerEmail || row.developer_email) === principalEmail
         || (row.audienceEmails || []).map(normalizeEmail).indexOf(principalEmail) !== -1;
+    });
+  }
+
+  function rowAccountId(row) {
+    return row.accountId || row.account_id || row.id || row.account;
+  }
+
+  function displayOwner(account) {
+    return account.ownerName || account.ownerEmail || "Unassigned owner";
+  }
+
+  function accountFreshness(account) {
+    var generated = timestampMs(account.generatedAt);
+    if (!generated) return {label: "No timestamp", className: "warning", ageMinutes: null};
+    var ageMinutes = Math.max(0, Math.round((Date.now() - generated) / 60000));
+    if (ageMinutes > 180) return {label: Math.round(ageMinutes / 60) + "h old", className: "warning", ageMinutes: ageMinutes};
+    if (ageMinutes > 75) return {label: ageMinutes + "m old", className: "caution", ageMinutes: ageMinutes};
+    return {label: ageMinutes + "m old", className: "fresh", ageMinutes: ageMinutes};
+  }
+
+  function expectedAccountRows(payload) {
+    var candidates = payload.expected_accounts || payload.expectedAccounts || payload.account_registry || payload.accountRegistry || [];
+    if (!Array.isArray(candidates)) return [];
+    return candidates.map(function (row) {
+      return {
+        id: row.id || row.accountId || row.account_id || row.account,
+        label: row.label || row.account || row.name || row.id || "Expected account",
+        ownerEmail: row.ownerEmail || row.owner_email,
+        ownerName: row.ownerName || row.owner_name || row.userName || row.user_name,
+        broker: row.broker || "Broker"
+      };
+    }).filter(function (row) { return row.id || row.label; });
+  }
+
+  function buildAccountDiagnostics(accounts, expected) {
+    var byId = {};
+    accounts.forEach(function (account) {
+      byId[String(account.id || account.account).toLowerCase()] = account;
+      byId[String(account.account).toLowerCase()] = account;
+    });
+    return expected.map(function (row) {
+      var key = String(row.id || row.label).toLowerCase();
+      var matched = byId[key] || byId[String(row.label).toLowerCase()];
+      return Object.assign({}, row, {
+        present: Boolean(matched),
+        matchedAccount: matched || null
+      });
     });
   }
 
@@ -938,6 +1008,7 @@
     renderTopHoldings(total);
     renderReviewQueue();
     renderAccounts();
+    renderAccountCoverage();
     renderSleeveSummary(total);
     renderPerformanceCharts();
     renderReports();
@@ -967,12 +1038,59 @@
       var cash = numeric(account.cash) || 0;
       return "<article class=\"account-card\">"
         + "<div class=\"stack-item-head\"><b>" + html(account.account) + "</b><span>" + html(account.broker) + "</span></div>"
+        + "<p>Owner: <b>" + html(displayOwner(account)) + "</b></p>"
         + "<p>Equity: <b>" + money(account.equity) + "</b></p>"
         + "<p>Cash: <span class=\"" + (cash < 0 ? "negative" : "positive") + "\">" + money(cash) + "</span> / buying power " + money(account.buyPower) + "</p>"
         + "<p>Holdings: " + money((account.positions || []).reduce(function (sum, position) { return sum + (numeric(position.value) || 0); }, 0)) + " / positions " + (account.positions || []).length + "</p>"
         + "<p>Status: " + html(account.status) + "</p>"
         + "</article>";
     }).join("") || emptyItem("No visible accounts", "Sign in with an email that has SmartSleeve account access.");
+  }
+
+  function renderAccountCoverage() {
+    var target = $("account-coverage");
+    var status = $("coverage-status");
+    if (!target) return;
+    var staleCount = state.accounts.filter(function (account) {
+      return accountFreshness(account).className !== "fresh";
+    }).length;
+    var missingExpected = state.accountDiagnostics.filter(function (row) { return !row.present; });
+    if (status) {
+      status.textContent = missingExpected.length ? missingExpected.length + " missing" : staleCount ? staleCount + " stale" : "Live";
+      status.classList.toggle("warning", Boolean(missingExpected.length || staleCount));
+    }
+    var byOwner = {};
+    state.accounts.forEach(function (account) {
+      var owner = displayOwner(account);
+      if (!byOwner[owner]) {
+        byOwner[owner] = {owner: owner, accounts: [], equity: 0, brokers: []};
+      }
+      byOwner[owner].accounts.push(account);
+      byOwner[owner].equity += numeric(account.equity) || 0;
+      if (byOwner[owner].brokers.indexOf(account.broker) === -1) {
+        byOwner[owner].brokers.push(account.broker);
+      }
+    });
+    var ownerCards = Object.keys(byOwner).sort().map(function (owner) {
+      var row = byOwner[owner];
+      var stale = row.accounts.filter(function (account) { return accountFreshness(account).className !== "fresh"; });
+      return "<article class=\"coverage-card\">"
+        + "<div class=\"stack-item-head\"><b>" + html(owner) + "</b><span>" + html(row.accounts.length + " account(s)") + "</span></div>"
+        + "<p>" + html(row.brokers.join(", ") || "Broker sync pending") + "</p>"
+        + "<p>Visible equity: <b>" + money(row.equity) + "</b></p>"
+        + "<p class=\"" + (stale.length ? "warning-text" : "positive") + "\">" + html(stale.length ? stale.length + " stale/no-timestamp snapshot(s)" : "Fresh snapshots") + "</p>"
+        + "</article>";
+    });
+    var diagnosticCards = state.accountDiagnostics.map(function (row) {
+      var account = row.matchedAccount;
+      var freshness = account ? accountFreshness(account) : null;
+      return "<article class=\"coverage-card " + (row.present ? "" : "coverage-missing") + "\">"
+        + "<div class=\"stack-item-head\"><b>" + html(row.label) + "</b><span>" + html(row.present ? "Present" : "Missing") + "</span></div>"
+        + "<p>" + html((row.ownerName || row.ownerEmail || "Expected owner") + " / " + row.broker) + "</p>"
+        + "<p>" + html(row.present ? "Matched " + account.account + " / " + freshness.label : "Not present in the private feed payload.") + "</p>"
+        + "</article>";
+    });
+    target.innerHTML = ownerCards.concat(diagnosticCards).join("") || emptyItem("No account coverage", "Private API did not return visible accounts yet.");
   }
 
   function renderPerformanceCharts() {
@@ -1000,6 +1118,7 @@
         var points = state.history.positions.filter(function (point) {
           return point.accountId === row.account.id && point.symbol === row.position.symbol;
         });
+        points = smoothHistoryDrops(points, "value", row.position.value);
         if (!points.length && numeric(row.position.value) != null) {
           points = [{at: row.account.generatedAt || new Date().toISOString(), value: row.position.value}];
         }
@@ -1033,11 +1152,31 @@
 
   function reportCard(report) {
     var url = report.url || report.latestUrl || "#";
+    var provenance = reportProvenance(report);
     return "<article class=\"stack-item\">"
       + "<div class=\"stack-item-head\"><b>" + html(report.title) + "</b><span>" + html(report.date || "latest") + "</span></div>"
       + "<p>" + html(report.type === "stock_pick" ? "Stock pick email/report archive" : "Daily performance report archive") + "</p>"
+      + "<p class=\"report-provenance " + html(provenance.className) + "\">" + html(provenance.text) + "</p>"
       + "<div class=\"recommendation-actions\"><a class=\"text-button\" href=\"" + html(url) + "\" target=\"_blank\" rel=\"noopener\">Open report</a></div>"
       + "</article>";
+  }
+
+  function reportProvenance(report) {
+    var model = report.llm_model || report.llmModel || report.ai_model || report.model || report.research_model || "";
+    var usedLlm = report.llm_used != null ? Boolean(report.llm_used) : report.used_llm != null ? Boolean(report.used_llm) : Boolean(model);
+    var status = String(report.research_status || report.researchStatus || report.status || "").toLowerCase();
+    var fallback = Boolean(report.fallback || report.is_fallback || report.degraded || report.degraded_fallback || status.indexOf("fallback") !== -1 || status.indexOf("degraded") !== -1);
+    if (appEdition === "developer") {
+      var modelText = usedLlm ? (model || "LLM model not supplied") : "No LLM used";
+      var statusText = fallback ? "fallback path" : status ? status.replace(/_/g, " ") : "normal path";
+      return {className: fallback ? "is-warning" : "is-quiet", text: "Developer provenance: " + modelText + " / " + statusText + "."};
+    }
+    return {
+      className: "is-quiet",
+      text: report.type === "stock_pick"
+        ? "Research notes are summarized for review; internal generation diagnostics stay in developer reports."
+        : "Performance summary is user-facing; internal generation diagnostics stay in developer reports."
+    };
   }
 
   function renderHoldingsTable() {
@@ -1440,6 +1579,41 @@
       window.localStorage.setItem("smartsleeve_draft_order_intents", JSON.stringify(state.draftOrders.slice(0, 50)));
     } catch (_err) {
       // localStorage can be unavailable in locked-down webviews.
+    }
+  }
+
+  function persistSession(profile) {
+    if (!sessionToken) return;
+    try {
+      window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({
+        token: sessionToken,
+        email: principalEmail,
+        role: (profile || {}).role || appEdition,
+        expires_at: sessionExpiresAt || ""
+      }));
+    } catch (_err) {
+      // Native webviews can disable localStorage; the HttpOnly cookie remains primary.
+    }
+  }
+
+  function restorePersistedSession() {
+    if (sessionToken) return;
+    try {
+      var raw = window.localStorage.getItem(SESSION_STORAGE_KEY);
+      var parsed = raw ? JSON.parse(raw) : null;
+      if (!parsed || !parsed.token) return;
+      if (parsed.expires_at && Date.now() > new Date(parsed.expires_at).getTime()) {
+        window.localStorage.removeItem(SESSION_STORAGE_KEY);
+        return;
+      }
+      sessionToken = parsed.token;
+      principalEmail = normalizeEmail(parsed.email || principalEmail);
+      if (parsed.role === "developer") {
+        appEdition = "developer";
+        accountScope = "all";
+      }
+    } catch (_err) {
+      sessionToken = "";
     }
   }
 
@@ -1952,6 +2126,19 @@
       + "</article>";
   }
 
+  function smoothHistoryDrops(points, valueKey, fallbackValue) {
+    var rows = (points || []).slice();
+    var latest = numeric(fallbackValue);
+    if (rows.length < 3 || latest == null) return rows;
+    return rows.filter(function (point, index) {
+      var value = numeric(point[valueKey]);
+      if (value == null || value > 0) return true;
+      var prev = rows[index - 1] ? numeric(rows[index - 1][valueKey]) : null;
+      var next = rows[index + 1] ? numeric(rows[index + 1][valueKey]) : latest;
+      return !(prev != null && prev > 0 && next != null && next > 0);
+    });
+  }
+
   function buildLineChart(points, lineColor, yLabel) {
     var width = 420;
     var height = 220;
@@ -2217,7 +2404,11 @@
     var accounts = (payload.accounts || []).map(normalizeAccount);
     state.payload = payload;
     state.feedSource = sourceUrl;
+    sessionExpiresAt = session.session_expires_at || session.expires_at || sessionExpiresAt;
+    persistSession(profile);
     state.accounts = visibleRows(accounts);
+    state.expectedAccounts = expectedAccountRows(payload);
+    state.accountDiagnostics = buildAccountDiagnostics(state.accounts, visibleRows(state.expectedAccounts));
     var aggregated = aggregateHoldings(state.accounts);
     state.holdings = aggregated.holdings;
     state.foreignHoldings = aggregated.foreign;
@@ -2225,8 +2416,8 @@
     state.accounts.forEach(function (account) { visibleAccountIds[account.id] = true; });
     var history = payload.history || {};
     state.history = {
-      accounts: visibleRows(history.accounts || []).filter(function (row) { return visibleAccountIds[row.accountId]; }),
-      positions: visibleRows(history.positions || []).filter(function (row) { return visibleAccountIds[row.accountId]; })
+      accounts: visibleRows(history.accounts || []).filter(function (row) { return visibleAccountIds[rowAccountId(row)]; }),
+      positions: visibleRows(history.positions || []).filter(function (row) { return visibleAccountIds[rowAccountId(row)]; })
     };
     state.serverTrades = visibleRows(payload.trades || []);
     notifyOrderFeedChanges(state.serverTrades);
@@ -2271,6 +2462,7 @@
         state.accounts = [];
         state.holdings = [];
         state.sleeves = [];
+        state.accountDiagnostics = [];
         state.recommendations = [recommendation("feed-failed", "Reconnect cloud feed", "Broker sync", "SmartSleeve", "Data", 0, error.message, "No portfolio decisions should be made until current holdings are available.", "EXTERNAL_BROKER_SYNC")];
         renderAll();
         if (error.authRequired) {
@@ -2283,6 +2475,7 @@
   }
 
   document.addEventListener("DOMContentLoaded", function () {
+    restorePersistedSession();
     restoreDraftOrders();
     restoreOrderNotificationSeen();
     renderSession();

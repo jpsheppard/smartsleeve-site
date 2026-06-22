@@ -57,6 +57,12 @@ The daily website traffic report workflow is scheduled in
 `.github/workflows/site-traffic-report.yml`. It uses the same Resend email
 configuration as the SQTS daily portfolio report.
 
+Report and stock-pick email renderers should keep audience boundaries explicit:
+user-facing emails and app report cards should not describe degraded LLM
+fallbacks, quota errors, stack traces, or internal failure details. Developer
+reports may include concise generation diagnostics, but should prioritize the
+model used, or state that no LLM was used.
+
 ## Email-Verified Account Registration
 
 The console can send account registration requests to a Cloudflare Worker when
