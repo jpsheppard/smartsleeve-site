@@ -182,8 +182,8 @@
       "<label>Last name<input id=\"auth-last-name\" type=\"text\" autocomplete=\"family-name\" autocapitalize=\"words\"></label>",
       "</div>",
       "<label>Email<input id=\"auth-email\" type=\"email\" autocomplete=\"username\" inputmode=\"email\" autocapitalize=\"none\" spellcheck=\"false\" required></label>",
-      "<label>Password<input id=\"auth-password\" type=\"password\" autocomplete=\"current-password\" minlength=\"8\" autocapitalize=\"none\" spellcheck=\"false\" required></label>",
-      "<label class=\"auth-register-field\">Confirm password<input id=\"auth-password-confirm\" type=\"password\" autocomplete=\"new-password\" minlength=\"8\" autocapitalize=\"none\" spellcheck=\"false\"></label>",
+      "<label>Password<input id=\"auth-password\" type=\"password\" autocomplete=\"current-password\" minlength=\"12\" autocapitalize=\"none\" spellcheck=\"false\" required></label>",
+      "<label class=\"auth-register-field\">Confirm password<input id=\"auth-password-confirm\" type=\"password\" autocomplete=\"new-password\" minlength=\"12\" autocapitalize=\"none\" spellcheck=\"false\"></label>",
       "<label class=\"auth-check auth-register-field\"><input id=\"auth-accepted-terms\" type=\"checkbox\"><span>I understand SmartSleeve account access is for verified users and does not itself authorize broker trading.</span></label>",
       "<button type=\"submit\" id=\"auth-submit-button\">Sign in</button>",
       "<button type=\"button\" class=\"auth-link-button\" id=\"auth-reset-button\">Reset password</button>",
@@ -260,7 +260,7 @@
     text(
       "auth-gate-message",
       nextMode === "register"
-        ? "Create a verified SmartSleeve account. Passwords must be at least 8 characters. We will email a verification link before private data can load."
+        ? "Create a verified SmartSleeve account. Passwords must be at least 12 characters. We will email a verification link before private data can load."
         : "Sign in to load your private SmartSleeve data."
     );
     clearAuthPasswordFields();
@@ -410,6 +410,9 @@
       input.addEventListener("focus", function () {
         input.scrollIntoView({block: "center", behavior: "smooth"});
       });
+      input.addEventListener("blur", function () {
+        window.setTimeout(function () { handleCredentialAutofill("blur"); }, 80);
+      });
       input.addEventListener("input", function () {
         window.setTimeout(function () { handleCredentialAutofill("input"); }, 180);
       });
@@ -438,16 +441,33 @@
     var password = $("auth-password");
     if (!form || !email || !password || form.getAttribute("data-mode") !== "login") return;
     if (!email.value || !password.value) return;
-    if (document.activeElement === email || document.activeElement === password) {
+    var focusedCredentialField = document.activeElement === email || document.activeElement === password;
+    var browserFilled = isBrowserAutofilled(email) || isBrowserAutofilled(password);
+    var likelyPasswordManagerFill = source === "autofill" || source === "change" || source === "blur" || browserFilled;
+    if (focusedCredentialField && likelyPasswordManagerFill) {
       try {
         document.activeElement.blur();
       } catch (_err) {}
     }
-    if (source === "autofill" || isBrowserAutofilled(email) || isBrowserAutofilled(password)) {
+    if (likelyPasswordManagerFill || !focusedCredentialField) {
+      dismissVirtualKeyboard();
       text("auth-gate-message", "Credentials filled. Signing in...");
       scheduleCredentialAutofillSubmit();
     } else {
       text("auth-gate-message", "Credentials filled. Tap Sign in to continue.");
+    }
+  }
+
+  function dismissVirtualKeyboard() {
+    if (document.activeElement && typeof document.activeElement.blur === "function") {
+      try {
+        document.activeElement.blur();
+      } catch (_err) {}
+    }
+    if (navigator.virtualKeyboard && typeof navigator.virtualKeyboard.hide === "function") {
+      try {
+        navigator.virtualKeyboard.hide();
+      } catch (_err2) {}
     }
   }
 
@@ -594,7 +614,8 @@
       brokerSync: String(brokerSync || (account ? account.status : "unknown")),
       liveTrading: row.liveTrading != null ? Boolean(row.liveTrading) : row.live_trading != null ? Boolean(row.live_trading) : String(status || "").toLowerCase().indexOf("live") !== -1,
       lastSeen: row.lastSeen || row.last_seen || row.generatedAt || row.generated_at || (account && account.generatedAt) || "",
-      message: row.message || row.detail || row.summary || ""
+      message: row.message || row.detail || row.summary || "",
+      source: row.source || row.origin || ""
     };
   }
 
@@ -620,9 +641,49 @@
         brokerSync: account.status || "synced",
         liveTrading: false,
         lastSeen: account.generatedAt || "",
-        message: "Derived from latest broker snapshot; daemon heartbeat was not provided by the private feed."
+        message: "Derived from latest broker snapshot; daemon heartbeat was not provided by the private feed.",
+        source: "broker snapshot"
       };
     });
+  }
+
+  function daemonHealthMeta(row) {
+    var freshness = accountFreshness({generatedAt: row.lastSeen});
+    var statusText = String([row.status, row.brokerSync, row.message].join(" ")).toLowerCase();
+    var brokerText = String(row.brokerSync || "").toLowerCase();
+    var brokerIssue = brokerText.indexOf("expired") !== -1
+      || brokerText.indexOf("missing") !== -1
+      || brokerText.indexOf("fail") !== -1
+      || brokerText.indexOf("down") !== -1
+      || brokerText.indexOf("error") !== -1
+      || brokerText.indexOf("needs") !== -1
+      || brokerText.indexOf("unhealthy") !== -1
+      || brokerText.indexOf("refused") !== -1;
+    var authIssue = statusText.indexOf("auth") !== -1 && (
+      statusText.indexOf("expired") !== -1
+      || statusText.indexOf("missing") !== -1
+      || statusText.indexOf("fail") !== -1
+      || statusText.indexOf("down") !== -1
+      || statusText.indexOf("error") !== -1
+      || statusText.indexOf("needs") !== -1
+      || statusText.indexOf("unhealthy") !== -1
+    );
+    var daemonIssue = statusText.indexOf("error") !== -1
+      || statusText.indexOf("fail") !== -1
+      || statusText.indexOf("expired") !== -1
+      || statusText.indexOf("missing") !== -1
+      || statusText.indexOf("needs") !== -1
+      || statusText.indexOf("down") !== -1
+      || statusText.indexOf("unhealthy") !== -1
+      || freshness.className !== "fresh";
+    return {
+      freshness: freshness,
+      needsReview: daemonIssue || authIssue || brokerIssue,
+      label: daemonIssue || authIssue || brokerIssue ? "Needs review" : "Healthy",
+      className: daemonIssue || authIssue || brokerIssue ? "daemon-card daemon-card-warning" : "daemon-card",
+      liveLabel: row.liveTrading ? "Live trading on" : "Live trading off",
+      authLabel: authIssue ? "Broker auth needs review" : brokerIssue ? "Broker/API needs review" : "Broker auth synced"
+    };
   }
 
   function visibleRows(rows) {
@@ -1261,25 +1322,27 @@
     var status = $("daemon-health-status");
     if (!target) return;
     var rows = visibleRows(state.daemonHealth || []);
-    var unhealthy = rows.filter(function (row) {
-      var statusText = String(row.status + " " + row.brokerSync).toLowerCase();
-      return statusText.indexOf("error") !== -1
-        || statusText.indexOf("fail") !== -1
-        || statusText.indexOf("expired") !== -1
-        || statusText.indexOf("missing") !== -1
-        || statusText.indexOf("needs") !== -1;
+    var annotated = rows.map(function (row) {
+      return {row: row, meta: daemonHealthMeta(row)};
     });
+    var unhealthy = annotated.filter(function (item) { return item.meta.needsReview; });
+    var liveCount = annotated.filter(function (item) { return item.row.liveTrading; }).length;
     if (status) {
-      status.textContent = unhealthy.length ? unhealthy.length + " needs review" : rows.length ? "Healthy" : "No heartbeat";
+      status.textContent = unhealthy.length ? unhealthy.length + " needs review" : rows.length ? liveCount + "/" + rows.length + " live" : "No heartbeat";
       status.classList.toggle("warning", Boolean(unhealthy.length || !rows.length));
     }
-    target.innerHTML = rows.map(function (row) {
-      var freshness = accountFreshness({generatedAt: row.lastSeen});
-      return "<article class=\"daemon-card\">"
-        + "<div class=\"stack-item-head\"><b>" + html(row.account) + "</b><span>" + html(row.liveTrading ? "Live trading" : "Not live") + "</span></div>"
+    target.innerHTML = annotated.map(function (item) {
+      var row = item.row;
+      var meta = item.meta;
+      return "<article class=\"" + html(meta.className) + "\">"
+        + "<div class=\"stack-item-head\"><b>" + html(row.account) + "</b><span>" + html(meta.label) + "</span></div>"
         + "<p>" + html(row.owner) + " / " + html(row.broker) + "</p>"
+        + "<div class=\"health-strip\">"
+        + "<span class=\"" + html(row.liveTrading ? "health-pill positive-pill" : "health-pill neutral-pill") + "\">" + html(meta.liveLabel) + "</span>"
+        + "<span class=\"" + html(meta.authLabel.indexOf("needs") === -1 ? "health-pill positive-pill" : "health-pill warning-pill") + "\">" + html(meta.authLabel) + "</span>"
+        + "</div>"
         + "<p>Daemon: <b>" + html(row.status) + "</b> / Broker auth: <b>" + html(row.brokerSync) + "</b></p>"
-        + "<p class=\"" + html(freshness.className === "fresh" ? "positive" : "warning-text") + "\">Last heartbeat: " + html(freshness.label) + "</p>"
+        + "<p class=\"" + html(meta.freshness.className === "fresh" ? "positive" : "warning-text") + "\">Last heartbeat: " + html(meta.freshness.label) + "</p>"
         + (row.message ? "<p>" + html(row.message) + "</p>" : "")
         + "</article>";
     }).join("") || emptyItem("No daemon heartbeat", "Private feed has not published daemon or broker-auth health yet.");
