@@ -14,6 +14,16 @@
   var sessionToken = params.get("session_token") || "";
   var sessionExpiresAt = "";
   var SESSION_STORAGE_KEY = "smartsleeve_private_session_v1";
+  var authRequestInFlight = false;
+  var credentialAutofillSubmitTimer = null;
+  var DEFAULT_EXPECTED_ACCOUNTS = [
+    {id: "john-rh-agentic", label: "John RH agentic account", ownerEmail: "jpsheppard88@gmail.com", ownerName: "John Sheppard", broker: "Robinhood"},
+    {id: "john-rh-individual", label: "John individual investing account", ownerEmail: "jpsheppard88@gmail.com", ownerName: "John Sheppard", broker: "Robinhood"},
+    {id: "john-ibkr-margin", label: "John IBKR margin account", ownerEmail: "jpsheppard88@gmail.com", ownerName: "John Sheppard", broker: "IBKR"},
+    {id: "john-ibkr-roth-ira", label: "John IBKR Roth IRA account", ownerEmail: "jpsheppard88@gmail.com", ownerName: "John Sheppard", broker: "IBKR"},
+    {id: "john-etrade", label: "John E*TRADE account", ownerEmail: "jpsheppard88@gmail.com", ownerName: "John Sheppard", broker: "E*TRADE"},
+    {id: "crissy-rh-agentic", label: "Crissy RH agentic account", ownerEmail: "criseldasarenas@gmail.com", ownerName: "Crissy Sarenas", broker: "Robinhood"}
+  ];
 
   var state = {
     payload: null,
@@ -27,6 +37,7 @@
     serverTrades: [],
     brain: [],
     reports: [],
+    daemonHealth: [],
     expectedAccounts: [],
     accountDiagnostics: [],
     history: {accounts: [], positions: []},
@@ -184,6 +195,7 @@
     if (emailInput && principalEmail) {
       emailInput.value = principalEmail;
     }
+    setupCredentialAutofill();
     clearAuthPasswordFields();
     window.setTimeout(clearAuthPasswordFields, 120);
     window.setTimeout(clearAuthPasswordFields, 650);
@@ -255,12 +267,19 @@
   }
 
   function loginFromGate() {
+    if (authRequestInFlight) return;
     if (!loginEndpoint) {
       text("auth-gate-message", "SmartSleeve auth endpoint is not configured.");
       return;
     }
     var email = normalizeEmail(($("auth-email") || {}).value || "");
     var password = String(($("auth-password") || {}).value || "");
+    if (!email || !password) {
+      text("auth-gate-message", "Enter your email and password to sign in.");
+      return;
+    }
+    authRequestInFlight = true;
+    setAuthButtonBusy(true);
     text("auth-gate-message", "Signing in...");
     authFetch(loginEndpoint, {
       method: "POST",
@@ -290,7 +309,18 @@
       })
       .catch(function (error) {
         text("auth-gate-message", "Sign in failed: " + error.message);
+      })
+      .finally(function () {
+        authRequestInFlight = false;
+        setAuthButtonBusy(false);
       });
+  }
+
+  function setAuthButtonBusy(isBusy) {
+    var button = $("auth-submit-button");
+    if (!button) return;
+    button.disabled = Boolean(isBusy);
+    button.setAttribute("aria-busy", isBusy ? "true" : "false");
   }
 
   function registerFromGate() {
@@ -377,13 +407,66 @@
 
   function wireAuthInputs(root) {
     $all("input", root).forEach(function (input) {
-      input.addEventListener("pointerup", function () {
-        window.setTimeout(function () { input.focus(); }, 0);
-      });
       input.addEventListener("focus", function () {
         input.scrollIntoView({block: "center", behavior: "smooth"});
       });
+      input.addEventListener("input", function () {
+        window.setTimeout(function () { handleCredentialAutofill("input"); }, 180);
+      });
+      input.addEventListener("change", function () {
+        window.setTimeout(function () { handleCredentialAutofill("change"); }, 60);
+      });
+      input.addEventListener("animationstart", function (event) {
+        if (event.animationName === "authAutoFillStart") {
+          window.setTimeout(function () { handleCredentialAutofill("autofill"); }, 80);
+        }
+      });
     });
+  }
+
+  function setupCredentialAutofill() {
+    ["auth-email", "auth-password"].forEach(function (id) {
+      var input = $(id);
+      if (!input) return;
+      input.setAttribute("enterkeyhint", id === "auth-password" ? "done" : "next");
+    });
+  }
+
+  function handleCredentialAutofill(source) {
+    var form = $("auth-gate-form");
+    var email = $("auth-email");
+    var password = $("auth-password");
+    if (!form || !email || !password || form.getAttribute("data-mode") !== "login") return;
+    if (!email.value || !password.value) return;
+    if (document.activeElement === email || document.activeElement === password) {
+      try {
+        document.activeElement.blur();
+      } catch (_err) {}
+    }
+    if (source === "autofill" || isBrowserAutofilled(email) || isBrowserAutofilled(password)) {
+      text("auth-gate-message", "Credentials filled. Signing in...");
+      scheduleCredentialAutofillSubmit();
+    } else {
+      text("auth-gate-message", "Credentials filled. Tap Sign in to continue.");
+    }
+  }
+
+  function isBrowserAutofilled(input) {
+    try {
+      return input.matches(":-webkit-autofill");
+    } catch (_err) {
+      return false;
+    }
+  }
+
+  function scheduleCredentialAutofillSubmit() {
+    if (credentialAutofillSubmitTimer || authRequestInFlight) return;
+    credentialAutofillSubmitTimer = window.setTimeout(function () {
+      credentialAutofillSubmitTimer = null;
+      if ($("auth-gate-form") && $("auth-gate-form").getAttribute("data-mode") === "login") {
+        loginFromGate();
+      }
+    }, 320);
   }
 
   function $all(selector, root) {
@@ -492,6 +575,56 @@
     };
   }
 
+  function normalizeDaemonRow(row) {
+    row = row || {};
+    var accountId = row.accountId || row.account_id || row.account || row.account_label || row.id;
+    var account = state.accounts.find(function (item) {
+      return String(item.id || item.account).toLowerCase() === String(accountId || "").toLowerCase()
+        || String(item.account).toLowerCase() === String(accountId || "").toLowerCase();
+    });
+    var status = row.status || row.health || row.daemon_status || row.state || (row.liveTrading || row.live_trading ? "live" : "");
+    var brokerSync = row.brokerSync || row.broker_sync || row.authStatus || row.auth_status || row.connection || row.connection_status || "";
+    return {
+      account: account ? account.account : (row.account_label || row.account || row.label || accountId || "Account"),
+      owner: account ? displayOwner(account) : (row.ownerName || row.owner_name || row.ownerEmail || row.owner_email || "Owner pending"),
+      ownerEmail: account ? account.ownerEmail : (row.ownerEmail || row.owner_email),
+      developerEmail: account ? account.developerEmail : (row.developerEmail || row.developer_email),
+      broker: account ? account.broker : (row.broker || "Broker"),
+      status: String(status || "unknown"),
+      brokerSync: String(brokerSync || (account ? account.status : "unknown")),
+      liveTrading: row.liveTrading != null ? Boolean(row.liveTrading) : row.live_trading != null ? Boolean(row.live_trading) : String(status || "").toLowerCase().indexOf("live") !== -1,
+      lastSeen: row.lastSeen || row.last_seen || row.generatedAt || row.generated_at || (account && account.generatedAt) || "",
+      message: row.message || row.detail || row.summary || ""
+    };
+  }
+
+  function deriveDaemonHealth(payload, accounts) {
+    var raw = payload.daemon_health || payload.daemonHealth || payload.daemons || payload.broker_daemons || payload.brokerDaemons || [];
+    if (raw && !Array.isArray(raw) && typeof raw === "object") {
+      raw = Object.keys(raw).map(function (key) {
+        return Object.assign({account: key}, raw[key]);
+      });
+    }
+    if (Array.isArray(raw) && raw.length) {
+      return raw.map(normalizeDaemonRow);
+    }
+    return accounts.map(function (account) {
+      var freshness = accountFreshness(account);
+      return {
+        account: account.account,
+        owner: displayOwner(account),
+        ownerEmail: account.ownerEmail,
+        developerEmail: account.developerEmail,
+        broker: account.broker,
+        status: freshness.className === "fresh" ? "feed healthy" : "needs sync",
+        brokerSync: account.status || "synced",
+        liveTrading: false,
+        lastSeen: account.generatedAt || "",
+        message: "Derived from latest broker snapshot; daemon heartbeat was not provided by the private feed."
+      };
+    });
+  }
+
   function visibleRows(rows) {
     if (accountScope === "all" || appEdition === "developer" || !principalEmail) {
       return rows.slice();
@@ -522,8 +655,16 @@
 
   function expectedAccountRows(payload) {
     var candidates = payload.expected_accounts || payload.expectedAccounts || payload.account_registry || payload.accountRegistry || [];
-    if (!Array.isArray(candidates)) return [];
-    return candidates.map(function (row) {
+    if (!Array.isArray(candidates)) candidates = [];
+    var merged = candidates.slice();
+    DEFAULT_EXPECTED_ACCOUNTS.forEach(function (row) {
+      var key = String(row.id || row.label).toLowerCase();
+      var exists = merged.some(function (candidate) {
+        return String(candidate.id || candidate.accountId || candidate.account_id || candidate.account || candidate.label || candidate.name).toLowerCase() === key;
+      });
+      if (!exists) merged.push(row);
+    });
+    return merged.map(function (row) {
       return {
         id: row.id || row.accountId || row.account_id || row.account,
         label: row.label || row.account || row.name || row.id || "Expected account",
@@ -631,6 +772,7 @@
             unrealizedPnl: null,
             realizedPnl: null,
             totalPnl: null,
+            pnlQuality: "none",
             accounts: [],
             sleeves: []
           };
@@ -668,9 +810,25 @@
       row.price = row.shares ? (row.value ? row.value / row.shares : row.priceValue / row.shares) : null;
       row.avgPrice = row.price;
       row.averageCost = row.costBasis != null && row.costShares ? row.costBasis / row.costShares : null;
+      row.pnlQuality = assessHoldingPnl(row);
       return row;
     }).sort(function (a, b) { return b.value - a.value; });
     return {holdings: holdings, foreign: foreign};
+  }
+
+  function assessHoldingPnl(holding) {
+    var hasBasis = numeric(holding.costBasis) != null && numeric(holding.averageCost) != null;
+    var hasAnyPnl = ["dailyPnl", "unrealizedPnl", "realizedPnl", "totalPnl"].some(function (key) {
+      return numeric(holding[key]) != null;
+    });
+    if (!hasAnyPnl) return "missing";
+    if (!hasBasis && (numeric(holding.unrealizedPnl) != null || numeric(holding.totalPnl) != null)) {
+      return "basis_gap";
+    }
+    if (holding.totalPnl == null && (holding.unrealizedPnl != null || holding.realizedPnl != null)) {
+      return "derived";
+    }
+    return hasBasis ? "broker_basis" : "broker_daily_only";
   }
 
   function buildSleeves(accounts) {
@@ -996,6 +1154,9 @@
       totalPnl = (unrealizedPnl || 0) + (realizedPnl || 0);
     }
     var totalCostBasis = nullableSum(state.holdings, "costBasis");
+    var pnlIssues = state.holdings.filter(function (holding) {
+      return holding.pnlQuality === "basis_gap" || holding.pnlQuality === "missing";
+    }).length;
     text("portfolio-value", money(total));
     text("portfolio-scope", appEdition === "developer" ? "All visible SmartSleeve accounts in the current live feed." : "Accounts tied to " + (principalEmail || "the signed-in user") + ".");
     text("cash-value", money(accountTotal("cash")));
@@ -1004,10 +1165,12 @@
     setMetric("daily-pl", dailyPnl, function (value) { return signedMoney(value); }, "Needs daily P/L sync");
     setMetric("total-pl", totalPnl, function (value) { return signedMoney(value); }, "Needs basis sync");
     setMetric("portfolio-return", totalPnl != null && totalCostBasis ? totalPnl / totalCostBasis * 100 : null, function (value) { return (value >= 0 ? "+" : "") + value.toFixed(2) + "%"; }, "Needs basis sync");
+    text("pnl-quality-note", pnlIssues ? pnlIssues + " holding(s) need broker basis/P&L reconciliation before losses or gains are trusted." : "Broker basis and P/L fields are internally consistent for visible holdings.");
     text("sage-review-count", String(state.recommendations.length));
     renderTopHoldings(total);
     renderReviewQueue();
     renderAccounts();
+    renderDaemonHealth();
     renderAccountCoverage();
     renderSleeveSummary(total);
     renderPerformanceCharts();
@@ -1093,6 +1256,35 @@
     target.innerHTML = ownerCards.concat(diagnosticCards).join("") || emptyItem("No account coverage", "Private API did not return visible accounts yet.");
   }
 
+  function renderDaemonHealth() {
+    var target = $("daemon-health");
+    var status = $("daemon-health-status");
+    if (!target) return;
+    var rows = visibleRows(state.daemonHealth || []);
+    var unhealthy = rows.filter(function (row) {
+      var statusText = String(row.status + " " + row.brokerSync).toLowerCase();
+      return statusText.indexOf("error") !== -1
+        || statusText.indexOf("fail") !== -1
+        || statusText.indexOf("expired") !== -1
+        || statusText.indexOf("missing") !== -1
+        || statusText.indexOf("needs") !== -1;
+    });
+    if (status) {
+      status.textContent = unhealthy.length ? unhealthy.length + " needs review" : rows.length ? "Healthy" : "No heartbeat";
+      status.classList.toggle("warning", Boolean(unhealthy.length || !rows.length));
+    }
+    target.innerHTML = rows.map(function (row) {
+      var freshness = accountFreshness({generatedAt: row.lastSeen});
+      return "<article class=\"daemon-card\">"
+        + "<div class=\"stack-item-head\"><b>" + html(row.account) + "</b><span>" + html(row.liveTrading ? "Live trading" : "Not live") + "</span></div>"
+        + "<p>" + html(row.owner) + " / " + html(row.broker) + "</p>"
+        + "<p>Daemon: <b>" + html(row.status) + "</b> / Broker auth: <b>" + html(row.brokerSync) + "</b></p>"
+        + "<p class=\"" + html(freshness.className === "fresh" ? "positive" : "warning-text") + "\">Last heartbeat: " + html(freshness.label) + "</p>"
+        + (row.message ? "<p>" + html(row.message) + "</p>" : "")
+        + "</article>";
+    }).join("") || emptyItem("No daemon heartbeat", "Private feed has not published daemon or broker-auth health yet.");
+  }
+
   function renderPerformanceCharts() {
     var accountTarget = $("account-value-charts");
     var holdingTarget = $("holding-value-charts");
@@ -1157,8 +1349,24 @@
       + "<div class=\"stack-item-head\"><b>" + html(report.title) + "</b><span>" + html(report.date || "latest") + "</span></div>"
       + "<p>" + html(report.type === "stock_pick" ? "Stock pick email/report archive" : "Daily performance report archive") + "</p>"
       + "<p class=\"report-provenance " + html(provenance.className) + "\">" + html(provenance.text) + "</p>"
+      + reportPickRows(report)
       + "<div class=\"recommendation-actions\"><a class=\"text-button\" href=\"" + html(url) + "\" target=\"_blank\" rel=\"noopener\">Open report</a></div>"
       + "</article>";
+  }
+
+  function reportPickRows(report) {
+    var picks = report.picks || report.stock_picks || report.rankings || [];
+    if (report.type !== "stock_pick" || !Array.isArray(picks) || !picks.length) return "";
+    return "<div class=\"stock-pick-list\">" + picks.slice(0, 8).map(function (pick, index) {
+      var symbol = pick.symbol || pick.ticker || pick.stock || "Pick " + (index + 1);
+      var price = numeric(pick.price != null ? pick.price : pick.current_price);
+      var roi = numeric(pick.ytdRoi != null ? pick.ytdRoi : pick.ytd_roi);
+      var description = pick.description || pick.thesis || pick.summary || "";
+      return "<article class=\"stock-pick-row\">"
+        + "<div class=\"stock-pick-meta\"><b>" + html(index + 1 + ". " + symbol) + "</b><span>" + html(price == null ? "Price pending" : money(price)) + "</span><span>" + html(roi == null ? "YTD pending" : (roi >= 0 ? "+" : "") + roi.toFixed(1) + "% YTD") + "</span></div>"
+        + (description ? "<p>" + html(description) + "</p>" : "")
+        + "</article>";
+    }).join("") + "</div>";
   }
 
   function reportProvenance(report) {
@@ -1201,9 +1409,9 @@
         + cell("Market value", money(holding.value))
         + cell("Cost basis", holding.costBasis == null ? "<span class=\"needs-sync\">Needs basis sync</span>" : money(holding.costBasis))
         + cell("Daily P/L", pnlCell(holding.dailyPnl, "Needs daily sync"))
-        + cell("Unrealized P/L", pnlCell(holding.unrealizedPnl, "Needs basis sync"))
+        + cell("Unrealized P/L", pnlCell(holding.unrealizedPnl, "Needs basis sync", holding.pnlQuality))
         + cell("Realized P/L", pnlCell(holding.realizedPnl, "Needs trade sync"))
-        + cell("Total P/L", pnlCell(holding.totalPnl, "Needs basis sync"))
+        + cell("Total P/L", pnlCell(holding.totalPnl, "Needs basis sync", holding.pnlQuality))
         + cell("Accounts", html(holding.accounts.join(", ")))
         + cell("Weight", pct(holding.value, total) + "<small>" + html(thesisStatus(holding.symbol, weightNum)) + "</small>")
         + "</tr>";
@@ -2074,12 +2282,16 @@
     return "<td data-label=\"" + html(label) + "\">" + content + "</td>";
   }
 
-  function pnlCell(value, missingText) {
+  function pnlCell(value, missingText, quality) {
     var number = numeric(value);
+    if (quality === "basis_gap") {
+      return "<span class=\"needs-sync\">Needs broker basis</span>";
+    }
     if (number == null) {
       return "<span class=\"needs-sync\">" + html(missingText || "Needs sync") + "</span>";
     }
-    return "<span class=\"" + valueClass(number) + "\">" + signedMoney(number) + "</span>";
+    var note = quality === "derived" ? "<small>Derived</small>" : "";
+    return "<span class=\"" + valueClass(number) + "\">" + signedMoney(number) + note + "</span>";
   }
 
   function shortDate(value) {
@@ -2423,6 +2635,7 @@
     notifyOrderFeedChanges(state.serverTrades);
     state.brain = visibleRows(payload.brain || []);
     state.reports = visibleRows(payload.reports || []);
+    state.daemonHealth = deriveDaemonHealth(payload, state.accounts);
     text("snapshot-source", payload.source || "Private SmartSleeve API");
     text("snapshot-time", payload.generated_at ? "Generated " + payload.generated_at : "Generated time unavailable");
     text("sync-pill", "Private API synced");
@@ -2462,6 +2675,7 @@
         state.accounts = [];
         state.holdings = [];
         state.sleeves = [];
+        state.daemonHealth = [];
         state.accountDiagnostics = [];
         state.recommendations = [recommendation("feed-failed", "Reconnect cloud feed", "Broker sync", "SmartSleeve", "Data", 0, error.message, "No portfolio decisions should be made until current holdings are available.", "EXTERNAL_BROKER_SYNC")];
         renderAll();

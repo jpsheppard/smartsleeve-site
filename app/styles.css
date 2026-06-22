@@ -181,6 +181,21 @@ a {
   cursor: pointer;
 }
 
+.auth-card button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.auth-card input:-webkit-autofill {
+  animation-name: authAutoFillStart;
+  animation-duration: 0.01s;
+}
+
+@keyframes authAutoFillStart {
+  from { box-shadow: 0 0 0 1000px var(--bg) inset; }
+  to { box-shadow: 0 0 0 1000px var(--bg) inset; }
+}
+
 @media (max-width: 520px) {
   .auth-gate {
     padding: 14px;
@@ -480,6 +495,49 @@ main {
   padding: 14px;
 }
 
+.dashboard-details {
+  margin-top: 14px;
+}
+
+.dashboard-details > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 46px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  background: rgba(15, 23, 42, 0.72);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 900;
+  list-style: none;
+}
+
+.dashboard-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.dashboard-details > summary::after {
+  content: "+";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid rgba(57, 255, 20, 0.28);
+  border-radius: 8px;
+  color: var(--green);
+  background: rgba(57, 255, 20, 0.08);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.dashboard-details[open] > summary::after {
+  content: "-";
+}
+
 .card-head {
   display: flex;
   justify-content: space-between;
@@ -534,6 +592,7 @@ button.primary {
 .stack-list,
 .account-grid,
 .coverage-grid,
+.daemon-grid,
 .mode-list {
   display: grid;
   gap: 10px;
@@ -559,12 +618,31 @@ button.primary {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.daemon-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .coverage-card.coverage-missing {
   border-color: rgba(251, 113, 133, 0.45);
   background: rgba(127, 29, 29, 0.16);
 }
 
+.daemon-card {
+  display: grid;
+  gap: 7px;
+  padding: 12px;
+  border: 1px solid rgba(34, 211, 238, 0.18);
+  border-radius: 8px;
+  background: rgba(8, 47, 73, 0.20);
+}
+
 .coverage-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.daemon-card p {
   margin: 0;
   color: var(--muted);
   line-height: 1.45;
@@ -579,6 +657,44 @@ button.primary {
 
 .report-provenance.is-warning {
   color: var(--amber);
+}
+
+.stock-pick-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.stock-pick-row {
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 8px;
+  background: rgba(2, 6, 23, 0.28);
+}
+
+.stock-pick-meta {
+  display: grid;
+  grid-template-columns: minmax(78px, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.stock-pick-meta b {
+  color: var(--text);
+}
+
+.stock-pick-meta span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.stock-pick-row p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
 }
 
 .stack-item-head {
@@ -1176,6 +1292,7 @@ textarea:focus {
   .recommendation-grid,
   .gauge-grid,
   .coverage-grid,
+  .daemon-grid,
   .brand-explainer,
   .two-columns,
   .trade-layout,
@@ -1225,7 +1342,8 @@ textarea:focus {
 
   .dashboard-grid,
   .account-grid,
-  .coverage-grid {
+  .coverage-grid,
+  .daemon-grid {
     grid-template-columns: 1fr 1fr;
   }
 
@@ -1306,8 +1424,14 @@ textarea:focus {
 @media (max-width: 520px) {
   .dashboard-grid,
   .account-grid,
-  .coverage-grid {
+  .coverage-grid,
+  .daemon-grid {
     grid-template-columns: 1fr;
+  }
+
+  .stock-pick-meta {
+    grid-template-columns: 1fr;
+    gap: 4px;
   }
 
   .topbar h1 {
