@@ -302,6 +302,7 @@
             accountScope = "user";
           }
           persistSession(payload.profile || {});
+          dismissVirtualKeyboard();
           removeAuthGate();
           renderSession();
           loadFeed();
@@ -1188,7 +1189,7 @@
       recs.push(recommendation("sleeve-ledger", "Sync sleeve ledger splits", "Assign", "Multi-sleeve accounts", "Ledger", 0, "Exact sleeve P/L needs lot-level sleeve ownership.", "Without this, sleeve return and alpha are account-level estimates.", "SQTS_REBALANCE"));
     }
     if (marginUsed() > 0) {
-      recs.push(recommendation("margin-cash", "Review negative cash before adding risk", "Raise cash", state.accounts.filter(function (account) { return (numeric(account.cash) || 0) < 0; }).map(function (account) { return account.account; }).join(", "), "Cash", marginUsed(), "At least one account reports negative cash.", "Margin pressure can force less patient execution during volatility.", "SQTS_RISK_EXIT"));
+      recs.push(recommendation("margin-cash", "Review margin usage before adding risk", "Check margin buffer", state.accounts.filter(function (account) { return (numeric(account.cash) || 0) < 0; }).map(function (account) { return account.account; }).join(", "), "Margin", marginUsed(), "One or more margin accounts are using margin; negative cash can be normal in IBKR margin accounts.", "Watch margin buffer and buying power so volatility does not force less patient execution.", "SQTS_RISK_EXIT"));
     }
     recs.push(recommendation("broker-pl", "Enable intraday P/L and cost basis sync", "Broker sync", "All connected brokers", "P/L", 0, "Holdings are visible; daily P/L, total P/L, and return need broker basis/history.", "Without live P/L, contributors and detractors remain unavailable.", "SQTS_AUTO"));
     return recs;
