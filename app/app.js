@@ -882,6 +882,26 @@
     }, 0);
   }
 
+  function feedCoverageSummary() {
+    var visible = state.accounts.length;
+    var expected = state.accountDiagnostics.length || visible;
+    var missing = state.accountDiagnostics.filter(function (row) { return !row.present; });
+    var stale = state.accounts.filter(function (account) {
+      return accountFreshness(account).className !== "fresh";
+    });
+    var pnlIssues = state.holdings.filter(function (holding) {
+      return holding.pnlQuality === "basis_gap" || holding.pnlQuality === "missing";
+    });
+    return {
+      visible: visible,
+      expected: expected,
+      missing: missing,
+      stale: stale,
+      pnlIssues: pnlIssues,
+      isClean: Boolean(visible) && !missing.length && !stale.length && !pnlIssues.length
+    };
+  }
+
   function aggregateHoldings(accounts) {
     var grouped = {};
     var foreign = [];
@@ -1256,7 +1276,16 @@
     var mu = bySymbol.MU ? bySymbol.MU.value : 0;
     var sndk = bySymbol.SNDK ? bySymbol.SNDK.value : 0;
     var top = state.holdings[0];
+    var coverage = feedCoverageSummary();
     var recs = [];
+    if (coverage.missing.length || coverage.stale.length) {
+      var missingNames = coverage.missing.map(function (row) { return row.label; }).slice(0, 3).join(", ");
+      var staleNames = coverage.stale.map(function (account) { return account.account + " " + accountFreshness(account).label; }).slice(0, 3).join(", ");
+      recs.push(recommendation("feed-coverage", "Reconcile account feed coverage", "Broker sync", "Expected accounts", "Freshness", 0, [missingNames ? "Missing: " + missingNames : "", staleNames ? "Stale: " + staleNames : ""].filter(Boolean).join(" / "), "Do not rely on cross-account totals until every expected account is present and fresh.", "EXTERNAL_BROKER_SYNC"));
+    }
+    if (coverage.pnlIssues.length) {
+      recs.push(recommendation("pnl-reconciliation", "Reconcile basis before trusting P/L", "Broker sync", "Visible holdings", "P/L", 0, coverage.pnlIssues.length + " holding(s) are missing broker basis or P/L fields.", "Gains, losses, return index, and sleeve comparisons can be misleading until broker cost basis is current.", "EXTERNAL_BROKER_SYNC"));
+    }
     if (mu + sndk > total * 0.35) {
       recs.push(recommendation("semi-concentration", "Review MU/SNDK concentration", "Rebalance", "Cross-account", "MU, SNDK", Math.max(0, (mu + sndk) - total * 0.35), "MU and SNDK are a large share of tracked equity. Confirm the target or draft a rebalance.", "A 10% combined move in MU/SNDK would visibly move portfolio value.", "SAGE_RECOMMEND"));
     }
@@ -1302,6 +1331,23 @@
     text("cash-value", money(accountTotal("cash")));
     text("buying-power", money(accountTotal("buyPower")));
     text("margin-usage", marginUsed() ? money(marginUsed()) : "$0");
+    var coverage = feedCoverageSummary();
+    var feedCoverage = $("feed-coverage");
+    if (feedCoverage) {
+      feedCoverage.classList.remove("positive", "warning-text", "needs-sync");
+      feedCoverage.classList.add(coverage.isClean ? "positive" : coverage.visible ? "warning-text" : "needs-sync");
+      feedCoverage.textContent = Math.max(0, coverage.visible - coverage.stale.length) + "/" + coverage.expected + " current";
+    }
+    text(
+      "feed-coverage-note",
+      coverage.isClean
+        ? "All expected accounts are fresh with broker basis/P&L fields."
+        : [
+          coverage.missing.length ? coverage.missing.length + " missing expected" : "",
+          coverage.stale.length ? coverage.stale.length + " stale/no timestamp" : "",
+          coverage.pnlIssues.length ? coverage.pnlIssues.length + " P/L basis gaps" : ""
+        ].filter(Boolean).join(" / ") || "Private feed has not published accounts yet."
+    );
     setMetric("daily-pl", dailyPnl, function (value) { return signedMoney(value); }, "Needs daily P/L sync");
     setMetric("total-pl", totalPnl, function (value) { return signedMoney(value); }, "Needs basis sync");
     setMetric("portfolio-return", totalPnl != null && totalCostBasis ? totalPnl / totalCostBasis * 100 : null, function (value) { return (value >= 0 ? "+" : "") + value.toFixed(2) + "%"; }, "Needs basis sync");
