@@ -41,6 +41,7 @@
     expectedAccounts: [],
     accountDiagnostics: [],
     history: {accounts: [], positions: []},
+    feedWarning: null,
     sageMode: "recommend",
     selectedTradeId: null,
     orderNotificationSeen: {},
@@ -581,6 +582,10 @@
         value.strategy,
         value.tradingSystem,
         value.trading_system,
+        value.sleeveInstanceId,
+        value.sleeve_instance_id,
+        value.instanceId,
+        value.instance_id,
         value.symbol,
         value.ticker,
         value.id
@@ -2415,6 +2420,9 @@
   function renderAll() {
     state.sleeves = buildSleeves(state.accounts);
     state.recommendations = buildRecommendations();
+    if (state.feedWarning) {
+      state.recommendations.unshift(state.feedWarning);
+    }
     renderSession();
     renderDashboard();
     renderSleeves();
@@ -2955,6 +2963,7 @@
     state.brain = visibleRows(payload.brain || []);
     state.reports = visibleRows(payload.reports || []);
     state.daemonHealth = deriveDaemonHealth(payload, state.accounts);
+    state.feedWarning = null;
     text("snapshot-source", payload.source || "Private SmartSleeve API");
     text("snapshot-time", payload.generated_at ? "Generated " + payload.generated_at : "Generated time unavailable");
     text("sync-pill", "Private API synced");
@@ -3024,21 +3033,29 @@
       .then(function (result) { applyFeed(result.payload, result.url); })
       .catch(function (error) {
         text("sync-pill", "Sync failed");
-        text("snapshot-time", "Feed unavailable");
-        state.accounts = [];
-        state.holdings = [];
-        state.sleeves = [];
-        state.daemonHealth = [];
-        state.accountDiagnostics = [];
-        state.recommendations = [recommendation("feed-failed", "Reconnect cloud feed", "Broker sync", "SmartSleeve", "Data", 0, error.message, "No portfolio decisions should be made until current holdings are available.", "EXTERNAL_BROKER_SYNC")];
-        renderAll();
-        if (error.authRequired) {
-          showAuthGate(error.message);
+        if (state.payload && (options.refresh || options.silent)) {
+          text("snapshot-time", "Refresh failed; showing last synced feed");
+          state.feedWarning = recommendation("feed-refresh-failed", "Refresh failed; kept current dashboard", "Retry sync", "SmartSleeve", "Data", 0, error.message, "Displayed holdings were not cleared; verify freshness before making decisions.", "EXTERNAL_BROKER_SYNC");
+          renderAll();
+          if (!options.silent) toast("Portfolio feed failed to load.");
+          return false;
         } else {
-          showAuthGate("Private feed unavailable: " + error.message);
+          text("snapshot-time", "Feed unavailable");
+          state.accounts = [];
+          state.holdings = [];
+          state.sleeves = [];
+          state.daemonHealth = [];
+          state.accountDiagnostics = [];
+          state.recommendations = [recommendation("feed-failed", "Reconnect cloud feed", "Broker sync", "SmartSleeve", "Data", 0, error.message, "No portfolio decisions should be made until current holdings are available.", "EXTERNAL_BROKER_SYNC")];
+          renderAll();
+          if (error.authRequired) {
+            showAuthGate(error.message);
+          } else {
+            showAuthGate("Private feed unavailable: " + error.message);
+          }
+          if (!options.silent) toast("Portfolio feed failed to load.");
+          throw error;
         }
-        if (!options.silent) toast("Portfolio feed failed to load.");
-        throw error;
       });
   }
 
