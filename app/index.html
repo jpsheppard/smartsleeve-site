@@ -30,6 +30,8 @@
       </div>
       <nav class="primary-nav concise-nav" aria-label="Primary">
         <a href="#dashboard" data-nav="dashboard" class="active">Dashboard</a>
+        <a href="#stock-picks" data-nav="stock-picks">Stock Picks</a>
+        <a href="#recommendations" data-nav="recommendations">Recs</a>
         <a href="#trade" data-nav="trade">Trade Center</a>
         <a href="#sage" data-nav="sage">Sage</a>
       </nav>
@@ -49,6 +51,9 @@
         </div>
         <div class="sync-pill" id="sync-pill">Syncing</div>
       </header>
+      <div id="pull-refresh-indicator" class="pull-refresh-indicator" aria-live="polite">
+        <span id="pull-refresh-label">Pull down to sync latest daemon cycle</span>
+      </div>
 
       <section id="dashboard" class="panel active" data-section="dashboard">
         <div class="dashboard-grid">
@@ -254,6 +259,54 @@
           </div>
         </article>
         </details>
+      </section>
+
+      <section id="stock-picks" class="panel" data-section="stock-picks">
+        <div class="section-heading">
+          <p class="eyebrow">Stock Picks</p>
+          <h2>Stock-pick report archive</h2>
+          <p>Review weekly stock-pick emails and reports tied to the visible user or developer account scope.</p>
+        </div>
+        <article class="panel-card">
+          <div class="card-head">
+            <div>
+              <span>Weekly archive</span>
+              <h2>Stock-pick reports</h2>
+            </div>
+            <span class="status-chip">Private feed</span>
+          </div>
+          <div id="stock-pick-report-list" class="stack-list"></div>
+        </article>
+      </section>
+
+      <section id="recommendations" class="panel" data-section="recommendations">
+        <div class="section-heading">
+          <p class="eyebrow">Recs</p>
+          <h2>Sage recommendations ready for review</h2>
+          <p>Review actionable findings and draft trade tickets without digging through the full Sage workspace.</p>
+        </div>
+        <div class="content-grid two-columns">
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Review queue</span>
+                <h2>Open recommendations</h2>
+              </div>
+              <span class="status-chip">Draftable</span>
+            </div>
+            <div id="recommendations-page-list" class="recommendation-grid"></div>
+          </article>
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Context</span>
+                <h2>Scope and buying power</h2>
+              </div>
+              <span class="status-chip">Live feed</span>
+            </div>
+            <div id="recommendations-page-context" class="stack-list"></div>
+          </article>
+        </div>
       </section>
 
       <section id="trade" class="panel" data-section="trade">
@@ -587,6 +640,8 @@
 
   <nav class="bottom-nav concise-bottom-nav" aria-label="Primary mobile">
     <a href="#dashboard" data-nav="dashboard" class="active">Dashboard</a>
+    <a href="#stock-picks" data-nav="stock-picks">Picks</a>
+    <a href="#recommendations" data-nav="recommendations">Recs</a>
     <a href="#trade" data-nav="trade">Trade</a>
     <a href="#sage" data-nav="sage">Sage</a>
   </nav>

@@ -46,6 +46,13 @@
     orderNotificationSeen: {},
     orderNotificationPrimed: false,
     feedRefreshTimer: null,
+    pullRefresh: {
+      startY: 0,
+      distance: 0,
+      tracking: false,
+      armed: false,
+      refreshing: false
+    },
     feedSource: "loading"
   };
 
@@ -548,16 +555,71 @@
     return (number / denominator * 100).toFixed(digits == null ? 1 : digits) + "%";
   }
 
+  function displayLabel(value, fallback) {
+    if (value == null || value === "") return fallback || "";
+    if (typeof value === "string" || typeof value === "number") {
+      var textValue = String(value).trim();
+      return textValue && textValue !== "[object Object]" ? textValue : (fallback || "");
+    }
+    if (Array.isArray(value)) {
+      return value.map(function (item) { return displayLabel(item, ""); }).filter(Boolean).join(", ") || (fallback || "");
+    }
+    if (typeof value === "object") {
+      var preferred = [
+        value.label,
+        value.name,
+        value.displayName,
+        value.display_name,
+        value.title,
+        value.accountName,
+        value.account_name,
+        value.sleeveLabel,
+        value.sleeve_label,
+        value.sleeve,
+        value.sleeveName,
+        value.sleeve_name,
+        value.strategy,
+        value.tradingSystem,
+        value.trading_system,
+        value.symbol,
+        value.ticker,
+        value.id
+      ];
+      for (var i = 0; i < preferred.length; i += 1) {
+        var label = displayLabel(preferred[i], "");
+        if (label) return label;
+      }
+      var shallow = Object.keys(value).slice(0, 8).map(function (key) {
+        var item = value[key];
+        if (item && typeof item === "object") return "";
+        return displayLabel(item, "");
+      }).filter(Boolean);
+      return shallow.join(" / ") || (fallback || "");
+    }
+    return fallback || "";
+  }
+
+  function sleeveLabel(value, fallback) {
+    var label = displayLabel(value, fallback || "Unassigned");
+    if (/^(sage|smart sleeve|smartsleeve|sage by smartsleeve)$/i.test(label)) {
+      return "Sage by SmartSleeve";
+    }
+    return label === "Hyper Savage" ? "Covered Sage" : label;
+  }
+
   function splitSleeves(value) {
     if (Array.isArray(value)) {
       return value.map(function (item) {
-        return item && (item.label || item.name || item.id);
+        return sleeveLabel(item, "");
       }).filter(Boolean);
+    }
+    if (value && typeof value === "object") {
+      return [sleeveLabel(value, "")].filter(Boolean);
     }
     return String(value || "")
       .split(",")
       .map(function (item) { return item.trim(); })
-      .filter(Boolean)
+      .filter(function (item) { return item && item !== "[object Object]"; })
       .map(function (item) { return item === "Hyper Savage" ? "Covered Sage" : item; });
   }
 
@@ -580,7 +642,7 @@
     });
     return {
       id: account.id || account.accountId || account.account_id || account.account,
-      account: account.account || account.name || account.id || "Account",
+      account: displayLabel(account.account || account.name || account.id, "Account"),
       ownerEmail: account.ownerEmail || account.owner_email,
       ownerName: account.ownerName || account.owner_name || account.userName || account.user_name || account.user,
       developerEmail: account.developerEmail || account.developer_email,
@@ -592,7 +654,7 @@
       buyPower: numeric(account.buyPower != null ? account.buyPower : account.cash_available_for_buys),
       positions: positions,
       sleeves: account.sleeves || [],
-      sleevesText: account.sleevesText || account.sleeves_text || ""
+      sleevesText: displayLabel(account.sleevesText || account.sleeves_text || "", "")
     };
   }
 
@@ -688,13 +750,19 @@
   }
 
   function visibleRows(rows) {
-    if (accountScope === "all" || appEdition === "developer" || !principalEmail) {
+    if (accountScope === "all" || appEdition === "developer") {
       return rows.slice();
     }
+    if (!principalEmail) {
+      return [];
+    }
     return rows.filter(function (row) {
+      var audience = row.audienceEmails || row.audience_emails || [];
+      if (typeof audience === "string") {
+        audience = audience.split(/[,\s]+/);
+      }
       return normalizeEmail(row.ownerEmail || row.owner_email) === principalEmail
-        || normalizeEmail(row.developerEmail || row.developer_email) === principalEmail
-        || (row.audienceEmails || []).map(normalizeEmail).indexOf(principalEmail) !== -1;
+        || (Array.isArray(audience) ? audience.map(normalizeEmail).indexOf(principalEmail) !== -1 : false);
     });
   }
 
@@ -2270,8 +2338,29 @@
     var cards = $("sage-recommendations");
     if (!cards) return;
     cards.innerHTML = state.recommendations.map(function (rec) {
-      return "<article class=\"recommendation-card\"><span>" + html(rec.operator) + "</span><h3>" + html(rec.title) + "</h3><p><b>" + html(rec.action) + "</b> / " + html(rec.account) + " / " + html(rec.ticker) + "</p><p>" + html(rec.reason) + "</p><p>Main risk: " + html(rec.risk) + "</p><div class=\"recommendation-actions\"><button type=\"button\" class=\"text-button\" data-rec-draft=\"" + html(rec.id) + "\">Create draft</button><button type=\"button\" class=\"danger-button small\" data-rec-dismiss=\"" + html(rec.id) + "\">Reject</button></div></article>";
+      return recommendationCard(rec);
     }).join("");
+  }
+
+  function renderRecommendationsPage() {
+    var list = $("recommendations-page-list");
+    var context = $("recommendations-page-context");
+    if (list) {
+      list.innerHTML = state.recommendations.map(recommendationCard).join("")
+        || emptyItem("No recommendations", "Sage has no open recommendations in the current scoped feed.");
+    }
+    if (context) {
+      var total = accountTotal("equity");
+      context.innerHTML = [
+        stackItem("Portfolio scope", money(total), appEdition === "developer" ? "Developer view may include multiple users depending on filters." : "This view is restricted to " + (principalEmail || "the signed-in user") + ".", 80),
+        stackItem("Buying power", money(accountTotal("buyPower")), "Available buying power helps determine whether entries can begin before exits fully complete.", 60),
+        stackItem("Review discipline", state.recommendations.length + " open", "Create drafts from recommendations, then preview broker/session compatibility before any live placement.", state.recommendations.length ? 70 : 20)
+      ].join("");
+    }
+  }
+
+  function recommendationCard(rec) {
+    return "<article class=\"recommendation-card\"><span>" + html(displayLabel(rec.operator, "SAGE_RECOMMEND")) + "</span><h3>" + html(displayLabel(rec.title, "Recommendation")) + "</h3><p><b>" + html(displayLabel(rec.action, "Review")) + "</b> / " + html(displayLabel(rec.account, "Account")) + " / " + html(displayLabel(rec.ticker, "Portfolio")) + "</p><p>" + html(displayLabel(rec.reason, "Review the current portfolio feed.")) + "</p><p>Main risk: " + html(displayLabel(rec.risk, "Needs review before trading.")) + "</p><div class=\"recommendation-actions\"><button type=\"button\" class=\"text-button\" data-rec-draft=\"" + html(rec.id) + "\">Create draft</button><button type=\"button\" class=\"danger-button small\" data-rec-dismiss=\"" + html(rec.id) + "\">Reject</button></div></article>";
   }
 
   function renderBrain() {
@@ -2329,6 +2418,8 @@
     renderSession();
     renderDashboard();
     renderSleeves();
+    renderReports();
+    renderRecommendationsPage();
     renderTradeCenter();
     renderSage();
     renderRisk();
@@ -2485,9 +2576,168 @@
     toast.timer = window.setTimeout(function () { element.classList.remove("visible"); }, 3200);
   }
 
+  function pullRefreshAtTop() {
+    if ($("auth-gate")) return false;
+    return window.scrollY <= 2 && document.documentElement.scrollTop <= 2 && document.body.scrollTop <= 2;
+  }
+
+  function updatePullRefreshIndicator(distance, armed, label) {
+    var indicator = $("pull-refresh-indicator");
+    var textTarget = $("pull-refresh-label");
+    if (!indicator) return;
+    var progress = Math.max(0, Math.min(1, distance / 96));
+    indicator.style.setProperty("--pull-progress", progress.toFixed(2));
+    indicator.classList.toggle("visible", distance > 8 || state.pullRefresh.refreshing);
+    indicator.classList.toggle("armed", Boolean(armed));
+    indicator.classList.toggle("refreshing", Boolean(state.pullRefresh.refreshing));
+    applyPullStretch(distance);
+    if (textTarget) {
+      textTarget.textContent = label || (armed ? "Release to sync latest daemon cycle" : "Pull down to sync latest daemon cycle");
+    }
+  }
+
+  function applyPullStretch(distance) {
+    var shell = document.querySelector(".app-shell");
+    if (!shell) return;
+    var pull = Math.max(0, Math.min(86, Number(distance) || 0));
+    shell.style.setProperty("--pull-distance", pull.toFixed(0) + "px");
+    shell.classList.toggle("pulling-refresh", pull > 2 && !state.pullRefresh.refreshing);
+  }
+
+  function resetPullRefresh(delay) {
+    window.setTimeout(function () {
+      state.pullRefresh.tracking = false;
+      state.pullRefresh.armed = false;
+      state.pullRefresh.distance = 0;
+      updatePullRefreshIndicator(0, false, "Pull down to sync latest daemon cycle");
+      applyPullStretch(0);
+    }, delay || 0);
+  }
+
+  function triggerPullRefresh() {
+    if (state.pullRefresh.refreshing) return;
+    var previousStamp = feedStamp(state.payload || {});
+    state.pullRefresh.refreshing = true;
+    state.pullRefresh.tracking = false;
+    state.pullRefresh.armed = false;
+    updatePullRefreshIndicator(96, true, "Syncing latest daemon cycle...");
+    text("sync-pill", "Pull syncing");
+    loadFeed({silent: true, refresh: true})
+      .then(function () { return waitForUpdatedFeed(previousStamp, 8); })
+      .then(function (updated) {
+        state.pullRefresh.refreshing = false;
+        updatePullRefreshIndicator(96, false, updated ? "Latest daemon cycle synced" : "Refresh requested; newest cache loaded");
+        toast(updated ? "Latest daemon cycle synced." : "Refresh requested. Showing the newest cache available.");
+        resetPullRefresh(900);
+      }).catch(function () {
+        state.pullRefresh.refreshing = false;
+        updatePullRefreshIndicator(72, false, "Sync failed");
+        toast("Portfolio feed failed to load.");
+        resetPullRefresh(900);
+      });
+  }
+
+  function wirePullRefresh() {
+    if (!$("pull-refresh-indicator")) return;
+    function begin(y, target) {
+      if (state.pullRefresh.refreshing || !pullRefreshAtTop()) return false;
+      if (target && target.closest && target.closest("input, textarea, select, button, a, .bottom-nav")) return false;
+      state.pullRefresh.startY = y;
+      state.pullRefresh.distance = 0;
+      state.pullRefresh.tracking = true;
+      state.pullRefresh.armed = false;
+      return true;
+    }
+    function move(y, event) {
+      if (!state.pullRefresh.tracking) return;
+      var delta = y - state.pullRefresh.startY;
+      if (delta <= 0) {
+        resetPullRefresh();
+        return;
+      }
+      if (!pullRefreshAtTop()) return;
+      if (delta > 8 && event && event.preventDefault) event.preventDefault();
+      var distance = Math.min(136, delta * 0.62);
+      var armed = distance >= 76;
+      state.pullRefresh.distance = distance;
+      state.pullRefresh.armed = armed;
+      updatePullRefreshIndicator(distance, armed);
+    }
+    function end() {
+      if (!state.pullRefresh.tracking) return;
+      if (state.pullRefresh.armed) triggerPullRefresh();
+      else resetPullRefresh();
+    }
+    document.addEventListener("touchstart", function (event) {
+      if (event.touches.length !== 1) return;
+      begin(event.touches[0].clientY, event.target);
+    }, {passive: true});
+    document.addEventListener("touchmove", function (event) {
+      if (!state.pullRefresh.tracking || event.touches.length !== 1) return;
+      move(event.touches[0].clientY, event);
+    }, {passive: false});
+    ["touchend", "touchcancel"].forEach(function (eventName) {
+      document.addEventListener(eventName, end, {passive: true});
+    });
+  }
+
+  function scrollActiveBottomNavIntoView() {
+    var active = document.querySelector(".bottom-nav [data-nav].active");
+    if (!active || !active.scrollIntoView) return;
+    active.scrollIntoView({block: "nearest", inline: "center", behavior: "smooth"});
+  }
+
+  function wireBottomNavScroller() {
+    var nav = document.querySelector(".bottom-nav");
+    if (!nav) return;
+    var dragging = false;
+    var pointerId = null;
+    var startX = 0;
+    var startScroll = 0;
+    var moved = 0;
+    nav.addEventListener("wheel", function (event) {
+      if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+      event.preventDefault();
+      nav.scrollLeft += event.deltaY;
+    }, {passive: false});
+    nav.addEventListener("pointerdown", function (event) {
+      if (event.pointerType === "mouse" && event.button !== 0) return;
+      dragging = true;
+      pointerId = event.pointerId;
+      startX = event.clientX;
+      startScroll = nav.scrollLeft;
+      moved = 0;
+      nav.classList.add("dragging");
+      if (nav.setPointerCapture) nav.setPointerCapture(pointerId);
+    });
+    nav.addEventListener("pointermove", function (event) {
+      if (!dragging || event.pointerId !== pointerId) return;
+      var delta = event.clientX - startX;
+      moved = Math.max(moved, Math.abs(delta));
+      if (moved > 3) {
+        nav.scrollLeft = startScroll - delta;
+        event.preventDefault();
+      }
+    });
+    function stopDrag() {
+      dragging = false;
+      pointerId = null;
+      window.setTimeout(function () { moved = 0; }, 0);
+      nav.classList.remove("dragging");
+    }
+    nav.addEventListener("pointerup", stopDrag);
+    nav.addEventListener("pointercancel", stopDrag);
+    nav.addEventListener("click", function (event) {
+      if (moved > 8) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    }, true);
+  }
+
   function handleNav(section) {
     var target = section || "dashboard";
-    var aliases = {overview: "dashboard", portfolio: "dashboard", command: "trade", trades: "trade"};
+    var aliases = {overview: "dashboard", portfolio: "dashboard", command: "trade", trades: "trade", picks: "stock-picks", stock: "stock-picks", recs: "recommendations", recommend: "recommendations"};
     target = aliases[target] || target;
     $all("[data-section]").forEach(function (panel) {
       panel.classList.toggle("active", panel.getAttribute("data-section") === target);
@@ -2497,6 +2747,8 @@
     });
     var titles = {
       dashboard: ["Dashboard", "What you own, why you own it, what changed, and what needs review."],
+      "stock-picks": ["Stock Picks", "Weekly stock-pick reports and archives in the current account scope."],
+      recommendations: ["Recs", "Actionable Sage recommendations ready for review or draft trade tickets."],
       trade: ["Trade Center", "Draft, review, approve, reject, and audit trade decisions."],
       sage: ["Sage", "Agent controls, recommendations, decision feed, and execution diagnostics."]
     };
@@ -2511,6 +2763,7 @@
     }
     text("page-title", (titles[target] || titles.dashboard)[0]);
     text("page-subtitle", (titles[target] || titles.dashboard)[1]);
+    scrollActiveBottomNavIntoView();
   }
 
   function wireEvents() {
@@ -2531,6 +2784,8 @@
     });
     var sort = $("holdings-sort");
     if (sort) sort.addEventListener("change", renderHoldingsTable);
+    wirePullRefresh();
+    wireBottomNavScroller();
     var form = $("trade-form");
     if (form) {
       form.addEventListener("submit", createDraftOrder);
@@ -2709,11 +2964,45 @@
     scheduleFeedRefresh();
   }
 
-  function fetchAppFeed() {
+  function feedStamp(payload) {
+    if (!payload) return "";
+    return String(payload.published_at || payload.generated_at || payload.generatedAt || payload.updated_at || payload.updatedAt || "");
+  }
+
+  function wait(ms) {
+    return new Promise(function (resolve) {
+      window.setTimeout(resolve, ms);
+    });
+  }
+
+  function waitForUpdatedFeed(previousStamp, attempts) {
+    if (!previousStamp || attempts <= 0) return Promise.resolve(false);
+    return wait(3500).then(function () {
+      return loadFeed({silent: true}).then(function () {
+        return feedStamp(state.payload || {}) !== previousStamp;
+      }).catch(function () {
+        return false;
+      });
+    }).then(function (updated) {
+      if (updated || attempts <= 1) return updated;
+      return waitForUpdatedFeed(previousStamp, attempts - 1);
+    });
+  }
+
+  function fetchAppFeed(options) {
+    options = options || {};
     if (!appFeedEndpoint) {
       return Promise.reject(new Error("SmartSleeve private API is not configured."));
     }
-    return authFetch(appFeedEndpoint + (appFeedEndpoint.indexOf("?") === -1 ? "?ts=" : "&ts=") + Date.now())
+    var separator = appFeedEndpoint.indexOf("?") === -1 ? "?" : "&";
+    var query = [];
+    if (options.refresh) query.push("refresh=1");
+    query.push("ts=" + Date.now());
+    var url = appFeedEndpoint + separator + query.join("&");
+    var headers = options.refresh ? {"X-SmartSleeve-Refresh": "pull-to-refresh"} : {};
+    return authFetch(url, {
+        headers: headers
+      })
       .then(function (response) {
         return response.json().catch(function () { return {}; }).then(function (payload) {
           if (response.status === 401) {
@@ -2731,7 +3020,7 @@
 
   function loadFeed(options) {
     options = options || {};
-    fetchAppFeed()
+    return fetchAppFeed(options)
       .then(function (result) { applyFeed(result.payload, result.url); })
       .catch(function (error) {
         text("sync-pill", "Sync failed");
@@ -2749,6 +3038,7 @@
           showAuthGate("Private feed unavailable: " + error.message);
         }
         if (!options.silent) toast("Portfolio feed failed to load.");
+        throw error;
       });
   }
 
