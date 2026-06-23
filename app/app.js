@@ -8,6 +8,7 @@
   var authEndpoint = metaContent("smartsleeve-auth-endpoint");
   var orderIntentEndpoint = metaContent("smartsleeve-order-intent-endpoint") || (authEndpoint ? authEndpoint.replace(/\/$/, "") + "/order-intents" : "");
   var appFeedEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/api/app-feed" : "";
+  var appFeedRefreshEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/api/app-feed/refresh" : "";
   var loginEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/login" : "";
   var registerEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/register" : "";
   var passwordResetEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/password-reset/request" : "";
@@ -762,6 +763,9 @@
       return [];
     }
     return rows.filter(function (row) {
+      if (row && isLocalFallbackReport(row)) {
+        return true;
+      }
       var audience = row.audienceEmails || row.audience_emails || [];
       if (typeof audience === "string") {
         audience = audience.split(/[,\s]+/);
@@ -1484,6 +1488,7 @@
       {
         id: "grand_sage-latest",
         type: "stock_pick",
+        localFallback: true,
         algo: "grand_sage",
         title: "Grand Sage stock picks",
         date: "latest",
@@ -1497,6 +1502,7 @@
       {
         id: "general_sage-latest",
         type: "stock_pick",
+        localFallback: true,
         algo: "general_sage",
         title: "General Sage stock picks",
         date: "latest",
@@ -1521,8 +1527,12 @@
       .replace(/\s+/g, "_");
   }
 
+  function isLocalFallbackReport(report) {
+    return Boolean(report && (report.localFallback || report.local_fallback));
+  }
+
   function ensureStockPickReports(reports) {
-    var rows = visibleRows(reports || []);
+    var rows = (reports || []).slice();
     var seen = {};
     rows.forEach(function (report) {
       var key = stockPickKey(report.algo || report.title);
@@ -2684,19 +2694,28 @@
     state.pullRefresh.refreshing = true;
     state.pullRefresh.tracking = false;
     state.pullRefresh.armed = false;
-    updatePullRefreshIndicator(96, true, "Syncing latest daemon cycle...");
-    text("sync-pill", "Pull syncing");
-    loadFeed({silent: true, refresh: true})
-      .then(function (ok) {
+    updatePullRefreshIndicator(96, true, "Loading newest cached daemon cycle...");
+    text("sync-pill", "Refreshing cache");
+    var refreshStarted = requestServerFeedRefresh();
+    Promise.all([
+      loadFeed({silent: true, interactiveRefresh: true}),
+      wait(650)
+    ])
+      .then(function (results) {
+        var ok = Boolean(results[0]);
         if (!ok) return {ok: false, updated: false};
-        return wait(750).then(function () {
-          return {ok: true, updated: Boolean(previousStamp && feedStamp(state.payload || {}) !== previousStamp)};
+        return wait(150).then(function () {
+          return {
+            ok: true,
+            updated: Boolean(previousStamp && feedStamp(state.payload || {}) !== previousStamp),
+            refreshStarted: refreshStarted
+          };
         });
       })
       .then(function (result) {
         state.pullRefresh.refreshing = false;
         updatePullRefreshIndicator(result.ok ? 96 : 72, false, result.ok ? (result.updated ? "Latest daemon cycle synced" : "Newest cached daemon cycle loaded") : "Sync failed; current view kept");
-        toast(result.ok ? (result.updated ? "Latest daemon cycle synced." : "Showing the newest daemon cache already available.") : "Refresh failed. Current session and data were kept.");
+        toast(result.ok ? (result.updated ? "Latest daemon cycle synced." : (result.refreshStarted ? "Showing cached data while SmartSleeve refreshes in the background." : "Showing the newest daemon cache already available.")) : "Refresh failed. Current session and data were kept.");
         resetPullRefresh(900);
       }).catch(function () {
         state.pullRefresh.refreshing = false;
@@ -2704,6 +2723,22 @@
         toast("Refresh failed. Current session and data were kept.");
         resetPullRefresh(900);
       });
+  }
+
+  function requestServerFeedRefresh() {
+    if (!appFeedRefreshEndpoint) return false;
+    try {
+      authFetch(appFeedRefreshEndpoint, {
+        method: "POST",
+        headers: {"Content-Type": "application/json", "X-SmartSleeve-Refresh": "pull-to-refresh"},
+        body: JSON.stringify({reason: "app_pull_to_refresh"})
+      }).catch(function () {
+        // Visible refresh uses the latest published feed; server refresh is best-effort.
+      });
+      return true;
+    } catch (_err) {
+      return false;
+    }
   }
 
   function wirePullRefresh() {
