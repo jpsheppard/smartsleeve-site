@@ -653,6 +653,11 @@ button.primary {
   background: rgba(57, 255, 20, 0.07);
 }
 
+.text-button.disabled-link {
+  cursor: default;
+  opacity: 0.68;
+}
+
 button.primary {
   color: #04110a;
   background: linear-gradient(135deg, var(--green), var(--green-2));

@@ -976,7 +976,7 @@
       var liveSleeves = Array.isArray(account.sleeves) ? account.sleeves : [];
       if (liveSleeves.length) {
         liveSleeves.forEach(function (sleeve) {
-          var name = sleeve.label || sleeve.name || sleeve.id || "Unassigned";
+          var name = sleeveLabel(sleeve.label || sleeve.name || sleeve.sleeve || sleeve.strategy || sleeve.id, "Unassigned");
           ensureSleeve(bySleeve, name, account.account);
           bySleeve[name].exactValue += numeric(sleeve.netLiquidationUsd != null ? sleeve.netLiquidationUsd : sleeve.net_liquidation_usd) || 0;
           bySleeve[name].cash += numeric(sleeve.cashUsd != null ? sleeve.cashUsd : sleeve.cash_usd) || 0;
@@ -1122,7 +1122,7 @@
   function originLabel(order) {
     if (isSageDirectedOrder(order)) return "Sage by SmartSleeve";
     if (isUserDirectedOrder(order)) return "User-directed";
-    return order.origin || order.operatorId || order.operator_id || order.operator || "SmartSleeve";
+    return displayLabel(order.origin || order.operatorId || order.operator_id || order.operator, "SmartSleeve");
   }
 
   function originBadges(order) {
@@ -1156,7 +1156,8 @@
     var side = orderTypeLabel(order);
     var value = money(orderNotional(order));
     var status = orderStatusLabel(order);
-    return symbol + " / " + side + " / " + value + " / " + account + " / " + status;
+    var settlement = orderSettlementText(order);
+    return symbol + " / " + side + " / " + value + " / " + account + " / " + status + (settlement ? " / " + settlement : "");
   }
 
   function sendOrderNotification(order, verb) {
@@ -1473,14 +1474,17 @@
 
   function renderReports() {
     var daily = $("report-archive-list");
-    var picks = $("stock-pick-report-list");
     var reports = visibleRows(state.reports);
+    var stockPickReports = reports.filter(function (report) { return report.type === "stock_pick"; });
+    if (!stockPickReports.length) {
+      stockPickReports = stockPickFallbackReports();
+    }
     if (daily) {
       daily.innerHTML = reports.filter(function (report) { return report.type === "daily_performance"; }).map(reportCard).join("") || emptyItem("No daily reports archived", "Daily report workflow will archive reports here after generation.");
     }
-    if (picks) {
-      picks.innerHTML = reports.filter(function (report) { return report.type === "stock_pick"; }).map(reportCard).join("") || emptyItem("No stock-pick reports archived", "Stock-pick emails will appear for days when the user had that algo active.");
-    }
+    $all("[data-report-list=\"stock-picks\"]").forEach(function (target) {
+      target.innerHTML = stockPickReports.map(reportCard).join("") || emptyItem("No stock-pick reports archived", "Stock-pick emails will appear for days when the user had that algo active.");
+    });
   }
 
   function stockPickFallbackReports() {
@@ -1548,12 +1552,15 @@
   function reportCard(report) {
     var url = report.url || report.latestUrl || "#";
     var provenance = reportProvenance(report);
+    var action = url === "#"
+      ? "<span class=\"text-button disabled-link\" aria-disabled=\"true\">Private report pending</span>"
+      : "<a class=\"text-button\" href=\"" + html(url) + "\" target=\"_blank\" rel=\"noopener\">Open report</a>";
     return "<article class=\"stack-item\">"
       + "<div class=\"stack-item-head\"><b>" + html(report.title) + "</b><span>" + html(report.date || "latest") + "</span></div>"
       + "<p>" + html(report.summary || (report.type === "stock_pick" ? "Stock pick email/report archive" : "Daily performance report archive")) + "</p>"
       + "<p class=\"report-provenance " + html(provenance.className) + "\">" + html(provenance.text) + "</p>"
       + reportPickRows(report)
-      + "<div class=\"recommendation-actions\"><a class=\"text-button\" href=\"" + html(url) + "\" target=\"_blank\" rel=\"noopener\">Open report</a></div>"
+      + "<div class=\"recommendation-actions\">" + action + "</div>"
       + "</article>";
   }
 
@@ -2115,11 +2122,12 @@
       var title = orderLifecycleTitle(order);
       var meta = orderStatusLabel(order) + " / " + orderLifecycleTimestamp(order);
       var body = (order.account || order.accountId || "") + " / " + money(orderNotional(order)) + " / " + orderTypeLabel(order);
+      var settlement = orderSettlementText(order);
       var price = orderSharePrice(order);
       var quantity = orderQuantity(order);
       var right = originLabel(order) + " / " + (quantity == null ? "shares sync" : numberText(quantity, 6) + " sh") + " / " + (price == null ? "price sync" : money(price));
       return "<button type=\"button\" class=\"trade-row" + (selected ? " active" : "") + "\" data-server-trade-id=\"" + html(id) + "\">"
-        + "<span><b>" + originBadges(order) + html(title) + "</b><small>" + html(body) + "</small><small>" + html(meta) + "</small></span>"
+        + "<span><b>" + originBadges(order) + html(title) + "</b><small>" + html(body) + "</small><small>" + html(meta) + "</small>" + (settlement ? "<small>" + html(settlement) + "</small>" : "") + "</span>"
         + "<i>" + html(right) + "</i>"
         + "</button>";
     }).join("") || emptyItem("No order history", "Draft orders, broker statuses, and completed execution records will appear here.");
@@ -2159,6 +2167,9 @@
         sourceLabel: "Broker/analytics feed",
         placedAt: trade.placedAt || trade.placed_at || trade.submittedAt || trade.submitted_at,
         executedAt: trade.executedAt || trade.executed_at || trade.filledAt || trade.filled_at || trade.completedAt || trade.completed_at,
+        settlementAt: trade.settlementAt || trade.settlement_at || trade.settlesAt || trade.settles_at || trade.cashAvailableAt || trade.cash_available_at || trade.withdrawableAt || trade.withdrawable_at,
+        confirmationAt: trade.confirmationAt || trade.confirmation_at || trade.tradeConfirmationAt || trade.trade_confirmation_at,
+        confirmationStatus: trade.confirmationStatus || trade.confirmation_status || trade.tradeConfirmationStatus || trade.trade_confirmation_status,
         canceledAt: trade.canceledAt || trade.canceled_at
       });
     });
@@ -2231,6 +2242,34 @@
     if (canceled) return "Canceled: " + canceled;
     if (executed) return "Executed: " + executed;
     return status;
+  }
+
+  function orderSettlementText(order) {
+    var status = String(orderStatusLabel(order)).toLowerCase();
+    var side = String(order.side || sideFromAction(order.action) || "").toLowerCase();
+    var executed = order.executedAt || order.executed_at || order.filledAt || order.filled_at || order.completedAt || order.completed_at;
+    var settlement = order.settlementAt || order.settlement_at || order.settlesAt || order.settles_at || order.cashAvailableAt || order.cash_available_at || order.withdrawableAt || order.withdrawable_at;
+    var confirmation = order.confirmationAt || order.confirmation_at || order.tradeConfirmationAt || order.trade_confirmation_at;
+    var confirmationStatus = order.confirmationStatus || order.confirmation_status || order.tradeConfirmationStatus || order.trade_confirmation_status;
+    var isExecuted = Boolean(executed) || status.indexOf("fill") !== -1 || status.indexOf("execut") !== -1 || status.indexOf("complete") !== -1;
+    if (settlement) {
+      return side === "sell"
+        ? "Proceeds withdrawable after " + settlement
+        : "Settlement tracked for " + settlement;
+    }
+    if (confirmation) {
+      return "Trade confirmation available " + confirmation;
+    }
+    if (confirmationStatus) {
+      return "Trade confirmation " + String(confirmationStatus).replace(/_/g, " ");
+    }
+    if (isExecuted && side === "sell" && brokerKey({broker: order.broker || order.brokerName || order.broker_name}) === "robinhood") {
+      return "Executed; withdrawable cash may lag settlement";
+    }
+    if (isExecuted) {
+      return "Executed; waiting for broker settlement fields";
+    }
+    return "";
   }
 
   function orderQuantity(order) {
@@ -2719,8 +2758,8 @@
         resetPullRefresh(900);
       }).catch(function () {
         state.pullRefresh.refreshing = false;
-        updatePullRefreshIndicator(72, false, "Sync failed; current view kept");
-        toast("Refresh failed. Current session and data were kept.");
+        updatePullRefreshIndicator(72, false, "Kept current view; refresh unavailable");
+        toast("Refresh unavailable. Kept the current signed-in view.");
         resetPullRefresh(900);
       });
   }
@@ -3080,20 +3119,6 @@
     });
   }
 
-  function waitForUpdatedFeed(previousStamp, attempts) {
-    if (!previousStamp || attempts <= 0) return Promise.resolve(false);
-    return wait(3500).then(function () {
-      return loadFeed({silent: true}).then(function () {
-        return feedStamp(state.payload || {}) !== previousStamp;
-      }).catch(function () {
-        return false;
-      });
-    }).then(function (updated) {
-      if (updated || attempts <= 1) return updated;
-      return waitForUpdatedFeed(previousStamp, attempts - 1);
-    });
-  }
-
   function fetchAppFeed(options) {
     options = options || {};
     if (!appFeedEndpoint) {
@@ -3105,9 +3130,13 @@
     query.push("ts=" + Date.now());
     var url = appFeedEndpoint + separator + query.join("&");
     var headers = options.refresh ? {"X-SmartSleeve-Refresh": "pull-to-refresh"} : {};
-    return authFetch(url, {
-        headers: headers
-      })
+    var controller = window.AbortController ? new AbortController() : null;
+    var timeout = window.setTimeout(function () {
+      if (controller) controller.abort();
+    }, options.refresh ? 8000 : 14000);
+    var fetchOptions = {headers: headers};
+    if (controller) fetchOptions.signal = controller.signal;
+    return authFetch(url, fetchOptions)
       .then(function (response) {
         return response.json().catch(function () { return {}; }).then(function (payload) {
           if (response.status === 401) {
@@ -3120,6 +3149,13 @@
           }
           return {payload: payload.feed || payload, url: appFeedEndpoint};
         });
+      }).catch(function (error) {
+        if (error && error.name === "AbortError") {
+          throw new Error("Private API refresh timed out.");
+        }
+        throw error;
+      }).finally(function () {
+        window.clearTimeout(timeout);
       });
   }
 
@@ -3161,6 +3197,8 @@
     restoreOrderNotificationSeen();
     renderSession();
     wireEvents();
-    loadFeed();
+    loadFeed().catch(function () {
+      // loadFeed renders the unavailable/auth state itself; keep startup free of uncaught rejections.
+    });
   });
 })();
