@@ -1479,12 +1479,68 @@
     }
   }
 
+  function stockPickFallbackReports() {
+    return [
+      {
+        id: "grand_sage-latest",
+        type: "stock_pick",
+        algo: "grand_sage",
+        title: "Grand Sage stock picks",
+        date: "latest",
+        summary: "Latest known Grand Sage/Semi Sage archive universe. The private report gateway remains authoritative for thesis notes and sizing context.",
+        url: "/app/reports/stock-picks/grand_sage/latest.html",
+        latestUrl: "/app/reports/stock-picks/grand_sage/latest.html",
+        picks: ["SNDK", "ALAB", "MU", "CRDO", "NBIS", "AMD", "CAT", "TSM", "SMCI", "VRT", "NVDA", "AVGO", "MRVL"].map(function (symbol) {
+          return {symbol: symbol, description: "Latest known archived SmartSleeve stock-pick universe member."};
+        })
+      },
+      {
+        id: "general_sage-latest",
+        type: "stock_pick",
+        algo: "general_sage",
+        title: "General Sage stock picks",
+        date: "latest",
+        summary: "Latest known General Sage archive universe. Tactical hedge assets are separated from ranked long picks: SQQQ, SOXS, SPXU.",
+        url: "/app/reports/stock-picks/general_sage/latest.html",
+        latestUrl: "/app/reports/stock-picks/general_sage/latest.html",
+        picks: ["MU", "NVDA", "AMD", "MSFT", "GOOGL", "SMCI", "CRDO", "QQQ", "SPY", "XLI", "JPM", "V", "LLY", "NVO", "COP", "CAT", "COST"].map(function (symbol) {
+          return {symbol: symbol, description: "Latest known archived General Sage stock-pick universe member."};
+        })
+      }
+    ];
+  }
+
+  function stockPickKey(value) {
+    return displayLabel(value, "")
+      .toLowerCase()
+      .replace(/[_-]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace("grand philosophe", "grand sage")
+      .replace("semi sage", "grand sage")
+      .replace(/\s+/g, "_");
+  }
+
+  function ensureStockPickReports(reports) {
+    var rows = visibleRows(reports || []);
+    var seen = {};
+    rows.forEach(function (report) {
+      var key = stockPickKey(report.algo || report.title);
+      if (key) seen[key] = true;
+    });
+    stockPickFallbackReports().forEach(function (report) {
+      var key = stockPickKey(report.algo);
+      if (!seen[key]) rows.push(report);
+    });
+    return rows;
+  }
+
   function reportCard(report) {
     var url = report.url || report.latestUrl || "#";
     var provenance = reportProvenance(report);
     return "<article class=\"stack-item\">"
       + "<div class=\"stack-item-head\"><b>" + html(report.title) + "</b><span>" + html(report.date || "latest") + "</span></div>"
-      + "<p>" + html(report.type === "stock_pick" ? "Stock pick email/report archive" : "Daily performance report archive") + "</p>"
+      + "<p>" + html(report.summary || (report.type === "stock_pick" ? "Stock pick email/report archive" : "Daily performance report archive")) + "</p>"
       + "<p class=\"report-provenance " + html(provenance.className) + "\">" + html(provenance.text) + "</p>"
       + reportPickRows(report)
       + "<div class=\"recommendation-actions\"><a class=\"text-button\" href=\"" + html(url) + "\" target=\"_blank\" rel=\"noopener\">Open report</a></div>"
@@ -2631,16 +2687,21 @@
     updatePullRefreshIndicator(96, true, "Syncing latest daemon cycle...");
     text("sync-pill", "Pull syncing");
     loadFeed({silent: true, refresh: true})
-      .then(function () { return waitForUpdatedFeed(previousStamp, 8); })
-      .then(function (updated) {
+      .then(function (ok) {
+        if (!ok) return {ok: false, updated: false};
+        return wait(750).then(function () {
+          return {ok: true, updated: Boolean(previousStamp && feedStamp(state.payload || {}) !== previousStamp)};
+        });
+      })
+      .then(function (result) {
         state.pullRefresh.refreshing = false;
-        updatePullRefreshIndicator(96, false, updated ? "Latest daemon cycle synced" : "Refresh requested; newest cache loaded");
-        toast(updated ? "Latest daemon cycle synced." : "Refresh requested. Showing the newest cache available.");
+        updatePullRefreshIndicator(result.ok ? 96 : 72, false, result.ok ? (result.updated ? "Latest daemon cycle synced" : "Newest cached daemon cycle loaded") : "Sync failed; current view kept");
+        toast(result.ok ? (result.updated ? "Latest daemon cycle synced." : "Showing the newest daemon cache already available.") : "Refresh failed. Current session and data were kept.");
         resetPullRefresh(900);
       }).catch(function () {
         state.pullRefresh.refreshing = false;
-        updatePullRefreshIndicator(72, false, "Sync failed");
-        toast("Portfolio feed failed to load.");
+        updatePullRefreshIndicator(72, false, "Sync failed; current view kept");
+        toast("Refresh failed. Current session and data were kept.");
         resetPullRefresh(900);
       });
   }
@@ -2961,7 +3022,7 @@
     state.serverTrades = visibleRows(payload.trades || []);
     notifyOrderFeedChanges(state.serverTrades);
     state.brain = visibleRows(payload.brain || []);
-    state.reports = visibleRows(payload.reports || []);
+    state.reports = ensureStockPickReports(payload.reports || []);
     state.daemonHealth = deriveDaemonHealth(payload, state.accounts);
     state.feedWarning = null;
     text("snapshot-source", payload.source || "Private SmartSleeve API");
