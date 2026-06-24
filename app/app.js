@@ -4,7 +4,6 @@
   var params = new URLSearchParams(window.location.search);
   var appEdition = params.get("app_edition") || "web";
   var accountScope = params.get("account_scope") || "user";
-  var requestedDeveloperView = appEdition === "developer" || accountScope === "all";
   var principalEmail = normalizeEmail(params.get("principal_email") || "");
   var authEndpoint = metaContent("smartsleeve-auth-endpoint");
   var orderIntentEndpoint = metaContent("smartsleeve-order-intent-endpoint") || (authEndpoint ? authEndpoint.replace(/\/$/, "") + "/order-intents" : "");
@@ -14,21 +13,10 @@
   var registerEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/register" : "";
   var passwordResetEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/password-reset/request" : "";
   var sessionToken = params.get("session_token") || "";
-  var sessionExpiresAt = "";
-  var SESSION_STORAGE_KEY = "smartsleeve_private_session_v1";
-  var authRequestInFlight = false;
-  var credentialAutofillSubmitTimer = null;
-  var DEFAULT_EXPECTED_ACCOUNTS = [
-    {id: "john-rh-agentic", label: "John RH agentic account", ownerEmail: "jpsheppard88@gmail.com", ownerName: "John Sheppard", broker: "Robinhood"},
-    {id: "john-rh-individual", label: "John individual investing account", ownerEmail: "jpsheppard88@gmail.com", ownerName: "John Sheppard", broker: "Robinhood"},
-    {id: "john-ibkr-margin", label: "John IBKR margin account", ownerEmail: "jpsheppard88@gmail.com", ownerName: "John Sheppard", broker: "IBKR"},
-    {id: "john-ibkr-roth-ira", label: "John IBKR Roth IRA account", ownerEmail: "jpsheppard88@gmail.com", ownerName: "John Sheppard", broker: "IBKR"},
-    {id: "john-etrade", label: "John E*TRADE account", ownerEmail: "jpsheppard88@gmail.com", ownerName: "John Sheppard", broker: "E*TRADE"},
-    {id: "crissy-rh-agentic", label: "Crissy RH agentic account", ownerEmail: "criseldasarenas@gmail.com", ownerName: "Crissy Sarenas", broker: "Robinhood"}
-  ];
 
   var state = {
     payload: null,
+    allAccounts: [],
     accounts: [],
     holdings: [],
     foreignHoldings: [],
@@ -39,11 +27,14 @@
     serverTrades: [],
     brain: [],
     reports: [],
-    daemonHealth: [],
-    expectedAccounts: [],
-    accountDiagnostics: [],
     history: {accounts: [], positions: []},
+    accountCoverage: null,
     feedWarning: null,
+    selectedOwnerEmail: "all",
+    selectedAccountId: "all",
+    selectedDetailAccountId: "",
+    selectedDetailSleeveName: "",
+    selectedStockPickSleeve: "",
     sageMode: "recommend",
     selectedTradeId: null,
     orderNotificationSeen: {},
@@ -94,10 +85,6 @@
     direct_proposed_order: "Direct broker preview path",
     broker_native_adapter_required: "Broker-native adapter path",
     synthetic_supervised: "SmartSleeve synthetic supervisor"
-  };
-
-  var settlementRestrictedBrokerLabels = {
-    robinhood: "Robinhood"
   };
 
   var strategyLabels = {
@@ -166,6 +153,52 @@
     }, options || {}, {headers: headers}));
   }
 
+  function sessionStorageKey() {
+    return "smartsleeve_session:" + (appEdition === "developer" ? "developer" : "user");
+  }
+
+  function restoreStoredSession() {
+    if (sessionToken) return;
+    try {
+      var payload = JSON.parse(window.localStorage.getItem(sessionStorageKey()) || "{}");
+      if (!payload || !payload.sessionToken) return;
+      sessionToken = payload.sessionToken;
+      principalEmail = normalizeEmail(payload.principalEmail || principalEmail);
+      if (payload.role === "developer") {
+        appEdition = "developer";
+        accountScope = "all";
+      } else {
+        accountScope = "user";
+      }
+    } catch (_err) {
+      // localStorage can be unavailable in locked-down webviews.
+    }
+  }
+
+  function persistStoredSession(profile) {
+    try {
+      var role = (profile || {}).role === "developer" ? "developer" : "user";
+      window.localStorage.setItem("smartsleeve_session:" + role, JSON.stringify({
+        sessionToken: sessionToken,
+        principalEmail: principalEmail,
+        role: role,
+        savedAt: new Date().toISOString()
+      }));
+    } catch (_err) {
+      // localStorage can be unavailable in locked-down webviews.
+    }
+  }
+
+  function clearStoredSession() {
+    sessionToken = "";
+    try {
+      window.localStorage.removeItem("smartsleeve_session:user");
+      window.localStorage.removeItem("smartsleeve_session:developer");
+    } catch (_err) {
+      // localStorage can be unavailable in locked-down webviews.
+    }
+  }
+
   function removeAuthGate() {
     var existing = $("auth-gate");
     if (existing) {
@@ -190,14 +223,14 @@
       "<button type=\"button\" data-auth-mode=\"login\" aria-selected=\"true\">Sign in</button>",
       "<button type=\"button\" data-auth-mode=\"register\" aria-selected=\"false\">Create account</button>",
       "</div>",
-      "<label class=\"auth-register-field\">Username<input id=\"auth-username\" type=\"text\" autocomplete=\"username\" autocapitalize=\"none\" spellcheck=\"false\" minlength=\"3\"></label>",
+      "<label class=\"auth-register-field\">Username<input id=\"auth-username\" type=\"text\" autocomplete=\"username\" minlength=\"3\"></label>",
       "<div class=\"auth-name-grid auth-register-field\">",
       "<label>First name<input id=\"auth-first-name\" type=\"text\" autocomplete=\"given-name\" autocapitalize=\"words\"></label>",
       "<label>Last name<input id=\"auth-last-name\" type=\"text\" autocomplete=\"family-name\" autocapitalize=\"words\"></label>",
       "</div>",
-      "<label>Email<input id=\"auth-email\" type=\"email\" autocomplete=\"username\" inputmode=\"email\" autocapitalize=\"none\" spellcheck=\"false\" required></label>",
-      "<label>Password<input id=\"auth-password\" type=\"password\" autocomplete=\"current-password\" minlength=\"12\" autocapitalize=\"none\" spellcheck=\"false\" required></label>",
-      "<label class=\"auth-register-field\">Confirm password<input id=\"auth-password-confirm\" type=\"password\" autocomplete=\"new-password\" minlength=\"12\" autocapitalize=\"none\" spellcheck=\"false\"></label>",
+      "<label>Email<input id=\"auth-email\" type=\"email\" autocomplete=\"username\" autocapitalize=\"none\" spellcheck=\"false\" required></label>",
+      "<label>Password<input id=\"auth-password\" type=\"password\" autocomplete=\"off\" minlength=\"8\" data-lpignore=\"true\" data-1p-ignore=\"true\" autocapitalize=\"none\" spellcheck=\"false\" required></label>",
+      "<label class=\"auth-register-field\">Confirm password<input id=\"auth-password-confirm\" type=\"password\" autocomplete=\"off\" minlength=\"8\" data-lpignore=\"true\" data-1p-ignore=\"true\" autocapitalize=\"none\" spellcheck=\"false\"></label>",
       "<label class=\"auth-check auth-register-field\"><input id=\"auth-accepted-terms\" type=\"checkbox\"><span>I understand SmartSleeve account access is for verified users and does not itself authorize broker trading.</span></label>",
       "<button type=\"submit\" id=\"auth-submit-button\">Sign in</button>",
       "<button type=\"button\" class=\"auth-link-button\" id=\"auth-reset-button\">Reset password</button>",
@@ -209,7 +242,6 @@
     if (emailInput && principalEmail) {
       emailInput.value = principalEmail;
     }
-    setupCredentialAutofill();
     clearAuthPasswordFields();
     window.setTimeout(clearAuthPasswordFields, 120);
     window.setTimeout(clearAuthPasswordFields, 650);
@@ -227,7 +259,7 @@
       });
     });
     $("auth-reset-button").addEventListener("click", requestPasswordResetFromGate);
-    wireAuthInputs(gate);
+    wireAuthFieldFocus(gate);
   }
 
   function clearAuthPasswordFields() {
@@ -238,6 +270,21 @@
         input.defaultValue = "";
         input.setAttribute("value", "");
       }
+    });
+  }
+
+  function wireAuthFieldFocus(gate) {
+    $all("input, button", gate).forEach(function (control) {
+      if (control.tagName === "INPUT") {
+        control.addEventListener("pointerdown", function () {
+          window.setTimeout(function () { control.focus(); }, 0);
+        });
+      }
+      control.addEventListener("focus", function () {
+        window.setTimeout(function () {
+          control.scrollIntoView({block: "center", inline: "nearest", behavior: "smooth"});
+        }, 80);
+      });
     });
   }
 
@@ -267,33 +314,22 @@
       button.setAttribute("aria-selected", button.getAttribute("data-auth-mode") === nextMode ? "true" : "false");
     });
     text("auth-submit-button", nextMode === "register" ? "Create account" : "Sign in");
-    var password = $("auth-password");
-    if (password) {
-      password.setAttribute("autocomplete", nextMode === "register" ? "new-password" : "current-password");
-    }
     text(
       "auth-gate-message",
       nextMode === "register"
-        ? "Create a verified SmartSleeve account. Passwords must be at least 12 characters. We will email a verification link before private data can load."
+        ? "Create a verified SmartSleeve account. Passwords must be at least 8 characters. We will email a verification link before private data can load."
         : "Sign in to load your private SmartSleeve data."
     );
     clearAuthPasswordFields();
   }
 
   function loginFromGate() {
-    if (authRequestInFlight) return;
     if (!loginEndpoint) {
       text("auth-gate-message", "SmartSleeve auth endpoint is not configured.");
       return;
     }
     var email = normalizeEmail(($("auth-email") || {}).value || "");
     var password = String(($("auth-password") || {}).value || "");
-    if (!email || !password) {
-      text("auth-gate-message", "Enter your email and password to sign in.");
-      return;
-    }
-    authRequestInFlight = true;
-    setAuthButtonBusy(true);
     text("auth-gate-message", "Signing in...");
     authFetch(loginEndpoint, {
       method: "POST",
@@ -306,17 +342,15 @@
             throw new Error(payload.error || "login_failed");
           }
           sessionToken = payload.session_token || sessionToken;
-          sessionExpiresAt = payload.session_expires_at || "";
           principalEmail = normalizeEmail((payload.profile || {}).email || email);
-          if ((payload.profile || {}).role === "developer" && requestedDeveloperView) {
+          if ((payload.profile || {}).role === "developer") {
             appEdition = "developer";
             accountScope = "all";
           } else {
             appEdition = "web";
             accountScope = "user";
           }
-          persistSession(payload.profile || {});
-          dismissVirtualKeyboard();
+          persistStoredSession(payload.profile || {});
           removeAuthGate();
           renderSession();
           loadFeed();
@@ -324,18 +358,7 @@
       })
       .catch(function (error) {
         text("auth-gate-message", "Sign in failed: " + error.message);
-      })
-      .finally(function () {
-        authRequestInFlight = false;
-        setAuthButtonBusy(false);
       });
-  }
-
-  function setAuthButtonBusy(isBusy) {
-    var button = $("auth-submit-button");
-    if (!button) return;
-    button.disabled = Boolean(isBusy);
-    button.setAttribute("aria-busy", isBusy ? "true" : "false");
   }
 
   function registerFromGate() {
@@ -418,90 +441,6 @@
       .catch(function (error) {
         text("auth-gate-message", "Password reset failed: " + error.message);
       });
-  }
-
-  function wireAuthInputs(root) {
-    $all("input", root).forEach(function (input) {
-      input.addEventListener("focus", function () {
-        input.scrollIntoView({block: "center", behavior: "smooth"});
-      });
-      input.addEventListener("blur", function () {
-        window.setTimeout(function () { handleCredentialAutofill("blur"); }, 80);
-      });
-      input.addEventListener("input", function () {
-        window.setTimeout(function () { handleCredentialAutofill("input"); }, 180);
-      });
-      input.addEventListener("change", function () {
-        window.setTimeout(function () { handleCredentialAutofill("change"); }, 60);
-      });
-      input.addEventListener("animationstart", function (event) {
-        if (event.animationName === "authAutoFillStart") {
-          window.setTimeout(function () { handleCredentialAutofill("autofill"); }, 80);
-        }
-      });
-    });
-  }
-
-  function setupCredentialAutofill() {
-    ["auth-email", "auth-password"].forEach(function (id) {
-      var input = $(id);
-      if (!input) return;
-      input.setAttribute("enterkeyhint", id === "auth-password" ? "done" : "next");
-    });
-  }
-
-  function handleCredentialAutofill(source) {
-    var form = $("auth-gate-form");
-    var email = $("auth-email");
-    var password = $("auth-password");
-    if (!form || !email || !password || form.getAttribute("data-mode") !== "login") return;
-    if (!email.value || !password.value) return;
-    var focusedCredentialField = document.activeElement === email || document.activeElement === password;
-    var browserFilled = isBrowserAutofilled(email) || isBrowserAutofilled(password);
-    var likelyPasswordManagerFill = source === "autofill" || source === "change" || source === "blur" || browserFilled;
-    if (focusedCredentialField && likelyPasswordManagerFill) {
-      try {
-        document.activeElement.blur();
-      } catch (_err) {}
-    }
-    if (likelyPasswordManagerFill || !focusedCredentialField) {
-      dismissVirtualKeyboard();
-      text("auth-gate-message", "Credentials filled. Signing in...");
-      scheduleCredentialAutofillSubmit();
-    } else {
-      text("auth-gate-message", "Credentials filled. Tap Sign in to continue.");
-    }
-  }
-
-  function dismissVirtualKeyboard() {
-    if (document.activeElement && typeof document.activeElement.blur === "function") {
-      try {
-        document.activeElement.blur();
-      } catch (_err) {}
-    }
-    if (navigator.virtualKeyboard && typeof navigator.virtualKeyboard.hide === "function") {
-      try {
-        navigator.virtualKeyboard.hide();
-      } catch (_err2) {}
-    }
-  }
-
-  function isBrowserAutofilled(input) {
-    try {
-      return input.matches(":-webkit-autofill");
-    } catch (_err) {
-      return false;
-    }
-  }
-
-  function scheduleCredentialAutofillSubmit() {
-    if (credentialAutofillSubmitTimer || authRequestInFlight) return;
-    credentialAutofillSubmitTimer = window.setTimeout(function () {
-      credentialAutofillSubmitTimer = null;
-      if ($("auth-gate-form") && $("auth-gate-form").getAttribute("data-mode") === "login") {
-        loginFromGate();
-      }
-    }, 320);
   }
 
   function $all(selector, root) {
@@ -612,10 +551,45 @@
 
   function sleeveLabel(value, fallback) {
     var label = displayLabel(value, fallback || "Unassigned");
+    if (/^unassigned$/i.test(label) && value && typeof value === "object") {
+      var context = [
+        value.sleeve,
+        value.sleeveName,
+        value.sleeve_name,
+        value.strategy,
+        value.tradingSystem,
+        value.trading_system,
+        value.operator,
+        value.operatorId,
+        value.operator_id
+      ].map(function (item) { return displayLabel(item, ""); }).join(" ").toLowerCase();
+      if (context.indexOf("sage") !== -1 || context.indexOf("smart") !== -1) {
+        return "Sage by SmartSleeve";
+      }
+    }
     if (/^(sage|smart sleeve|smartsleeve|sage by smartsleeve)$/i.test(label)) {
       return "Sage by SmartSleeve";
     }
     return label === "Hyper Savage" ? "Covered Sage" : label;
+  }
+
+  function accountDefaultSleeveName(account) {
+    var context = [
+      account.sleeve,
+      account.sleeveName,
+      account.sleeve_name,
+      account.strategy,
+      account.tradingSystem,
+      account.trading_system,
+      account.operator,
+      account.operatorId,
+      account.operator_id,
+      account.account,
+      account.id,
+      account.accountId,
+      account.account_id
+    ].map(function (item) { return displayLabel(item, ""); }).join(" ").toLowerCase();
+    return context.indexOf("sage") !== -1 ? "Sage by SmartSleeve" : "Unassigned";
   }
 
   function splitSleeves(value) {
@@ -651,112 +625,37 @@
         currency: position.currency || "USD"
       };
     });
+    var brokerName = account.broker || "Broker";
+    var equity = numeric(account.equity != null ? account.equity : account.account_equity);
+    var cash = numeric(account.cash);
+    var buyPower = numeric(account.buyPower != null ? account.buyPower : account.cash_available_for_buys);
+    var positionValue = positions.reduce(function (sum, position) {
+      return sum + (numeric(position.value) || 0);
+    }, 0);
+    var equitySource = "broker";
+    if ((equity == null || equity === 0) && positionValue > 0 && /e[-*\s]?trade/i.test(brokerName)) {
+      equity = positionValue + (cash || 0);
+      equitySource = "positions_plus_cash_estimate";
+    }
     return {
       id: account.id || account.accountId || account.account_id || account.account,
       account: displayLabel(account.account || account.name || account.id, "Account"),
       ownerEmail: account.ownerEmail || account.owner_email,
-      ownerName: account.ownerName || account.owner_name || account.userName || account.user_name || account.user,
       developerEmail: account.developerEmail || account.developer_email,
-      broker: account.broker || "Broker",
+      broker: brokerName,
       status: account.status || "synced",
       generatedAt: account.generatedAt || account.generated_at,
-      equity: numeric(account.equity != null ? account.equity : account.account_equity),
-      cash: numeric(account.cash),
-      buyPower: numeric(account.buyPower != null ? account.buyPower : account.cash_available_for_buys),
+      strategy: account.strategy,
+      tradingSystem: account.tradingSystem || account.trading_system,
+      operator: account.operator,
+      operatorId: account.operatorId || account.operator_id,
+      equity: equity,
+      equitySource: equitySource,
+      cash: cash,
+      buyPower: buyPower,
       positions: positions,
       sleeves: account.sleeves || [],
       sleevesText: displayLabel(account.sleevesText || account.sleeves_text || "", "")
-    };
-  }
-
-  function normalizeDaemonRow(row) {
-    row = row || {};
-    var accountId = row.accountId || row.account_id || row.account || row.account_label || row.id;
-    var account = state.accounts.find(function (item) {
-      return String(item.id || item.account).toLowerCase() === String(accountId || "").toLowerCase()
-        || String(item.account).toLowerCase() === String(accountId || "").toLowerCase();
-    });
-    var status = row.status || row.health || row.daemon_status || row.state || (row.liveTrading || row.live_trading ? "live" : "");
-    var brokerSync = row.brokerSync || row.broker_sync || row.authStatus || row.auth_status || row.connection || row.connection_status || "";
-    return {
-      account: account ? account.account : (row.account_label || row.account || row.label || accountId || "Account"),
-      owner: account ? displayOwner(account) : (row.ownerName || row.owner_name || row.ownerEmail || row.owner_email || "Owner pending"),
-      ownerEmail: account ? account.ownerEmail : (row.ownerEmail || row.owner_email),
-      developerEmail: account ? account.developerEmail : (row.developerEmail || row.developer_email),
-      broker: account ? account.broker : (row.broker || "Broker"),
-      status: String(status || "unknown"),
-      brokerSync: String(brokerSync || (account ? account.status : "unknown")),
-      liveTrading: row.liveTrading != null ? Boolean(row.liveTrading) : row.live_trading != null ? Boolean(row.live_trading) : String(status || "").toLowerCase().indexOf("live") !== -1,
-      lastSeen: row.lastSeen || row.last_seen || row.generatedAt || row.generated_at || (account && account.generatedAt) || "",
-      message: row.message || row.detail || row.summary || "",
-      source: row.source || row.origin || ""
-    };
-  }
-
-  function deriveDaemonHealth(payload, accounts) {
-    var raw = payload.daemon_health || payload.daemonHealth || payload.daemons || payload.broker_daemons || payload.brokerDaemons || [];
-    if (raw && !Array.isArray(raw) && typeof raw === "object") {
-      raw = Object.keys(raw).map(function (key) {
-        return Object.assign({account: key}, raw[key]);
-      });
-    }
-    if (Array.isArray(raw) && raw.length) {
-      return raw.map(normalizeDaemonRow);
-    }
-    return accounts.map(function (account) {
-      var freshness = accountFreshness(account);
-      return {
-        account: account.account,
-        owner: displayOwner(account),
-        ownerEmail: account.ownerEmail,
-        developerEmail: account.developerEmail,
-        broker: account.broker,
-        status: freshness.className === "fresh" ? "feed healthy" : "needs sync",
-        brokerSync: account.status || "synced",
-        liveTrading: false,
-        lastSeen: account.generatedAt || "",
-        message: "Derived from latest broker snapshot; daemon heartbeat was not provided by the private feed.",
-        source: "broker snapshot"
-      };
-    });
-  }
-
-  function daemonHealthMeta(row) {
-    var freshness = accountFreshness({generatedAt: row.lastSeen});
-    var statusText = String([row.status, row.brokerSync, row.message].join(" ")).toLowerCase();
-    var brokerText = String(row.brokerSync || "").toLowerCase();
-    var brokerIssue = brokerText.indexOf("expired") !== -1
-      || brokerText.indexOf("missing") !== -1
-      || brokerText.indexOf("fail") !== -1
-      || brokerText.indexOf("down") !== -1
-      || brokerText.indexOf("error") !== -1
-      || brokerText.indexOf("needs") !== -1
-      || brokerText.indexOf("unhealthy") !== -1
-      || brokerText.indexOf("refused") !== -1;
-    var authIssue = statusText.indexOf("auth") !== -1 && (
-      statusText.indexOf("expired") !== -1
-      || statusText.indexOf("missing") !== -1
-      || statusText.indexOf("fail") !== -1
-      || statusText.indexOf("down") !== -1
-      || statusText.indexOf("error") !== -1
-      || statusText.indexOf("needs") !== -1
-      || statusText.indexOf("unhealthy") !== -1
-    );
-    var daemonIssue = statusText.indexOf("error") !== -1
-      || statusText.indexOf("fail") !== -1
-      || statusText.indexOf("expired") !== -1
-      || statusText.indexOf("missing") !== -1
-      || statusText.indexOf("needs") !== -1
-      || statusText.indexOf("down") !== -1
-      || statusText.indexOf("unhealthy") !== -1
-      || freshness.className !== "fresh";
-    return {
-      freshness: freshness,
-      needsReview: daemonIssue || authIssue || brokerIssue,
-      label: daemonIssue || authIssue || brokerIssue ? "Needs review" : "Healthy",
-      className: daemonIssue || authIssue || brokerIssue ? "daemon-card daemon-card-warning" : "daemon-card",
-      liveLabel: row.liveTrading ? "Live trading on" : "Live trading off",
-      authLabel: authIssue ? "Broker auth needs review" : brokerIssue ? "Broker/API needs review" : "Broker auth synced"
     };
   }
 
@@ -780,59 +679,65 @@
     });
   }
 
+  function developerFilteredAccounts(accounts) {
+    if (appEdition !== "developer") {
+      return accounts;
+    }
+    return accounts.filter(function (account) {
+      var owner = normalizeEmail(account.ownerEmail || account.owner_email);
+      var accountId = String(account.id || account.accountId || account.account_id || "");
+      return (state.selectedOwnerEmail === "all" || owner === state.selectedOwnerEmail)
+        && (state.selectedAccountId === "all" || accountId === state.selectedAccountId);
+    });
+  }
+
+  function developerVisibleRows(rows) {
+    if (appEdition !== "developer") {
+      return rows;
+    }
+    return rows.filter(function (row) {
+      var owner = normalizeEmail(row.ownerEmail || row.owner_email);
+      var accountId = String(row.accountId || row.account_id || row.id || "");
+      return (state.selectedOwnerEmail === "all" || owner === state.selectedOwnerEmail)
+        && (state.selectedAccountId === "all" || accountId === state.selectedAccountId);
+    });
+  }
+
+  function visibleAccountIdSet(accounts) {
+    var ids = {};
+    (accounts || []).forEach(function (account) {
+      [
+        account.id,
+        account.accountId,
+        account.account_id,
+        account.account
+      ].forEach(function (value) {
+        var key = String(value || "").trim();
+        if (key) ids[key] = true;
+      });
+    });
+    return ids;
+  }
+
   function rowAccountId(row) {
-    return row.accountId || row.account_id || row.id || row.account;
+    return String(row && (row.accountId || row.account_id || row.id || row.account || "") || "").trim();
   }
 
-  function displayOwner(account) {
-    return account.ownerName || account.ownerEmail || "Unassigned owner";
-  }
-
-  function accountFreshness(account) {
-    var generated = timestampMs(account.generatedAt);
-    if (!generated) return {label: "No timestamp", className: "warning", ageMinutes: null};
-    var ageMinutes = Math.max(0, Math.round((Date.now() - generated) / 60000));
-    if (ageMinutes > 180) return {label: Math.round(ageMinutes / 60) + "h old", className: "warning", ageMinutes: ageMinutes};
-    if (ageMinutes > 75) return {label: ageMinutes + "m old", className: "caution", ageMinutes: ageMinutes};
-    return {label: ageMinutes + "m old", className: "fresh", ageMinutes: ageMinutes};
-  }
-
-  function expectedAccountRows(payload) {
-    var candidates = payload.expected_accounts || payload.expectedAccounts || payload.account_registry || payload.accountRegistry || [];
-    if (!Array.isArray(candidates)) candidates = [];
-    var merged = candidates.slice();
-    DEFAULT_EXPECTED_ACCOUNTS.forEach(function (row) {
-      var key = String(row.id || row.label).toLowerCase();
-      var exists = merged.some(function (candidate) {
-        return String(candidate.id || candidate.accountId || candidate.account_id || candidate.account || candidate.label || candidate.name).toLowerCase() === key;
-      });
-      if (!exists) merged.push(row);
+  function scopedRowsForVisibleAccounts(rows, visibleIds) {
+    return visibleRows(rows || []).filter(function (row) {
+      if (row && isLocalFallbackReport(row)) {
+        return true;
+      }
+      var accountId = rowAccountId(row);
+      return !accountId || Boolean(visibleIds[accountId]);
     });
-    return merged.map(function (row) {
-      return {
-        id: row.id || row.accountId || row.account_id || row.account,
-        label: row.label || row.account || row.name || row.id || "Expected account",
-        ownerEmail: row.ownerEmail || row.owner_email,
-        ownerName: row.ownerName || row.owner_name || row.userName || row.user_name,
-        broker: row.broker || "Broker"
-      };
-    }).filter(function (row) { return row.id || row.label; });
   }
 
-  function buildAccountDiagnostics(accounts, expected) {
-    var byId = {};
-    accounts.forEach(function (account) {
-      byId[String(account.id || account.account).toLowerCase()] = account;
-      byId[String(account.account).toLowerCase()] = account;
-    });
-    return expected.map(function (row) {
-      var key = String(row.id || row.label).toLowerCase();
-      var matched = byId[key] || byId[String(row.label).toLowerCase()];
-      return Object.assign({}, row, {
-        present: Boolean(matched),
-        matchedAccount: matched || null
-      });
-    });
+  function accountOwnerLabel(email) {
+    var normalized = normalizeEmail(email);
+    if (normalized === "jpsheppard88@gmail.com" || normalized === "john@smartsleeve.ai") return "John";
+    if (normalized === "criseldasarenas@gmail.com") return "Crissy";
+    return normalized || "Unassigned";
   }
 
   function accountTotal(key) {
@@ -887,26 +792,6 @@
     }, 0);
   }
 
-  function feedCoverageSummary() {
-    var visible = state.accounts.length;
-    var expected = state.accountDiagnostics.length || visible;
-    var missing = state.accountDiagnostics.filter(function (row) { return !row.present; });
-    var stale = state.accounts.filter(function (account) {
-      return accountFreshness(account).className !== "fresh";
-    });
-    var pnlIssues = state.holdings.filter(function (holding) {
-      return holding.pnlQuality === "basis_gap" || holding.pnlQuality === "missing";
-    });
-    return {
-      visible: visible,
-      expected: expected,
-      missing: missing,
-      stale: stale,
-      pnlIssues: pnlIssues,
-      isClean: Boolean(visible) && !missing.length && !stale.length && !pnlIssues.length
-    };
-  }
-
   function aggregateHoldings(accounts) {
     var grouped = {};
     var foreign = [];
@@ -936,7 +821,6 @@
             unrealizedPnl: null,
             realizedPnl: null,
             totalPnl: null,
-            pnlQuality: "none",
             accounts: [],
             sleeves: []
           };
@@ -974,25 +858,9 @@
       row.price = row.shares ? (row.value ? row.value / row.shares : row.priceValue / row.shares) : null;
       row.avgPrice = row.price;
       row.averageCost = row.costBasis != null && row.costShares ? row.costBasis / row.costShares : null;
-      row.pnlQuality = assessHoldingPnl(row);
       return row;
     }).sort(function (a, b) { return b.value - a.value; });
     return {holdings: holdings, foreign: foreign};
-  }
-
-  function assessHoldingPnl(holding) {
-    var hasBasis = numeric(holding.costBasis) != null && numeric(holding.averageCost) != null;
-    var hasAnyPnl = ["dailyPnl", "unrealizedPnl", "realizedPnl", "totalPnl"].some(function (key) {
-      return numeric(holding[key]) != null;
-    });
-    if (!hasAnyPnl) return "missing";
-    if (!hasBasis && (numeric(holding.unrealizedPnl) != null || numeric(holding.totalPnl) != null)) {
-      return "basis_gap";
-    }
-    if (holding.totalPnl == null && (holding.unrealizedPnl != null || holding.realizedPnl != null)) {
-      return "derived";
-    }
-    return hasBasis ? "broker_basis" : "broker_daily_only";
   }
 
   function buildSleeves(accounts) {
@@ -1001,7 +869,7 @@
       var liveSleeves = Array.isArray(account.sleeves) ? account.sleeves : [];
       if (liveSleeves.length) {
         liveSleeves.forEach(function (sleeve) {
-          var name = sleeveLabel(sleeve.label || sleeve.name || sleeve.sleeve || sleeve.strategy || sleeve.id, "Unassigned");
+          var name = sleeveLabel(sleeve, "Unassigned");
           ensureSleeve(bySleeve, name, account.account);
           bySleeve[name].exactValue += numeric(sleeve.netLiquidationUsd != null ? sleeve.netLiquidationUsd : sleeve.net_liquidation_usd) || 0;
           bySleeve[name].cash += numeric(sleeve.cashUsd != null ? sleeve.cashUsd : sleeve.cash_usd) || 0;
@@ -1019,7 +887,7 @@
       }
       var names = splitSleeves(account.sleevesText || account.sleeves);
       if (!names.length) {
-        names = ["Unassigned"];
+        names = [accountDefaultSleeveName(account)];
       }
       names.forEach(function (name) {
         ensureSleeve(bySleeve, name, account.account);
@@ -1044,6 +912,7 @@
   }
 
   function ensureSleeve(map, name, accountName) {
+    name = sleeveLabel(name, "Unassigned");
     if (!map[name]) {
       map[name] = {
         name: name,
@@ -1147,7 +1016,7 @@
   function originLabel(order) {
     if (isSageDirectedOrder(order)) return "Sage by SmartSleeve";
     if (isUserDirectedOrder(order)) return "User-directed";
-    return displayLabel(order.origin || order.operatorId || order.operator_id || order.operator, "SmartSleeve");
+    return order.origin || order.operatorId || order.operator_id || order.operator || "SmartSleeve";
   }
 
   function originBadges(order) {
@@ -1181,8 +1050,7 @@
     var side = orderTypeLabel(order);
     var value = money(orderNotional(order));
     var status = orderStatusLabel(order);
-    var settlement = orderSettlementText(order);
-    return symbol + " / " + side + " / " + value + " / " + account + " / " + status + (settlement ? " / " + settlement : "");
+    return symbol + " / " + side + " / " + value + " / " + account + " / " + status;
   }
 
   function sendOrderNotification(order, verb) {
@@ -1281,16 +1149,7 @@
     var mu = bySymbol.MU ? bySymbol.MU.value : 0;
     var sndk = bySymbol.SNDK ? bySymbol.SNDK.value : 0;
     var top = state.holdings[0];
-    var coverage = feedCoverageSummary();
     var recs = [];
-    if (coverage.missing.length || coverage.stale.length) {
-      var missingNames = coverage.missing.map(function (row) { return row.label; }).slice(0, 3).join(", ");
-      var staleNames = coverage.stale.map(function (account) { return account.account + " " + accountFreshness(account).label; }).slice(0, 3).join(", ");
-      recs.push(recommendation("feed-coverage", "Reconcile account feed coverage", "Broker sync", "Expected accounts", "Freshness", 0, [missingNames ? "Missing: " + missingNames : "", staleNames ? "Stale: " + staleNames : ""].filter(Boolean).join(" / "), "Do not rely on cross-account totals until every expected account is present and fresh.", "EXTERNAL_BROKER_SYNC"));
-    }
-    if (coverage.pnlIssues.length) {
-      recs.push(recommendation("pnl-reconciliation", "Reconcile basis before trusting P/L", "Broker sync", "Visible holdings", "P/L", 0, coverage.pnlIssues.length + " holding(s) are missing broker basis or P/L fields.", "Gains, losses, return index, and sleeve comparisons can be misleading until broker cost basis is current.", "EXTERNAL_BROKER_SYNC"));
-    }
     if (mu + sndk > total * 0.35) {
       recs.push(recommendation("semi-concentration", "Review MU/SNDK concentration", "Rebalance", "Cross-account", "MU, SNDK", Math.max(0, (mu + sndk) - total * 0.35), "MU and SNDK are a large share of tracked equity. Confirm the target or draft a rebalance.", "A 10% combined move in MU/SNDK would visibly move portfolio value.", "SAGE_RECOMMEND"));
     }
@@ -1301,10 +1160,10 @@
       recs.push(recommendation("sleeve-ledger", "Sync sleeve ledger splits", "Assign", "Multi-sleeve accounts", "Ledger", 0, "Exact sleeve P/L needs lot-level sleeve ownership.", "Without this, sleeve return and alpha are account-level estimates.", "SQTS_REBALANCE"));
     }
     if (marginUsed() > 0) {
-      recs.push(recommendation("margin-cash", "Review margin usage before adding risk", "Check margin buffer", state.accounts.filter(function (account) { return (numeric(account.cash) || 0) < 0; }).map(function (account) { return account.account; }).join(", "), "Margin", marginUsed(), "One or more margin accounts are using margin; negative cash can be normal in IBKR margin accounts.", "Watch margin buffer and buying power so volatility does not force less patient execution.", "SQTS_RISK_EXIT"));
+      recs.push(recommendation("margin-cash", "Review margin buffer before adding risk", "Check margin", state.accounts.filter(function (account) { return (numeric(account.cash) || 0) < 0; }).map(function (account) { return account.account; }).join(", "), "Margin", marginUsed(), "At least one margin account is using broker credit rather than cash.", "Thin margin buffer can force less patient execution during volatility.", "SQTS_RISK_EXIT"));
     }
-    if (state.accounts.some(function (account) { return brokerKey(account) === "robinhood"; })) {
-      recs.push(recommendation("settlement-restricted-broker", "Review settlement-restricted broker routing", "Broker migration review", "Robinhood accounts", "T+ settlement", 0, "Sage risk-off sells in Robinhood-style accounts can leave proceeds unavailable during fast earnings-window rebounds.", "Keep Sage in observe/recommend mode for near-earnings pullbacks or route reviewed capital through a broker with richer settlement and buying-power controls.", "SQTS_RISK_EXIT"));
+    if (state.accounts.some(function (account) { return account.equitySource === "positions_plus_cash_estimate"; })) {
+      recs.push(recommendation("etrade-value-sync", "Verify E-Trade account value export", "Broker sync", "E-Trade", "Value", 0, "E-Trade reported zero account value while positions or cash implied a positive balance.", "Buying power can be zero even when account equity is positive; UI is using a positions-plus-cash estimate until the broker export is corrected.", "EXTERNAL_BROKER_SYNC"));
     }
     recs.push(recommendation("broker-pl", "Enable intraday P/L and cost basis sync", "Broker sync", "All connected brokers", "P/L", 0, "Holdings are visible; daily P/L, total P/L, and return need broker basis/history.", "Without live P/L, contributors and detractors remain unavailable.", "SQTS_AUTO"));
     return recs;
@@ -1331,45 +1190,55 @@
       totalPnl = (unrealizedPnl || 0) + (realizedPnl || 0);
     }
     var totalCostBasis = nullableSum(state.holdings, "costBasis");
-    var pnlIssues = state.holdings.filter(function (holding) {
-      return holding.pnlQuality === "basis_gap" || holding.pnlQuality === "missing";
-    }).length;
     text("portfolio-value", money(total));
     text("portfolio-scope", appEdition === "developer" ? "All visible SmartSleeve accounts in the current live feed." : "Accounts tied to " + (principalEmail || "the signed-in user") + ".");
     text("cash-value", money(accountTotal("cash")));
     text("buying-power", money(accountTotal("buyPower")));
     text("margin-usage", marginUsed() ? money(marginUsed()) : "$0");
-    var coverage = feedCoverageSummary();
-    var feedCoverage = $("feed-coverage");
-    if (feedCoverage) {
-      feedCoverage.classList.remove("positive", "warning-text", "needs-sync");
-      feedCoverage.classList.add(coverage.isClean ? "positive" : coverage.visible ? "warning-text" : "needs-sync");
-      feedCoverage.textContent = Math.max(0, coverage.visible - coverage.stale.length) + "/" + coverage.expected + " current";
-    }
-    text(
-      "feed-coverage-note",
-      coverage.isClean
-        ? "All expected accounts are fresh with broker basis/P&L fields."
-        : [
-          coverage.missing.length ? coverage.missing.length + " missing expected" : "",
-          coverage.stale.length ? coverage.stale.length + " stale/no timestamp" : "",
-          coverage.pnlIssues.length ? coverage.pnlIssues.length + " P/L basis gaps" : ""
-        ].filter(Boolean).join(" / ") || "Private feed has not published accounts yet."
-    );
     setMetric("daily-pl", dailyPnl, function (value) { return signedMoney(value); }, "Needs daily P/L sync");
     setMetric("total-pl", totalPnl, function (value) { return signedMoney(value); }, "Needs basis sync");
     setMetric("portfolio-return", totalPnl != null && totalCostBasis ? totalPnl / totalCostBasis * 100 : null, function (value) { return (value >= 0 ? "+" : "") + value.toFixed(2) + "%"; }, "Needs basis sync");
-    text("pnl-quality-note", pnlIssues ? pnlIssues + " holding(s) need broker basis/P&L reconciliation before losses or gains are trusted." : "Broker basis and P/L fields are internally consistent for visible holdings.");
     text("sage-review-count", String(state.recommendations.length));
+    renderDeveloperControls();
     renderTopHoldings(total);
     renderReviewQueue();
     renderAccounts();
-    renderDaemonHealth();
+    renderAccountDirectory();
+    renderAccountDetail();
     renderAccountCoverage();
     renderSleeveSummary(total);
     renderPerformanceCharts();
     renderReports();
     renderHoldingsTable();
+  }
+
+  function renderDeveloperControls() {
+    var strip = $("developer-controls");
+    var userSelect = $("developer-user-filter");
+    var accountSelect = $("developer-account-filter");
+    if (!strip || !userSelect || !accountSelect) return;
+    if (appEdition !== "developer") {
+      strip.hidden = true;
+      return;
+    }
+    strip.hidden = false;
+    var owners = {};
+    var accounts = {};
+    (state.allAccounts || state.accounts || []).forEach(function (account) {
+      var owner = normalizeEmail(account.ownerEmail);
+      if (owner) owners[owner] = accountOwnerLabel(owner);
+      accounts[String(account.id)] = account.account + " / " + accountOwnerLabel(owner);
+    });
+    var ownerOptions = ["<option value=\"all\">All users</option>"].concat(Object.keys(owners).sort().map(function (email) {
+      return "<option value=\"" + html(email) + "\">" + html(owners[email]) + " - " + html(email) + "</option>";
+    }));
+    var accountOptions = ["<option value=\"all\">All accounts</option>"].concat(Object.keys(accounts).sort().map(function (id) {
+      return "<option value=\"" + html(id) + "\">" + html(accounts[id]) + "</option>";
+    }));
+    userSelect.innerHTML = ownerOptions.join("");
+    accountSelect.innerHTML = accountOptions.join("");
+    userSelect.value = owners[state.selectedOwnerEmail] ? state.selectedOwnerEmail : "all";
+    accountSelect.value = accounts[state.selectedAccountId] ? state.selectedAccountId : "all";
   }
 
   function renderTopHoldings(total) {
@@ -1392,93 +1261,144 @@
     var target = $("account-cards");
     if (!target) return;
     target.innerHTML = state.accounts.map(function (account) {
-      var cash = numeric(account.cash) || 0;
-      return "<article class=\"account-card\">"
+      var positionValue = (account.positions || []).reduce(function (sum, position) { return sum + (numeric(position.value) || 0); }, 0);
+      return "<article class=\"account-card interactive-card\" data-account-detail=\"" + html(account.id) + "\" tabindex=\"0\">"
         + "<div class=\"stack-item-head\"><b>" + html(account.account) + "</b><span>" + html(account.broker) + "</span></div>"
-        + "<p>Owner: <b>" + html(displayOwner(account)) + "</b></p>"
-        + "<p>Equity: <b>" + money(account.equity) + "</b></p>"
-        + "<p>Cash: <span class=\"" + (cash < 0 ? "negative" : "positive") + "\">" + money(cash) + "</span> / buying power " + money(account.buyPower) + "</p>"
-        + "<p>Holdings: " + money((account.positions || []).reduce(function (sum, position) { return sum + (numeric(position.value) || 0); }, 0)) + " / positions " + (account.positions || []).length + "</p>"
-        + "<p>Status: " + html(account.status) + "</p>"
+        + "<div class=\"account-mini-grid\">"
+        + miniMetric("Equity", money(account.equity))
+        + miniMetric("Cash", money(account.cash))
+        + miniMetric("Buy power", money(account.buyPower))
+        + miniMetric("Holdings", money(positionValue))
+        + miniMetric("Positions", String((account.positions || []).length))
+        + miniMetric("Status", (account.status || "synced") + (account.equitySource === "positions_plus_cash_estimate" ? " est." : ""))
+        + "</div>"
         + "</article>";
     }).join("") || emptyItem("No visible accounts", "Sign in with an email that has SmartSleeve account access.");
   }
 
-  function renderAccountCoverage() {
-    var target = $("account-coverage");
-    var status = $("coverage-status");
-    if (!target) return;
-    var staleCount = state.accounts.filter(function (account) {
-      return accountFreshness(account).className !== "fresh";
-    }).length;
-    var missingExpected = state.accountDiagnostics.filter(function (row) { return !row.present; });
-    if (status) {
-      status.textContent = missingExpected.length ? missingExpected.length + " missing" : staleCount ? staleCount + " stale" : "Live";
-      status.classList.toggle("warning", Boolean(missingExpected.length || staleCount));
-    }
-    var byOwner = {};
-    state.accounts.forEach(function (account) {
-      var owner = displayOwner(account);
-      if (!byOwner[owner]) {
-        byOwner[owner] = {owner: owner, accounts: [], equity: 0, brokers: []};
-      }
-      byOwner[owner].accounts.push(account);
-      byOwner[owner].equity += numeric(account.equity) || 0;
-      if (byOwner[owner].brokers.indexOf(account.broker) === -1) {
-        byOwner[owner].brokers.push(account.broker);
-      }
-    });
-    var ownerCards = Object.keys(byOwner).sort().map(function (owner) {
-      var row = byOwner[owner];
-      var stale = row.accounts.filter(function (account) { return accountFreshness(account).className !== "fresh"; });
-      return "<article class=\"coverage-card\">"
-        + "<div class=\"stack-item-head\"><b>" + html(owner) + "</b><span>" + html(row.accounts.length + " account(s)") + "</span></div>"
-        + "<p>" + html(row.brokers.join(", ") || "Broker sync pending") + "</p>"
-        + "<p>Visible equity: <b>" + money(row.equity) + "</b></p>"
-        + "<p class=\"" + (stale.length ? "warning-text" : "positive") + "\">" + html(stale.length ? stale.length + " stale/no-timestamp snapshot(s)" : "Fresh snapshots") + "</p>"
-        + "</article>";
-    });
-    var diagnosticCards = state.accountDiagnostics.map(function (row) {
-      var account = row.matchedAccount;
-      var freshness = account ? accountFreshness(account) : null;
-      return "<article class=\"coverage-card " + (row.present ? "" : "coverage-missing") + "\">"
-        + "<div class=\"stack-item-head\"><b>" + html(row.label) + "</b><span>" + html(row.present ? "Present" : "Missing") + "</span></div>"
-        + "<p>" + html((row.ownerName || row.ownerEmail || "Expected owner") + " / " + row.broker) + "</p>"
-        + "<p>" + html(row.present ? "Matched " + account.account + " / " + freshness.label : "Not present in the private feed payload.") + "</p>"
-        + "</article>";
-    });
-    target.innerHTML = ownerCards.concat(diagnosticCards).join("") || emptyItem("No account coverage", "Private API did not return visible accounts yet.");
+  function miniMetric(label, value) {
+    return "<span class=\"mini-metric\"><i>" + html(label) + "</i><b>" + html(value) + "</b></span>";
   }
 
-  function renderDaemonHealth() {
-    var target = $("daemon-health");
-    var status = $("daemon-health-status");
-    if (!target) return;
-    var rows = visibleRows(state.daemonHealth || []);
-    var annotated = rows.map(function (row) {
-      return {row: row, meta: daemonHealthMeta(row)};
-    });
-    var unhealthy = annotated.filter(function (item) { return item.meta.needsReview; });
-    var liveCount = annotated.filter(function (item) { return item.row.liveTrading; }).length;
-    if (status) {
-      status.textContent = unhealthy.length ? unhealthy.length + " needs review" : rows.length ? liveCount + "/" + rows.length + " live" : "No heartbeat";
-      status.classList.toggle("warning", Boolean(unhealthy.length || !rows.length));
+  function marginCopy(account) {
+    var cash = numeric(account.cash) || 0;
+    var buyPower = numeric(account.buyPower);
+    if (cash < 0) {
+      var buffer = buyPower == null ? "buffer needs sync" : "buffer " + money(buyPower);
+      return "Margin used: <span class=\"negative\">" + money(Math.abs(cash)) + "</span> / " + buffer;
     }
-    target.innerHTML = annotated.map(function (item) {
-      var row = item.row;
-      var meta = item.meta;
-      return "<article class=\"" + html(meta.className) + "\">"
-        + "<div class=\"stack-item-head\"><b>" + html(row.account) + "</b><span>" + html(meta.label) + "</span></div>"
-        + "<p>" + html(row.owner) + " / " + html(row.broker) + "</p>"
-        + "<div class=\"health-strip\">"
-        + "<span class=\"" + html(row.liveTrading ? "health-pill positive-pill" : "health-pill neutral-pill") + "\">" + html(meta.liveLabel) + "</span>"
-        + "<span class=\"" + html(meta.authLabel.indexOf("needs") === -1 ? "health-pill positive-pill" : "health-pill warning-pill") + "\">" + html(meta.authLabel) + "</span>"
+    return "Cash: <span class=\"positive\">" + money(cash) + "</span> / buying power " + money(buyPower);
+  }
+
+  function renderAccountDirectory() {
+    var target = $("accounts-directory");
+    if (!target) return;
+    target.innerHTML = state.accounts.map(function (account) {
+      var positionValue = (account.positions || []).reduce(function (sum, position) { return sum + (numeric(position.value) || 0); }, 0);
+      return "<article class=\"account-card interactive-card\" data-account-detail=\"" + html(account.id) + "\" tabindex=\"0\">"
+        + "<div class=\"stack-item-head\"><b>" + html(account.account) + "</b><span>" + html(accountOwnerLabel(account.ownerEmail)) + " / " + html(account.broker) + "</span></div>"
+        + "<div class=\"account-mini-grid\">"
+        + miniMetric("Value", money(account.equity))
+        + miniMetric("Cash", money(account.cash))
+        + miniMetric("Buy power", money(account.buyPower))
+        + miniMetric("Holdings", money(positionValue))
+        + miniMetric("Positions", String((account.positions || []).length))
+        + miniMetric("Sleeves", splitSleeves(account.sleeves.length ? account.sleeves : account.sleevesText).slice(0, 2).join(", ") || accountDefaultSleeveName(account))
         + "</div>"
-        + "<p>Daemon: <b>" + html(row.status) + "</b> / Broker auth: <b>" + html(row.brokerSync) + "</b></p>"
-        + "<p class=\"" + html(meta.freshness.className === "fresh" ? "positive" : "warning-text") + "\">Last heartbeat: " + html(meta.freshness.label) + "</p>"
-        + (row.message ? "<p>" + html(row.message) + "</p>" : "")
+        + "<div class=\"recommendation-actions\"><button type=\"button\" class=\"text-button\" data-account-detail=\"" + html(account.id) + "\">Open details</button></div>"
         + "</article>";
-    }).join("") || emptyItem("No daemon heartbeat", "Private feed has not published daemon or broker-auth health yet.");
+    }).join("") || emptyItem("No visible accounts", "Sign in with an email that has SmartSleeve account access.");
+  }
+
+  function findAccountById(id) {
+    return state.accounts.find(function (account) { return String(account.id) === String(id); }) || state.accounts[0] || null;
+  }
+
+  function renderAccountDetail() {
+    var target = $("account-detail-content");
+    if (!target) return;
+    var account = findAccountById(state.selectedDetailAccountId);
+    if (!account) {
+      text("account-detail-title", "Account");
+      text("account-detail-subtitle", "No visible account selected.");
+      target.innerHTML = emptyItem("No account selected", "Open an account from the Accounts tab.");
+      return;
+    }
+    state.selectedDetailAccountId = String(account.id);
+    text("account-detail-title", account.account);
+    text("account-detail-subtitle", accountOwnerLabel(account.ownerEmail) + " / " + account.broker + " / " + (account.status || "synced"));
+    var holdings = (account.positions || []).slice().sort(function (a, b) { return (numeric(b.value) || 0) - (numeric(a.value) || 0); });
+    var sleeveNames = splitSleeves(account.sleeves.length ? account.sleeves : account.sleevesText);
+    target.innerHTML = [
+      "<article class=\"panel-card\"><div class=\"card-head\"><div><span>Broker values</span><h2>Cash and margin</h2></div><span class=\"status-chip\">" + html(account.broker) + "</span></div><div class=\"stack-list\">"
+        + stackItem("Account value", money(account.equity), account.equitySource === "positions_plus_cash_estimate" ? "Estimated from E-Trade positions plus cash because broker value was zero." : "Broker-reported account value.", 80)
+        + stackItem("Cash / margin", cashMarginMeta(account), marginPlainText(account), numeric(account.cash) < 0 ? 45 : 80)
+        + stackItem("Buying power", money(account.buyPower), "Buying power can be zero even when account value is positive.", numeric(account.buyPower) ? 70 : 25)
+      + "</div></article>",
+      "<article class=\"panel-card\"><div class=\"card-head\"><div><span>Sleeves</span><h2>Active sleeve coverage</h2></div><button type=\"button\" class=\"text-button\" data-nav-button=\"sleeves\">All sleeves</button></div><div class=\"stack-list\">"
+        + (sleeveNames.length ? sleeveNames.map(function (name) {
+          return stackItem(name, "Tap sleeve cards for full detail", "Account participates in this sleeve or reports this sleeve label.", 65);
+        }).join("") : emptyItem("No sleeve assignment", "Sleeve metadata is not present for this account."))
+      + "</div></article>",
+      "<article class=\"panel-card wide-card\"><div class=\"card-head\"><div><span>Holdings</span><h2>Account positions</h2></div><span class=\"status-chip\">" + holdings.length + " positions</span></div><div class=\"table-wrap\"><table><tbody>"
+        + (holdings.map(function (position) {
+          return "<tr>"
+            + cell("Ticker", "<b>" + html(position.symbol) + "</b><small>" + html(position.name || tickerNames[position.symbol] || "") + "</small>")
+            + cell("Shares", numberText(position.shares, 6))
+            + cell("Value", money(position.value))
+            + cell("Cost basis", position.costBasis == null ? "<span class=\"needs-sync\">Needs basis sync</span>" : money(position.costBasis))
+            + cell("P/L", pnlCell(position.totalPnl, "Needs basis sync"))
+            + "</tr>";
+        }).join("") || "<tr>" + cell("Holdings", "No positions synced") + "</tr>")
+      + "</tbody></table></div></article>"
+    ].join("");
+  }
+
+  function cashMarginMeta(account) {
+    var cash = numeric(account.cash) || 0;
+    return cash < 0 ? "Margin used " + money(Math.abs(cash)) : "Cash " + money(cash);
+  }
+
+  function marginPlainText(account) {
+    var cash = numeric(account.cash) || 0;
+    if (cash < 0) {
+      return "This is margin usage and buffer context, not a generic negative-cash error. Review broker maintenance and buying-power buffer before adding risk.";
+    }
+    return "Cash is non-negative in this account.";
+  }
+
+  function renderAccountCoverage() {
+    var target = $("account-coverage");
+    if (!target) return;
+    var coverage = state.accountCoverage || {};
+    var expected = coverage.expected || [];
+    if (!expected.length) {
+      target.innerHTML = emptyItem("Account coverage unavailable", "The private feed did not include an expected-account checklist.");
+      return;
+    }
+    var missing = coverage.missing || [];
+    var configuredOnly = coverage.configured_without_live || [];
+    if (appEdition !== "developer" && principalEmail) {
+      missing = missing.filter(function (row) { return normalizeEmail(row.ownerEmail) === principalEmail; });
+      configuredOnly = configuredOnly.filter(function (row) { return normalizeEmail(row.ownerEmail) === principalEmail; });
+    }
+    var visible = Number(coverage.visible_count || 0);
+    var total = Number(coverage.expected_count || expected.length || 0);
+    var rows = [
+      stackItem(
+        "Expected account coverage",
+        visible + " of " + total + " visible",
+        missing.length ? missing.length + " expected account(s) are not in the current app feed." : "All expected accounts for this user/developer scope are represented.",
+        total ? visible / total * 100 : 0
+      )
+    ];
+    missing.slice(0, 6).forEach(function (row) {
+      rows.push(stackItem("Missing: " + (row.account || row.id), row.broker || "Broker unknown", row.expectedUse || row.status || "Expected account has no current app-feed row.", 12));
+    });
+    configuredOnly.slice(0, 6).forEach(function (row) {
+      rows.push(stackItem("Awaiting live export: " + (row.account || row.id), row.broker || "Broker unknown", row.expectedUse || row.status || "Configured account is visible but lacks live analytics.", 35));
+    });
+    target.innerHTML = rows.join("");
   }
 
   function renderPerformanceCharts() {
@@ -1506,7 +1426,7 @@
         var points = state.history.positions.filter(function (point) {
           return point.accountId === row.account.id && point.symbol === row.position.symbol;
         });
-        points = smoothHistoryDrops(points, "value", row.position.value);
+        points = deglitchHoldingHistory(points, row.position.value);
         if (!points.length && numeric(row.position.value) != null) {
           points = [{at: row.account.generatedAt || new Date().toISOString(), value: row.position.value}];
         }
@@ -1515,6 +1435,21 @@
         return lineChartCard(title, meta, points, "value", "Stock value", row.position.totalPnl);
       }).join("") || emptyItem("No holding history", "Stock holding charts appear after private feed history syncs.");
     }
+  }
+
+  function deglitchHoldingHistory(points, currentValue) {
+    var latestValue = numeric(currentValue);
+    if (latestValue == null || latestValue <= 0) {
+      return points || [];
+    }
+    var threshold = Math.max(1, latestValue * 0.015);
+    return (points || []).filter(function (point) {
+      var value = numeric(point.value);
+      var shares = numeric(point.shares);
+      if (value == null) return false;
+      if (value > threshold) return true;
+      return shares != null && shares > 0.000001 && value > 0;
+    });
   }
 
   function renderSleeveSummary(total) {
@@ -1528,17 +1463,37 @@
 
   function renderReports() {
     var daily = $("report-archive-list");
+    var picks = $("stock-pick-report-list");
     var reports = visibleRows(state.reports);
-    var stockPickReports = reports.filter(function (report) { return report.type === "stock_pick"; });
-    if (!stockPickReports.length) {
-      stockPickReports = stockPickFallbackReports();
-    }
     if (daily) {
       daily.innerHTML = reports.filter(function (report) { return report.type === "daily_performance"; }).map(reportCard).join("") || emptyItem("No daily reports archived", "Daily report workflow will archive reports here after generation.");
     }
-    $all("[data-report-list=\"stock-picks\"]").forEach(function (target) {
-      target.innerHTML = stockPickReports.map(reportCard).join("") || emptyItem("No stock-pick reports archived", "Stock-pick emails will appear for days when the user had that algo active.");
+    if (picks) {
+      picks.innerHTML = reports.filter(function (report) { return report.type === "stock_pick"; }).map(reportCard).join("") || emptyItem("No stock-pick reports archived", "Stock-pick emails will appear for days when the user had that algo active.");
+    }
+  }
+
+  function stockPickReports() {
+    return visibleRows(state.reports).filter(function (report) {
+      var type = String(report.type || report.reportType || report.report_type || "").toLowerCase();
+      var title = String(report.title || report.subject || "").toLowerCase();
+      return type === "stock_pick" || type === "stock-pick" || title.indexOf("stock pick") !== -1 || title.indexOf("stock-pick") !== -1;
     });
+  }
+
+  function stockPickKey(value) {
+    var textValue = displayLabel(value, "")
+      .toLowerCase()
+      .replace(/[_-]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (textValue === "grand sage" || textValue === "grand philosophe" || textValue === "semi sage") return "grand_sage";
+    if (textValue === "general sage") return "general_sage";
+    if (textValue === "value sage") return "value_sage";
+    if (textValue.indexOf("grand") !== -1 || textValue.indexOf("semi") !== -1) return "grand_sage";
+    if (textValue.indexOf("general") !== -1) return "general_sage";
+    if (textValue.indexOf("value") !== -1) return "value_sage";
+    return textValue.replace(/\s+/g, "_");
   }
 
   function stockPickFallbackReports() {
@@ -1548,41 +1503,29 @@
         type: "stock_pick",
         localFallback: true,
         algo: "grand_sage",
+        sleeves: ["Grand Sage", "Semi Sage"],
         title: "Grand Sage stock picks",
         date: "latest",
         summary: "Latest known Grand Sage/Semi Sage archive universe. The private report gateway remains authoritative for thesis notes and sizing context.",
+        candidateSymbols: ["SNDK", "ALAB", "MU", "CRDO", "NBIS", "AMD", "CAT", "TSM", "SMCI", "VRT", "NVDA", "AVGO", "MRVL"],
         url: "/app/reports/stock-picks/grand_sage/latest.html",
-        latestUrl: "/app/reports/stock-picks/grand_sage/latest.html",
-        picks: ["SNDK", "ALAB", "MU", "CRDO", "NBIS", "AMD", "CAT", "TSM", "SMCI", "VRT", "NVDA", "AVGO", "MRVL"].map(function (symbol) {
-          return {symbol: symbol, description: "Latest known archived SmartSleeve stock-pick universe member."};
-        })
+        latestUrl: "/app/reports/stock-picks/grand_sage/latest.html"
       },
       {
         id: "general_sage-latest",
         type: "stock_pick",
         localFallback: true,
         algo: "general_sage",
+        sleeves: ["General Sage"],
         title: "General Sage stock picks",
         date: "latest",
-        summary: "Latest known General Sage archive universe. Tactical hedge assets are separated from ranked long picks: SQQQ, SOXS, SPXU.",
+        summary: "Latest known General Sage archive universe. Tactical hedge assets are separated from ranked long picks.",
+        candidateSymbols: ["MU", "NVDA", "AMD", "MSFT", "GOOGL", "SMCI", "CRDO", "QQQ", "SPY", "XLI", "JPM", "V", "LLY", "NVO", "COP", "CAT", "COST"],
+        hedgeSymbols: ["SQQQ", "SOXS", "SPXU"],
         url: "/app/reports/stock-picks/general_sage/latest.html",
-        latestUrl: "/app/reports/stock-picks/general_sage/latest.html",
-        picks: ["MU", "NVDA", "AMD", "MSFT", "GOOGL", "SMCI", "CRDO", "QQQ", "SPY", "XLI", "JPM", "V", "LLY", "NVO", "COP", "CAT", "COST"].map(function (symbol) {
-          return {symbol: symbol, description: "Latest known archived General Sage stock-pick universe member."};
-        })
+        latestUrl: "/app/reports/stock-picks/general_sage/latest.html"
       }
     ];
-  }
-
-  function stockPickKey(value) {
-    return displayLabel(value, "")
-      .toLowerCase()
-      .replace(/[_-]+/g, " ")
-      .replace(/\s+/g, " ")
-      .trim()
-      .replace("grand philosophe", "grand sage")
-      .replace("semi sage", "grand sage")
-      .replace(/\s+/g, "_");
   }
 
   function isLocalFallbackReport(report) {
@@ -1593,62 +1536,145 @@
     var rows = (reports || []).slice();
     var seen = {};
     rows.forEach(function (report) {
-      var key = stockPickKey(report.algo || report.title);
+      var key = stockPickKey(report.algo || report.sleeve || report.sleeves || report.title);
       if (key) seen[key] = true;
     });
     stockPickFallbackReports().forEach(function (report) {
       var key = stockPickKey(report.algo);
-      if (!seen[key]) rows.push(report);
+      if (!seen[key]) {
+        rows.push(report);
+      }
     });
     return rows;
   }
 
-  function reportCard(report) {
-    var url = report.url || report.latestUrl || "#";
-    var provenance = reportProvenance(report);
-    var action = url === "#"
-      ? "<span class=\"text-button disabled-link\" aria-disabled=\"true\">Private report pending</span>"
-      : "<a class=\"text-button\" href=\"" + html(url) + "\" target=\"_blank\" rel=\"noopener\">Open report</a>";
-    return "<article class=\"stack-item\">"
-      + "<div class=\"stack-item-head\"><b>" + html(report.title) + "</b><span>" + html(report.date || "latest") + "</span></div>"
-      + "<p>" + html(report.summary || (report.type === "stock_pick" ? "Stock pick email/report archive" : "Daily performance report archive")) + "</p>"
-      + "<p class=\"report-provenance " + html(provenance.className) + "\">" + html(provenance.text) + "</p>"
-      + reportPickRows(report)
-      + "<div class=\"recommendation-actions\">" + action + "</div>"
+  function reportSleeveNames(report) {
+    var names = splitSleeves(report.sleeves || report.sleeve || report.sleeveName || report.sleeve_name || report.algo || report.universe || report.strategy);
+    if (!names.length) {
+      var haystack = String([report.title, report.subject, report.description, report.summary].filter(Boolean).join(" ")).toLowerCase();
+      state.sleeves.forEach(function (sleeve) {
+        if (haystack.indexOf(String(sleeve.name).toLowerCase()) !== -1 && names.indexOf(sleeve.name) === -1) {
+          names.push(sleeve.name);
+        }
+      });
+    }
+    return names;
+  }
+
+  function subscribedStockPickSleeves() {
+    var byName = {};
+    state.sleeves.forEach(function (sleeve) {
+      var name = sleeveLabel(sleeve.name, "");
+      if (!name) return;
+      byName[name] = {
+        name: name,
+        status: /hibernate|paused|sleep/i.test(sleeve.operatingMode || "") ? "Hibernating" : "Active",
+        holdings: sleeve.holdings || [],
+        reportCount: 0,
+        description: sleeveDescription(name)
+      };
+    });
+    stockPickReports().forEach(function (report) {
+      var names = reportSleeveNames(report);
+      if (!names.length) {
+        names = ["General SmartSleeve"];
+      }
+      names.forEach(function (rawName) {
+        var name = sleeveLabel(rawName, "General SmartSleeve");
+        if (!byName[name]) {
+          byName[name] = {
+            name: name,
+            status: report.status || report.subscriptionStatus || report.subscription_status || "Subscribed",
+            holdings: [],
+            reportCount: 0,
+            description: displayLabel(report.description || report.summary, sleeveDescription(name))
+          };
+        }
+        byName[name].reportCount += 1;
+      });
+    });
+    return Object.keys(byName).map(function (name) { return byName[name]; }).sort(function (a, b) {
+      return b.reportCount - a.reportCount || a.name.localeCompare(b.name);
+    });
+  }
+
+  function sleeveDescription(name) {
+    if (/semi|sage by smartsleeve|grand sage/i.test(name)) return "Semiconductor and AI infrastructure stock-pick universe with thesis notes, catalysts, and sizing context.";
+    if (/quantum|convex/i.test(name)) return "Speculative convexity universe where weekly picks need extra room for thesis and risk notes.";
+    if (/value/i.test(name)) return "Value-oriented universe focused on valuation, balance-sheet durability, and patient entry windows.";
+    if (/honey|badger|savage/i.test(name)) return "Higher-volatility universe where behavior, liquidity, and drawdown notes matter as much as the ticker list.";
+    return "Subscribed SmartSleeve algo universe. Weekly pick descriptions are shown full width so longer notes do not get squeezed on mobile.";
+  }
+
+  function renderStockPicks() {
+    var sleeveTarget = $("stock-pick-sleeves");
+    var archiveTarget = $("stock-pick-archive");
+    if (!sleeveTarget || !archiveTarget) return;
+    var sleeves = subscribedStockPickSleeves();
+    if (!state.selectedStockPickSleeve || !sleeves.some(function (sleeve) { return sleeve.name === state.selectedStockPickSleeve; })) {
+      state.selectedStockPickSleeve = sleeves.length ? sleeves[0].name : "";
+    }
+    sleeveTarget.innerHTML = sleeves.map(function (sleeve) {
+      var active = sleeve.name === state.selectedStockPickSleeve ? " active" : "";
+      var holdings = sleeve.holdings && sleeve.holdings.length
+        ? sleeve.holdings.slice(0, 8).map(function (holding) { return displayLabel(holding.symbol || holding.ticker || holding, ""); }).filter(Boolean).join(", ")
+        : "Universe archive";
+      return "<button type=\"button\" class=\"stock-pick-sleeve" + active + "\" data-stock-pick-sleeve=\"" + html(sleeve.name) + "\">"
+        + "<span>" + html(sleeve.status || "Subscribed") + "</span>"
+        + "<b>" + html(sleeve.name) + "</b>"
+        + "<small>" + html(sleeve.reportCount + " archived report" + (sleeve.reportCount === 1 ? "" : "s") + " / " + holdings) + "</small>"
+        + "</button>";
+    }).join("") || emptyItem("No subscribed stock-pick sleeves", "Stock-pick universes will appear after the private feed includes subscriptions or stock-pick reports.");
+    var selected = sleeves.find(function (sleeve) { return sleeve.name === state.selectedStockPickSleeve; });
+    text("stock-pick-title", selected ? selected.name + " stock-pick archive" : "Stock-pick reports");
+    if (!selected) {
+      archiveTarget.innerHTML = emptyItem("No archive selected", "Choose a subscribed sleeve once stock-pick reports are available.");
+      return;
+    }
+    var reports = stockPickReports().filter(function (report) {
+      var names = reportSleeveNames(report);
+      var selectedKey = stockPickKey(selected.name);
+      return !names.length || names.indexOf(selected.name) !== -1 || names.some(function (name) { return stockPickKey(name) === selectedKey; });
+    });
+    archiveTarget.innerHTML = [
+      "<article class=\"stack-item stock-pick-description\"><div class=\"stack-item-head\"><b>" + html(selected.name) + "</b><span>" + html(selected.status || "Subscribed") + "</span></div><p>" + html(selected.description) + "</p></article>",
+      reports.map(stockPickArchiveCard).join("") || emptyItem("No weekly picks archived yet", "The sleeve is subscribed, but no weekly stock-pick reports are present in the current app feed.")
+    ].join("");
+  }
+
+  function stockPickArchiveCard(report) {
+    var url = report.url || report.latestUrl || report.latest_url || report.displayUrl || "#";
+    var title = displayLabel(report.title || report.subject, "Weekly stock picks");
+    var date = displayLabel(report.date || report.generatedAt || report.generated_at || report.timestamp, "latest");
+    var body = displayLabel(report.description || report.summary || report.notes, "Open the archived weekly stock-pick email/report for ticker list, rationale, and universe notes.");
+    var candidates = (report.candidateSymbols || report.candidate_symbols || report.symbols || report.tickers || []).map(function (symbol) {
+      return displayLabel(symbol, "").toUpperCase();
+    }).filter(Boolean);
+    var hedges = (report.hedgeSymbols || report.hedge_symbols || []).map(function (symbol) {
+      return displayLabel(symbol, "").toUpperCase();
+    }).filter(Boolean);
+    var symbolMarkup = candidates.length
+      ? "<div class=\"symbol-chip-row\" aria-label=\"Stock-pick tickers\">" + candidates.slice(0, 24).map(function (symbol) { return "<span>" + html(symbol) + "</span>"; }).join("") + "</div>"
+      : "";
+    var hedgeMarkup = hedges.length
+      ? "<p class=\"stock-pick-hedges\">Hedges: " + html(hedges.join(", ")) + "</p>"
+      : "";
+    return "<article class=\"stack-item stock-pick-description\">"
+      + "<div class=\"stack-item-head\"><b>" + html(title) + "</b><span>" + html(date) + "</span></div>"
+      + "<p>" + html(body) + "</p>"
+      + symbolMarkup
+      + hedgeMarkup
+      + "<div class=\"recommendation-actions\"><a class=\"text-button\" href=\"" + html(url) + "\" target=\"_blank\" rel=\"noopener\">Open archive</a></div>"
       + "</article>";
   }
 
-  function reportPickRows(report) {
-    var picks = report.picks || report.stock_picks || report.rankings || [];
-    if (report.type !== "stock_pick" || !Array.isArray(picks) || !picks.length) return "";
-    return "<div class=\"stock-pick-list\">" + picks.slice(0, 8).map(function (pick, index) {
-      var symbol = pick.symbol || pick.ticker || pick.stock || "Pick " + (index + 1);
-      var price = numeric(pick.price != null ? pick.price : pick.current_price);
-      var roi = numeric(pick.ytdRoi != null ? pick.ytdRoi : pick.ytd_roi);
-      var description = pick.description || pick.thesis || pick.summary || "";
-      return "<article class=\"stock-pick-row\">"
-        + "<div class=\"stock-pick-meta\"><b>" + html(index + 1 + ". " + symbol) + "</b><span>" + html(price == null ? "Price pending" : money(price)) + "</span><span>" + html(roi == null ? "YTD pending" : (roi >= 0 ? "+" : "") + roi.toFixed(1) + "% YTD") + "</span></div>"
-        + (description ? "<p>" + html(description) + "</p>" : "")
-        + "</article>";
-    }).join("") + "</div>";
-  }
-
-  function reportProvenance(report) {
-    var model = report.llm_model || report.llmModel || report.ai_model || report.model || report.research_model || "";
-    var usedLlm = report.llm_used != null ? Boolean(report.llm_used) : report.used_llm != null ? Boolean(report.used_llm) : Boolean(model);
-    var status = String(report.research_status || report.researchStatus || report.status || "").toLowerCase();
-    var fallback = Boolean(report.fallback || report.is_fallback || report.degraded || report.degraded_fallback || status.indexOf("fallback") !== -1 || status.indexOf("degraded") !== -1);
-    if (appEdition === "developer") {
-      var modelText = usedLlm ? (model || "LLM model not supplied") : "No LLM used";
-      var statusText = fallback ? "fallback path" : status ? status.replace(/_/g, " ") : "normal path";
-      return {className: fallback ? "is-warning" : "is-quiet", text: "Developer provenance: " + modelText + " / " + statusText + "."};
-    }
-    return {
-      className: "is-quiet",
-      text: report.type === "stock_pick"
-        ? "Research notes are summarized for review; internal generation diagnostics stay in developer reports."
-        : "Performance summary is user-facing; internal generation diagnostics stay in developer reports."
-    };
+  function reportCard(report) {
+    var url = report.url || report.latestUrl || "#";
+    return "<article class=\"stack-item\">"
+      + "<div class=\"stack-item-head\"><b>" + html(report.title) + "</b><span>" + html(report.date || "latest") + "</span></div>"
+      + "<p>" + html(report.type === "stock_pick" ? "Stock pick email/report archive" : "Daily performance report archive") + "</p>"
+      + "<div class=\"recommendation-actions\"><a class=\"text-button\" href=\"" + html(url) + "\" target=\"_blank\" rel=\"noopener\">Open report</a></div>"
+      + "</article>";
   }
 
   function renderHoldingsTable() {
@@ -1673,9 +1699,9 @@
         + cell("Market value", money(holding.value))
         + cell("Cost basis", holding.costBasis == null ? "<span class=\"needs-sync\">Needs basis sync</span>" : money(holding.costBasis))
         + cell("Daily P/L", pnlCell(holding.dailyPnl, "Needs daily sync"))
-        + cell("Unrealized P/L", pnlCell(holding.unrealizedPnl, "Needs basis sync", holding.pnlQuality))
+        + cell("Unrealized P/L", pnlCell(holding.unrealizedPnl, "Needs basis sync"))
         + cell("Realized P/L", pnlCell(holding.realizedPnl, "Needs trade sync"))
-        + cell("Total P/L", pnlCell(holding.totalPnl, "Needs basis sync", holding.pnlQuality))
+        + cell("Total P/L", pnlCell(holding.totalPnl, "Needs basis sync"))
         + cell("Accounts", html(holding.accounts.join(", ")))
         + cell("Weight", pct(holding.value, total) + "<small>" + html(thesisStatus(holding.symbol, weightNum)) + "</small>")
         + "</tr>";
@@ -1689,7 +1715,7 @@
       cards.innerHTML = state.sleeves.map(function (sleeve) {
         var actual = sleeve.exactValue && total ? sleeve.exactValue / total * 100 : null;
         var drift = actual == null || !sleeve.target ? "Needs target/ledger" : (actual - sleeve.target).toFixed(1) + " pts";
-        return "<article class=\"sleeve-card\">"
+        return "<article class=\"sleeve-card interactive-card\" data-sleeve-detail=\"" + html(sleeve.name) + "\" tabindex=\"0\">"
           + "<span>" + html(sleeve.operatingMode || "mode unknown") + "</span>"
           + "<h3>" + html(sleeve.name) + "</h3>"
           + "<p>Value: <b>" + (sleeve.exactValue ? money(sleeve.exactValue) : "Ledger split pending") + "</b></p>"
@@ -1697,6 +1723,7 @@
           + "<p>Target: " + sleeve.target + "% / Actual: " + (actual == null ? "needs ledger" : actual.toFixed(1) + "%") + "</p>"
           + "<p>Drift: " + html(drift) + "</p>"
           + "<div class=\"progress-bar\" style=\"--value:" + Math.min(100, actual || 18) + "%\"><i></i></div>"
+          + "<div class=\"recommendation-actions\"><button type=\"button\" class=\"text-button\" data-sleeve-detail=\"" + html(sleeve.name) + "\">Open details</button></div>"
           + "</article>";
       }).join("");
     }
@@ -1720,6 +1747,46 @@
           + "</tr>";
       }).join("");
     }
+    renderSleeveDetail();
+  }
+
+  function findSleeveByName(name) {
+    return state.sleeves.find(function (sleeve) { return sleeve.name === name; }) || state.sleeves[0] || null;
+  }
+
+  function renderSleeveDetail() {
+    var target = $("sleeve-detail-content");
+    if (!target) return;
+    var sleeve = findSleeveByName(state.selectedDetailSleeveName);
+    if (!sleeve) {
+      text("sleeve-detail-title", "Sleeve");
+      text("sleeve-detail-subtitle", "No active sleeve selected.");
+      target.innerHTML = emptyItem("No sleeve selected", "Open a sleeve from the Sleeves tab.");
+      return;
+    }
+    state.selectedDetailSleeveName = sleeve.name;
+    text("sleeve-detail-title", sleeve.name);
+    text("sleeve-detail-subtitle", sleeve.accounts.join(", ") + " / " + (sleeve.operatingMode || "mode unknown"));
+    var trades = state.serverTrades.filter(function (trade) {
+      return String(trade.sleeve || trade.sleeveId || trade.sleeve_id || "").toLowerCase().indexOf(sleeve.name.toLowerCase()) !== -1;
+    }).slice(0, 8);
+    target.innerHTML = [
+      "<article class=\"panel-card\"><div class=\"card-head\"><div><span>Behavior</span><h2>Current sleeve state</h2></div><span class=\"status-chip\">" + html(sleeve.operatingMode || "Unknown") + "</span></div><div class=\"stack-list\">"
+        + stackItem("Known value", sleeve.exactValue ? money(sleeve.exactValue) : "Ledger split pending", "Ledger quality controls whether drift and P/L are exact.", sleeve.exactValue ? 80 : 30)
+        + stackItem("Cash / holdings", money(sleeve.cash) + " / " + money(sleeve.positionValue), "Sleeve-level cash and position value where the analytics feed provides it.", 70)
+        + stackItem("Target", sleeve.target ? sleeve.target + "%" : "Needs target", "Drift can be reviewed once target and exact ledger value are present.", sleeve.target || 25)
+      + "</div></article>",
+      "<article class=\"panel-card\"><div class=\"card-head\"><div><span>Holdings</span><h2>Tracked symbols</h2></div><button type=\"button\" class=\"text-button\" data-nav-button=\"reallocation\">Analyze rotate</button></div><div class=\"stack-list\">"
+        + (sleeve.holdings.length ? sleeve.holdings.slice(0, 12).map(function (symbol) {
+          return stackItem(symbol, thesisStatus(symbol, 0), "Review behavior and portfolio role before reallocating.", 55);
+        }).join("") : emptyItem("No holdings", "No current symbols are tagged to this sleeve."))
+      + "</div></article>",
+      "<article class=\"panel-card wide-card\"><div class=\"card-head\"><div><span>Trades</span><h2>Recent sleeve activity</h2></div><span class=\"status-chip\">Private feed</span></div><div class=\"stack-list\">"
+        + (trades.map(function (trade) {
+          return stackItem(trade.symbol || trade.ticker || "Trade", orderStatusLabel(trade), (trade.account || trade.accountId || "Account") + " / " + orderTypeLabel(trade), 55);
+        }).join("") || emptyItem("No sleeve trades", "No current server trade rows are tagged to this sleeve."))
+      + "</div></article>"
+    ].join("");
   }
 
   function renderTradeCenter() {
@@ -1729,6 +1796,14 @@
     renderDraftOrders();
     renderActivity();
     renderServerTrades();
+    renderReallocation();
+  }
+
+  function renderReallocation() {
+    populateSelect("reallocation-account", state.accounts.map(function (account) { return [account.account, account.account + " / " + account.broker]; }));
+    populateSelect("reallocation-sleeve", state.sleeves.map(function (sleeve) { return [sleeve.name, sleeve.name]; }));
+    setDefaultReallocationDeadline();
+    updateReallocationPreview();
   }
 
   function populateSelect(id, rows) {
@@ -1746,6 +1821,23 @@
   function valueOf(id) {
     var element = $(id);
     return element ? element.value : "";
+  }
+
+  function setDefaultReallocationDeadline() {
+    var input = $("reallocation-deadline");
+    if (!input || input.value) return;
+    var now = new Date();
+    var deadline = new Date(now.getFullYear(), 5, 24, 12, 59, 0, 0);
+    if (now.getTime() > deadline.getTime()) {
+      deadline = new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000);
+      deadline.setHours(12, 59, 0, 0);
+    }
+    input.value = formatLocalDateTime(deadline);
+  }
+
+  function formatLocalDateTime(date) {
+    function pad(value) { return String(value).padStart(2, "0"); }
+    return date.getFullYear() + "-" + pad(date.getMonth() + 1) + "-" + pad(date.getDate()) + "T" + pad(date.getHours()) + ":" + pad(date.getMinutes());
   }
 
   function checked(id) {
@@ -1846,49 +1938,12 @@
         enabled: isSmartTradeStrategy(valueOf("trade-strategy"), action),
         workflow: strategyLabels[valueOf("trade-strategy")] || valueOf("trade-strategy"),
         window_end_local: valueOf("trade-window-end") || null
-      },
-      risk_controls: {
-        settlement_restricted_broker: false,
-        sage_risk_off_sell: false,
-        earnings_or_pullback_context: false,
-        requires_settlement_risk_review: false,
-        block_server_preview: false,
-        policy: "Sage risk-off sells in settlement-restricted brokers require review when earnings or pullback context is present."
       }
     };
-    intent.risk_controls = settlementRiskControls(intent, account);
     if (intent.order_type === "trailing_stop_limit" && intent.limit_price != null) {
       intent.limit_offset = intent.limit_price;
     }
     return intent;
-  }
-
-  function settlementRiskControls(intent, account) {
-    var broker = brokerKey(account);
-    var notes = String(intent.notes || "").toLowerCase();
-    var strategy = String(intent.strategy || "").toLowerCase();
-    var operator = String(intent.operator_id || "").toLowerCase();
-    var action = String(intent.action || "").toLowerCase();
-    var settlementRestrictedBroker = Boolean(settlementRestrictedBrokerLabels[broker]);
-    var sageRiskOffSell = intent.side === "sell" && (
-      operator.indexOf("sage") !== -1
-      || operator.indexOf("risk") !== -1
-      || strategy.indexOf("autoguard") !== -1
-      || strategy.indexOf("protective") !== -1
-      || action === "exit"
-      || action === "protect"
-    );
-    var earningsOrPullbackContext = /\b(earnings|report|print|pullback|drawdown|risk[- ]?off|t\+1|settlement|cash available|rebound|rally)\b/.test(notes);
-    var requiresReview = settlementRestrictedBroker && sageRiskOffSell;
-    return {
-      settlement_restricted_broker: settlementRestrictedBroker,
-      sage_risk_off_sell: sageRiskOffSell,
-      earnings_or_pullback_context: earningsOrPullbackContext,
-      requires_settlement_risk_review: requiresReview,
-      block_server_preview: requiresReview && earningsOrPullbackContext,
-      broker: broker,
-      policy: "Sage risk-off sells in settlement-restricted brokers require review when earnings or pullback context is present."
-    };
   }
 
   function validateIntent(intent) {
@@ -1928,15 +1983,6 @@
     var observedPrice = holding && holding.avgPrice ? holding.avgPrice : null;
     if (observedPrice && intent.limit_price && intent.side === "buy" && intent.limit_price / observedPrice > 5) {
       warnings.push("The buy limit is far above the visible average/mark; Robinhood may treat that as extremely marketable or reject/cancel it.");
-    }
-    if (intent.risk_controls && intent.risk_controls.requires_settlement_risk_review) {
-      warnings.push("Settlement-risk review required: Sage/risk-off sells in " + (settlementRestrictedBrokerLabels[broker] || "this broker") + " can lock proceeds behind T+ settlement and miss a fast rebound.");
-      if (!intent.risk_controls.earnings_or_pullback_context) {
-        warnings.push("If this is within roughly 72 hours of company earnings, a sector peer earnings event, or a sharp pullback, keep Sage in observe/recommend mode or move the decision to a broker without the same cash-availability restriction.");
-      }
-      if (intent.risk_controls.block_server_preview) {
-        errors.push("Blocked: settlement-restricted Sage risk-off sell during earnings/pullback context. Use manual review, wait for settlement/earnings clarity, or route through an unrestricted broker after developer approval.");
-      }
     }
     if (broker === "robinhood") {
       if (intent.session === "all_day") {
@@ -1998,7 +2044,6 @@
       previewRow("Time in force", intent.time_in_force),
       previewRow("Execution route", routeLabels[intent.execution_route] || intent.execution_route),
       previewRow("Execution mode", executionModeLabels[intent.execution_mode] || intent.execution_mode),
-      previewRow("Settlement guard", settlementGuardLabel(intent.risk_controls)),
       previewRow("Portfolio weight after trade", accountTotal("equity") && notional ? pct(notional, accountTotal("equity")) + " before existing position adjustment" : "Needs notional"),
       previewRow("Estimated cash after buy", accountRow && numeric(accountRow.cash) != null ? money(accountRow.cash - notional) : "Needs broker cash"),
       previewRow("Compatibility", validation.errors.length ? "Fix required" : validation.warnings.length ? "Preview with warnings" : "Ready for server preview"),
@@ -2009,12 +2054,6 @@
     renderCompatibility(validation);
     renderIntentJson(intent);
     return {intent: intent, validation: validation};
-  }
-
-  function settlementGuardLabel(controls) {
-    if (!controls || !controls.requires_settlement_risk_review) return "No broker settlement restriction flagged";
-    if (controls.block_server_preview) return "Blocked for earnings/pullback settlement review";
-    return "Review before Sage risk-off sell";
   }
 
   function renderCompatibility(validation) {
@@ -2107,41 +2146,6 @@
     }
   }
 
-  function persistSession(profile) {
-    if (!sessionToken) return;
-    try {
-      window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({
-        token: sessionToken,
-        email: principalEmail,
-        role: (profile || {}).role || appEdition,
-        expires_at: sessionExpiresAt || ""
-      }));
-    } catch (_err) {
-      // Native webviews can disable localStorage; the HttpOnly cookie remains primary.
-    }
-  }
-
-  function restorePersistedSession() {
-    if (sessionToken) return;
-    try {
-      var raw = window.localStorage.getItem(SESSION_STORAGE_KEY);
-      var parsed = raw ? JSON.parse(raw) : null;
-      if (!parsed || !parsed.token) return;
-      if (parsed.expires_at && Date.now() > new Date(parsed.expires_at).getTime()) {
-        window.localStorage.removeItem(SESSION_STORAGE_KEY);
-        return;
-      }
-      sessionToken = parsed.token;
-      principalEmail = normalizeEmail(parsed.email || principalEmail);
-      if (parsed.role === "developer") {
-        appEdition = "developer";
-        accountScope = "all";
-      }
-    } catch (_err) {
-      sessionToken = "";
-    }
-  }
-
   function restoreDraftOrders() {
     try {
       var raw = window.localStorage.getItem("smartsleeve_draft_order_intents");
@@ -2229,12 +2233,11 @@
       var title = orderLifecycleTitle(order);
       var meta = orderStatusLabel(order) + " / " + orderLifecycleTimestamp(order);
       var body = (order.account || order.accountId || "") + " / " + money(orderNotional(order)) + " / " + orderTypeLabel(order);
-      var settlement = orderSettlementText(order);
       var price = orderSharePrice(order);
       var quantity = orderQuantity(order);
       var right = originLabel(order) + " / " + (quantity == null ? "shares sync" : numberText(quantity, 6) + " sh") + " / " + (price == null ? "price sync" : money(price));
       return "<button type=\"button\" class=\"trade-row" + (selected ? " active" : "") + "\" data-server-trade-id=\"" + html(id) + "\">"
-        + "<span><b>" + originBadges(order) + html(title) + "</b><small>" + html(body) + "</small><small>" + html(meta) + "</small>" + (settlement ? "<small>" + html(settlement) + "</small>" : "") + "</span>"
+        + "<span><b>" + originBadges(order) + html(title) + "</b><small>" + html(body) + "</small><small>" + html(meta) + "</small></span>"
         + "<i>" + html(right) + "</i>"
         + "</button>";
     }).join("") || emptyItem("No order history", "Draft orders, broker statuses, and completed execution records will appear here.");
@@ -2274,9 +2277,6 @@
         sourceLabel: "Broker/analytics feed",
         placedAt: trade.placedAt || trade.placed_at || trade.submittedAt || trade.submitted_at,
         executedAt: trade.executedAt || trade.executed_at || trade.filledAt || trade.filled_at || trade.completedAt || trade.completed_at,
-        settlementAt: trade.settlementAt || trade.settlement_at || trade.settlesAt || trade.settles_at || trade.cashAvailableAt || trade.cash_available_at || trade.withdrawableAt || trade.withdrawable_at,
-        confirmationAt: trade.confirmationAt || trade.confirmation_at || trade.tradeConfirmationAt || trade.trade_confirmation_at,
-        confirmationStatus: trade.confirmationStatus || trade.confirmation_status || trade.tradeConfirmationStatus || trade.trade_confirmation_status,
         canceledAt: trade.canceledAt || trade.canceled_at
       });
     });
@@ -2349,34 +2349,6 @@
     if (canceled) return "Canceled: " + canceled;
     if (executed) return "Executed: " + executed;
     return status;
-  }
-
-  function orderSettlementText(order) {
-    var status = String(orderStatusLabel(order)).toLowerCase();
-    var side = String(order.side || sideFromAction(order.action) || "").toLowerCase();
-    var executed = order.executedAt || order.executed_at || order.filledAt || order.filled_at || order.completedAt || order.completed_at;
-    var settlement = order.settlementAt || order.settlement_at || order.settlesAt || order.settles_at || order.cashAvailableAt || order.cash_available_at || order.withdrawableAt || order.withdrawable_at;
-    var confirmation = order.confirmationAt || order.confirmation_at || order.tradeConfirmationAt || order.trade_confirmation_at;
-    var confirmationStatus = order.confirmationStatus || order.confirmation_status || order.tradeConfirmationStatus || order.trade_confirmation_status;
-    var isExecuted = Boolean(executed) || status.indexOf("fill") !== -1 || status.indexOf("execut") !== -1 || status.indexOf("complete") !== -1;
-    if (settlement) {
-      return side === "sell"
-        ? "Proceeds withdrawable after " + settlement
-        : "Settlement tracked for " + settlement;
-    }
-    if (confirmation) {
-      return "Trade confirmation available " + confirmation;
-    }
-    if (confirmationStatus) {
-      return "Trade confirmation " + String(confirmationStatus).replace(/_/g, " ");
-    }
-    if (isExecuted && side === "sell" && brokerKey({broker: order.broker || order.brokerName || order.broker_name}) === "robinhood") {
-      return "Executed; withdrawable cash may lag settlement";
-    }
-    if (isExecuted) {
-      return "Executed; waiting for broker settlement fields";
-    }
-    return "";
   }
 
   function orderQuantity(order) {
@@ -2571,7 +2543,6 @@
       context.innerHTML = [
         stackItem("Portfolio scope", money(total), appEdition === "developer" ? "Developer view may include multiple users depending on filters." : "This view is restricted to " + (principalEmail || "the signed-in user") + ".", 80),
         stackItem("Buying power", money(accountTotal("buyPower")), "Available buying power helps determine whether entries can begin before exits fully complete.", 60),
-        stackItem("Settlement guard", "Risk-off sells", "Sage sell/exit drafts in Robinhood-style accounts are flagged, and earnings or pullback context blocks server preview until manually reviewed.", 70, "compat-warn"),
         stackItem("Review discipline", state.recommendations.length + " open", "Create drafts from recommendations, then preview broker/session compatibility before any live placement.", state.recommendations.length ? 70 : 20)
       ].join("");
     }
@@ -2624,7 +2595,7 @@
           + cell("Equity", money(account.equity))
           + cell("Cash", "<span class=\"" + (cash < 0 ? "negative" : "positive") + "\">" + money(cash) + "</span>")
           + cell("Buying power", money(account.buyPower))
-          + cell("Risk note", cash < 0 ? "Negative cash, review margin" : "Cash non-negative")
+          + cell("Risk note", cash < 0 ? "Margin balance, review buffer" : "Cash non-negative")
           + "</tr>";
       }).join("");
     }
@@ -2639,7 +2610,7 @@
     renderSession();
     renderDashboard();
     renderSleeves();
-    renderReports();
+    renderStockPicks();
     renderRecommendationsPage();
     renderTradeCenter();
     renderSage();
@@ -2658,16 +2629,241 @@
     return "<td data-label=\"" + html(label) + "\">" + content + "</td>";
   }
 
-  function pnlCell(value, missingText, quality) {
+  function pnlCell(value, missingText) {
     var number = numeric(value);
-    if (quality === "basis_gap") {
-      return "<span class=\"needs-sync\">Needs broker basis</span>";
-    }
     if (number == null) {
       return "<span class=\"needs-sync\">" + html(missingText || "Needs sync") + "</span>";
     }
-    var note = quality === "derived" ? "<small>Derived</small>" : "";
-    return "<span class=\"" + valueClass(number) + "\">" + signedMoney(number) + note + "</span>";
+    return "<span class=\"" + valueClass(number) + "\">" + signedMoney(number) + "</span>";
+  }
+
+  function updateReallocationPreview() {
+    var preview = $("reallocation-preview");
+    if (!preview) return;
+    var notional = numeric(valueOf("reallocation-notional")) || 0;
+    var horizon = valueOf("reallocation-window") || "same_day";
+    var source = String(valueOf("reallocation-source") || "Source").toUpperCase();
+    var target = String(valueOf("reallocation-target") || "Target").toUpperCase();
+    var targetTiming = targetTimingPlan(target);
+    var sourceTiming = sourceExitTimingPlan(source);
+    var funding = reallocationFundingPlan(notional);
+    var horizonPenalty = {same_day: 22, two_day: 14, week: 8, patient: 4}[horizon] || 12;
+    var concentrationPenalty = state.holdings.slice(0, 3).some(function (holding) {
+      return holding.symbol === source;
+    }) ? 8 : 3;
+    var timingPenalty = (targetTiming.bias === "wait" || sourceTiming.bias === "wait") ? -8 : (targetTiming.bias === "urgent" || sourceTiming.bias === "urgent") ? 8 : 0;
+    var basisRisk = Math.min(90, Math.max(5, horizonPenalty + concentrationPenalty + Math.min(20, notional / 1000)));
+    basisRisk = Math.min(90, Math.max(5, basisRisk + timingPenalty));
+    var capture = Math.max(15, 100 - basisRisk);
+    var patience = horizon === "same_day"
+      ? "Sage would prefer at least a two-day SmartTrade window unless the risk exit is urgent."
+      : horizon === "patient"
+        ? "Patient window selected; Sage can prioritize basis capture over immediacy."
+        : "Window gives Sage some room to avoid rushed basis loss.";
+    preview.innerHTML = [
+      previewRow("Source", source),
+      previewRow("Target", target),
+      previewRow("Amount", money(notional)),
+      previewRow("Latest deadline", targetTiming.deadlineLabel),
+      previewRow("Source trend", sourceTiming.trendLabel),
+      previewRow("Exit timing stance", sourceTiming.stance),
+      previewRow("Target trend", targetTiming.trendLabel),
+      previewRow("Entry timing stance", targetTiming.stance),
+      previewRow("Buying-power dependency", funding.label),
+      previewRow("Estimated basis-risk drag", basisRisk.toFixed(0) + " / 100"),
+      previewRow("Estimated basis capture", capture.toFixed(0) + "%"),
+      "<p>" + html(patience) + "</p>",
+      "<p>" + html(sourceTiming.plan) + "</p>",
+      "<p>" + html(targetTiming.plan) + "</p>",
+      "<p>" + html(funding.plan) + "</p>",
+      "<p>Settlement, buying-power, and margin constraints still require server-side broker preview before any live order.</p>"
+    ].join("");
+  }
+
+  function selectedReallocationAccount() {
+    var accountName = valueOf("reallocation-account");
+    return state.accounts.find(function (item) { return item.account === accountName; }) || null;
+  }
+
+  function reallocationFundingPlan(notional) {
+    var account = selectedReallocationAccount();
+    var buyingPower = account ? numeric(account.buyPower) : null;
+    var cash = account ? numeric(account.cash) : null;
+    if (buyingPower != null && buyingPower >= notional && notional > 0) {
+      return {
+        label: "Entry can run in parallel",
+        plan: "Existing buying power appears sufficient for the open-position leg, so Sage can start target entries independently while waiting for a better source exit peak/plateau."
+      };
+    }
+    if (buyingPower != null && buyingPower > 0) {
+      return {
+        label: "Partial parallel entry",
+        plan: "Some buying power is available, so Sage can stage a partial target entry before the source exit cash settles; the remaining entry still depends on close-leg proceeds or deadline pressure."
+      };
+    }
+    if (cash != null && cash < 0) {
+      return {
+        label: "Margin/buffer constrained",
+        plan: "This account appears margin constrained. Sage should not assume the target entry can precede the source exit; broker preview and margin buffer dominate timing."
+      };
+    }
+      return {
+        label: "Exit-chunk funded",
+        plan: "No sufficient free buying power is visible, but Sage can still open the target in chunks funded by already-completed source exit chunks. That capacity is optional, not mandatory: if the target still lacks a good entry, Sage should reserve the proceeds rather than spend them immediately."
+      };
+  }
+
+  function targetTimingPlan(symbol) {
+    var deadline = parseLocalDateTime(valueOf("reallocation-deadline"));
+    var now = new Date();
+    var minutesLeft = deadline ? Math.max(0, (deadline.getTime() - now.getTime()) / 60000) : null;
+    var history = targetPriceHistory(symbol);
+    var trend = priceTrend(history);
+    var deadlineLabel = deadline ? deadline.toLocaleString([], {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"}) : "No deadline set";
+    if (!history.length) {
+      return {
+        bias: minutesLeft != null && minutesLeft < 90 ? "urgent" : "neutral",
+        deadlineLabel: deadlineLabel,
+        trendLabel: "Needs live quote/history",
+        stance: minutesLeft != null && minutesLeft < 90 ? "Deadline close: prepare preview now" : "Collect live target tape before buying",
+        plan: "Sage does not have enough target-price history in the app feed to call momentum. Pull the latest daemon cycle, then use a broker preview or limit ladder rather than a blind market buy."
+      };
+    }
+    var room = minutesLeft == null ? "unknown time" : minutesLeft < 60 ? "less than 1 hour" : Math.round(minutesLeft / 60) + " hours";
+    if (trend.direction === "down" && minutesLeft != null && minutesLeft >= 90) {
+      return {
+        bias: "wait",
+        deadlineLabel: deadlineLabel,
+        trendLabel: trend.label,
+        stance: "Watch and wait for a better entry",
+        plan: symbol + " is drifting down and there is " + room + " before the deadline. Sage should stage the entry in chunks, watch for deceleration, stabilization, or a limit fill near the lower band before committing the rest, and avoid market-buying just because the reallocation exists."
+      };
+    }
+    if (trend.direction === "down") {
+      return {
+        bias: "urgent",
+        deadlineLabel: deadlineLabel,
+        trendLabel: trend.label,
+        stance: "Deadline close: use staged limit preview",
+        plan: symbol + " is still trending down, but the deadline is close. Sage should prefer a small staged/limit entry with broker preview over waiting indefinitely or using a market order."
+      };
+    }
+    if (trend.direction === "flat") {
+      return {
+        bias: "neutral",
+        deadlineLabel: deadlineLabel,
+        trendLabel: trend.label,
+        stance: "Wait for confirmation or limit fill",
+        plan: symbol + " is not showing a decisive target-entry discount in the available feed. Sage can place the emphasis on limit discipline and broker-preview constraints."
+      };
+    }
+    return {
+      bias: "neutral",
+      deadlineLabel: deadlineLabel,
+      trendLabel: trend.label,
+      stance: "Do not chase without price discipline",
+      plan: symbol + " is firming in the available feed. Sage should avoid assuming a discount remains available and should use limits/staging if the reallocation still makes sense."
+    };
+  }
+
+  function sourceExitTimingPlan(symbol) {
+    var deadline = parseLocalDateTime(valueOf("reallocation-deadline"));
+    var now = new Date();
+    var minutesLeft = deadline ? Math.max(0, (deadline.getTime() - now.getTime()) / 60000) : null;
+    var history = targetPriceHistory(symbol);
+    var trend = priceTrend(history);
+    var deadlineLabel = deadline ? deadline.toLocaleString([], {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"}) : "No deadline set";
+    if (!history.length) {
+      return {
+        bias: minutesLeft != null && minutesLeft < 90 ? "urgent" : "neutral",
+        deadlineLabel: deadlineLabel,
+        trendLabel: "Needs live quote/history",
+        stance: minutesLeft != null && minutesLeft < 90 ? "Deadline close: prepare close preview now" : "Collect live source tape before selling",
+        plan: "Sage does not have enough source-price history in the app feed to call exit momentum. Pull the latest daemon cycle, then prefer broker preview and limit discipline rather than a blind market sell."
+      };
+    }
+    var room = minutesLeft == null ? "unknown time" : minutesLeft < 60 ? "less than 1 hour" : Math.round(minutesLeft / 60) + " hours";
+    if (trend.direction === "up" && minutesLeft != null && minutesLeft >= 90) {
+      return {
+        bias: "wait",
+        deadlineLabel: deadlineLabel,
+        trendLabel: trend.label,
+        stance: "Watch and wait for a better exit",
+        plan: symbol + " is rising and there is " + room + " before the deadline. Sage should stage the close leg in chunks, wait for peak/plateau evidence before selling the rest, and still respect the deadline."
+      };
+    }
+    if (trend.direction === "up") {
+      return {
+        bias: "urgent",
+        deadlineLabel: deadlineLabel,
+        trendLabel: trend.label,
+        stance: "Deadline close: use staged limit exit",
+        plan: symbol + " is rising, but the deadline is close. Sage should prefer a staged/limit sell preview over waiting indefinitely for a perfect peak."
+      };
+    }
+    if (trend.direction === "flat") {
+      return {
+        bias: "neutral",
+        deadlineLabel: deadlineLabel,
+        trendLabel: trend.label,
+        stance: "Plateau forming: exit can be previewed",
+        plan: symbol + " looks closer to a plateau in the available feed. Sage can consider previewing the close leg with limit discipline if the reallocation still makes sense."
+      };
+    }
+    return {
+      bias: "neutral",
+      deadlineLabel: deadlineLabel,
+      trendLabel: trend.label,
+      stance: "Do not delay exit solely for price",
+      plan: symbol + " is not rising in the available feed. Sage should not wait for a peak that is not currently forming; deadline, risk, and target-entry quality should dominate."
+    };
+  }
+
+  function parseLocalDateTime(value) {
+    if (!value) return null;
+    var date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  function targetPriceHistory(symbol) {
+    var normalized = String(symbol || "").toUpperCase();
+    if (!normalized) return [];
+    var rows = (state.history.positions || []).filter(function (row) {
+      return String(row.symbol || row.ticker || "").toUpperCase() === normalized;
+    }).map(function (row) {
+      var value = numeric(row.price != null ? row.price : row.markPrice != null ? row.markPrice : row.market_price != null ? row.market_price : row.currentPrice != null ? row.currentPrice : row.current_price);
+      if (value == null) {
+        var shares = numeric(row.shares != null ? row.shares : row.quantity);
+        var marketValue = numeric(row.value != null ? row.value : row.marketValue != null ? row.marketValue : row.market_value_usd);
+        value = shares ? marketValue / shares : null;
+      }
+      return {at: new Date(row.at || row.timestamp || row.generatedAt || row.generated_at || 0), price: value};
+    }).filter(function (point) {
+      return point.price != null && !Number.isNaN(point.at.getTime());
+    }).sort(function (a, b) {
+      return a.at - b.at;
+    });
+    var holding = state.holdings.find(function (row) { return row.symbol === normalized; });
+    if (holding && numeric(holding.price) != null) {
+      rows.push({at: new Date(), price: numeric(holding.price)});
+    }
+    return rows.slice(-12);
+  }
+
+  function priceTrend(points) {
+    if (!points.length) return {direction: "unknown", label: "Needs live quote/history"};
+    var first = points[0].price;
+    var last = points[points.length - 1].price;
+    var changePct = first ? (last - first) / first * 100 : 0;
+    var lastThree = points.slice(-3);
+    var fallingSteps = 0;
+    for (var i = 1; i < lastThree.length; i += 1) {
+      if (lastThree[i].price < lastThree[i - 1].price) fallingSteps += 1;
+    }
+    var label = money(last) + " / " + (changePct >= 0 ? "+" : "") + changePct.toFixed(2) + "% recent feed";
+    if (changePct < -0.8 || fallingSteps >= 2) return {direction: "down", label: label + " / falling"};
+    if (Math.abs(changePct) < 0.35) return {direction: "flat", label: label + " / stabilizing"};
+    return {direction: "up", label: label + " / firming"};
   }
 
   function shortDate(value) {
@@ -2712,19 +2908,6 @@
       + "<p>" + html(meta) + " / latest " + html(money(last.value)) + "</p>"
       + chart
       + "</article>";
-  }
-
-  function smoothHistoryDrops(points, valueKey, fallbackValue) {
-    var rows = (points || []).slice();
-    var latest = numeric(fallbackValue);
-    if (rows.length < 3 || latest == null) return rows;
-    return rows.filter(function (point, index) {
-      var value = numeric(point[valueKey]);
-      if (value == null || value > 0) return true;
-      var prev = rows[index - 1] ? numeric(rows[index - 1][valueKey]) : null;
-      var next = rows[index + 1] ? numeric(rows[index + 1][valueKey]) : latest;
-      return !(prev != null && prev > 0 && next != null && next > 0);
-    });
   }
 
   function buildLineChart(points, lineColor, yLabel) {
@@ -2847,29 +3030,20 @@
     Promise.all([
       loadFeed({silent: true, interactiveRefresh: true}),
       wait(650)
-    ])
-      .then(function (results) {
-        var ok = Boolean(results[0]);
-        if (!ok) return {ok: false, updated: false};
-        return wait(150).then(function () {
-          return {
-            ok: true,
-            updated: Boolean(previousStamp && feedStamp(state.payload || {}) !== previousStamp),
-            refreshStarted: refreshStarted
-          };
-        });
-      })
-      .then(function (result) {
-        state.pullRefresh.refreshing = false;
-        updatePullRefreshIndicator(result.ok ? 96 : 72, false, result.ok ? (result.updated ? "Latest daemon cycle synced" : "Newest cached daemon cycle loaded") : "Current view kept; no newer cache available");
-        toast(result.ok ? (result.updated ? "Latest daemon cycle synced." : (result.refreshStarted ? "Showing cached data while SmartSleeve refreshes in the background." : "Showing the newest daemon cache already available.")) : "Current session and dashboard were kept.");
-        resetPullRefresh(900);
-      }).catch(function () {
-        state.pullRefresh.refreshing = false;
-        updatePullRefreshIndicator(72, false, "Kept current view; refresh unavailable");
-        toast("Refresh unavailable. Kept the current signed-in view.");
-        resetPullRefresh(900);
+    ]).then(function (results) {
+      var ok = Boolean(results[0]);
+      if (!ok) return {ok: false, updated: false, refreshStarted: false};
+      return wait(150).then(function () {
+        var updated = Boolean(previousStamp && feedStamp(state.payload || {}) !== previousStamp);
+        return {ok: true, updated: updated, refreshStarted: refreshStarted};
       });
+    }).then(function (result) {
+      state.pullRefresh.refreshing = false;
+      runRefreshBounce(result.ok);
+      updatePullRefreshIndicator(result.ok ? 96 : 72, false, result.ok ? (result.updated ? "Latest daemon cycle synced: " + latestDaemonLabel() : "Newest cached daemon cycle loaded") : "Current view kept; refresh did not replace data");
+      toast(result.ok ? (result.updated ? "Latest daemon cycle synced." : (result.refreshStarted ? "Showing cached data while SmartSleeve refreshes in the background." : "Showing the newest daemon cache already available.")) : "Current view kept. SmartSleeve did not replace the feed.");
+      resetPullRefresh(900);
+    });
   }
 
   function requestServerFeedRefresh() {
@@ -2880,12 +3054,23 @@
         headers: {"Content-Type": "application/json", "X-SmartSleeve-Refresh": "pull-to-refresh"},
         body: JSON.stringify({reason: "app_pull_to_refresh"})
       }).catch(function () {
-        // Visible refresh uses the latest published feed; server refresh is best-effort.
+        // The visible refresh uses the latest published feed; server refresh is best-effort.
       });
       return true;
     } catch (_err) {
       return false;
     }
+  }
+
+  function runRefreshBounce(ok) {
+    var shell = document.querySelector(".app-shell");
+    if (!shell) return;
+    shell.classList.remove("refresh-bounce", "refresh-bounce-failed");
+    void shell.offsetWidth;
+    shell.classList.add(ok ? "refresh-bounce" : "refresh-bounce-failed");
+    window.setTimeout(function () {
+      shell.classList.remove("refresh-bounce", "refresh-bounce-failed");
+    }, 780);
   }
 
   function wirePullRefresh() {
@@ -2916,20 +3101,32 @@
     }
     function end() {
       if (!state.pullRefresh.tracking) return;
-      if (state.pullRefresh.armed) triggerPullRefresh();
-      else resetPullRefresh();
+      if (state.pullRefresh.armed) {
+        triggerPullRefresh();
+      } else {
+        resetPullRefresh();
+      }
     }
     document.addEventListener("touchstart", function (event) {
       if (event.touches.length !== 1) return;
       begin(event.touches[0].clientY, event.target);
     }, {passive: true});
+
     document.addEventListener("touchmove", function (event) {
       if (!state.pullRefresh.tracking || event.touches.length !== 1) return;
       move(event.touches[0].clientY, event);
     }, {passive: false});
+
     ["touchend", "touchcancel"].forEach(function (eventName) {
       document.addEventListener(eventName, end, {passive: true});
     });
+
+    document.addEventListener("mousedown", function (event) {
+      if (event.button !== 0) return;
+      begin(event.clientY, event.target);
+    });
+    document.addEventListener("mousemove", function (event) { move(event.clientY, event); });
+    document.addEventListener("mouseup", end);
   }
 
   function scrollActiveBottomNavIntoView() {
@@ -2988,7 +3185,7 @@
 
   function handleNav(section) {
     var target = section || "dashboard";
-    var aliases = {overview: "dashboard", portfolio: "dashboard", command: "trade", trades: "trade", picks: "stock-picks", stock: "stock-picks", recs: "recommendations", recommend: "recommendations"};
+    var aliases = {overview: "dashboard", portfolio: "dashboard", command: "trade", trades: "trade", picks: "stock-picks", stock: "stock-picks", recs: "recommendations", recommend: "recommendations", recommendations: "recommendations", health: "diagnostics", risk: "diagnostics"};
     target = aliases[target] || target;
     $all("[data-section]").forEach(function (panel) {
       panel.classList.toggle("active", panel.getAttribute("data-section") === target);
@@ -2998,10 +3195,16 @@
     });
     var titles = {
       dashboard: ["Dashboard", "What you own, why you own it, what changed, and what needs review."],
-      "stock-picks": ["Stock Picks", "Weekly stock-pick reports and archives in the current account scope."],
+      accounts: ["Accounts", "Account-scoped broker values, cash, margin buffer, holdings, and sync quality."],
+      "account-detail": ["Account Detail", "Broker, holdings, cash, margin buffer, and sleeve coverage."],
+      sleeves: ["Sleeves", "Active sleeve behavior, account coverage, drift, and ledger quality."],
+      "sleeve-detail": ["Sleeve Detail", "Behavior, trades, holdings, and portfolio role for one sleeve."],
+      "stock-picks": ["Stock Picks", "Subscribed sleeve universes and weekly stock-pick archives."],
       recommendations: ["Recs", "Actionable Sage recommendations ready for review or draft trade tickets."],
       trade: ["Trade Center", "Draft, review, approve, reject, and audit trade decisions."],
-      sage: ["Sage", "Agent controls, recommendations, decision feed, and execution diagnostics."]
+      reallocation: ["Reallocation", "Estimate basis cost, settlement friction, and patience before drafting a trade."],
+      sage: ["Sage", "Agent controls, recommendations, decision feed, and execution diagnostics."],
+      diagnostics: ["Diagnostics", "Broker health, margin clarity, account coverage, and sync gaps."]
     };
     if (!titles[target]) {
       target = "dashboard";
@@ -3035,8 +3238,29 @@
     });
     var sort = $("holdings-sort");
     if (sort) sort.addEventListener("change", renderHoldingsTable);
+    var refreshFeed = $("refresh-feed-button");
+    if (refreshFeed) refreshFeed.addEventListener("click", function () {
+      var refreshStarted = requestServerFeedRefresh();
+      loadFeed({silent: true, interactiveRefresh: true}).then(function (ok) {
+        toast(ok
+          ? (refreshStarted ? "Showing cached data while SmartSleeve refreshes in the background." : "Private feed refreshed from the latest cache.")
+          : "Current view kept. SmartSleeve did not replace the feed.");
+      });
+    });
     wirePullRefresh();
     wireBottomNavScroller();
+    var signOut = $("sign-out-button");
+    if (signOut) signOut.addEventListener("click", function () {
+      clearStoredSession();
+      state.accounts = [];
+      state.allAccounts = [];
+      state.holdings = [];
+      state.sleeves = [];
+      state.recommendations = [];
+      text("sync-pill", "Signed out");
+      renderAll();
+      showAuthGate("Signed out. Sign in again to load private SmartSleeve data.");
+    });
     var form = $("trade-form");
     if (form) {
       form.addEventListener("submit", createDraftOrder);
@@ -3105,6 +3329,27 @@
         state.selectedTradeId = tradeButton.getAttribute("data-server-trade-id");
         renderServerTrades();
       }
+      var accountButton = event.target.closest("[data-account-detail]");
+      if (accountButton) {
+        state.selectedDetailAccountId = accountButton.getAttribute("data-account-detail");
+        renderAccountDetail();
+        handleNav("account-detail");
+        history.replaceState(null, "", "#account-detail");
+      }
+      var sleeveButton = event.target.closest("[data-sleeve-detail]");
+      if (sleeveButton) {
+        state.selectedDetailSleeveName = sleeveButton.getAttribute("data-sleeve-detail");
+        renderSleeveDetail();
+        handleNav("sleeve-detail");
+        history.replaceState(null, "", "#sleeve-detail");
+      }
+      var stockPickButton = event.target.closest("[data-stock-pick-sleeve]");
+      if (stockPickButton) {
+        state.selectedStockPickSleeve = stockPickButton.getAttribute("data-stock-pick-sleeve");
+        renderStockPicks();
+        handleNav("stock-picks");
+        history.replaceState(null, "", "#stock-picks");
+      }
       var recDismiss = event.target.closest("[data-rec-dismiss]");
       if (recDismiss) {
         state.recommendations = state.recommendations.filter(function (item) { return item.id !== recDismiss.getAttribute("data-rec-dismiss"); });
@@ -3115,6 +3360,17 @@
       }
     });
     document.addEventListener("change", function (event) {
+      if (event.target && event.target.id === "developer-user-filter") {
+        state.selectedOwnerEmail = normalizeEmail(event.target.value || "all") || "all";
+        state.selectedAccountId = "all";
+        if (state.payload) applyFeed(state.payload, state.feedSource);
+        return;
+      }
+      if (event.target && event.target.id === "developer-account-filter") {
+        state.selectedAccountId = event.target.value || "all";
+        if (state.payload) applyFeed(state.payload, state.feedSource);
+        return;
+      }
       if (event.target && event.target.name === "sage-mode") {
         state.sageMode = event.target.value;
         renderSage();
@@ -3136,6 +3392,34 @@
     if (riskKill) riskKill.addEventListener("click", function () { state.sageMode = "observe"; renderSage(); toast("Automation disabled. Sage is Observe Only."); });
     var runReview = $("run-review");
     if (runReview) runReview.addEventListener("click", function () { addActivity("Portfolio review run", "SAGE_RECOMMEND", "Cross-account", state.recommendations.length + " recommendations generated."); renderActivity(); toast("Sage review refreshed from current feed."); });
+    ["reallocation-account", "reallocation-sleeve", "reallocation-source", "reallocation-target", "reallocation-notional", "reallocation-window", "reallocation-deadline", "reallocation-reason"].forEach(function (id) {
+      var input = $(id);
+      if (input) {
+        input.addEventListener("input", updateReallocationPreview);
+        input.addEventListener("change", updateReallocationPreview);
+      }
+    });
+    var analyzeReallocation = $("analyze-reallocation");
+    if (analyzeReallocation) analyzeReallocation.addEventListener("click", function () { updateReallocationPreview(); toast("Sage reallocation analysis refreshed."); });
+    var draftReallocation = $("draft-reallocation");
+    if (draftReallocation) {
+      draftReallocation.addEventListener("click", function () {
+        handleNav("trade");
+        history.replaceState(null, "", "#trade");
+        setFormValue("trade-account", valueOf("reallocation-account"));
+        setFormValue("trade-sleeve", valueOf("reallocation-sleeve"));
+        setFormValue("trade-strategy", "reallocation");
+        setFormValue("trade-action", "reallocate");
+        setFormValue("trade-ticker", (valueOf("reallocation-source") || "").toUpperCase());
+        setFormValue("trade-target-ticker", (valueOf("reallocation-target") || "").toUpperCase());
+        setFormValue("trade-notional", valueOf("reallocation-notional"));
+        setFormValue("trade-window-end", valueOf("reallocation-deadline"));
+        setFormValue("trade-operator", "SAGE_ASSISTED");
+        setFormValue("trade-reason", valueOf("reallocation-reason") + " Sage timing note: watch target trend until the deadline; prefer staged/limit entry if the target is still falling and time remains.");
+        updateTradePreview();
+        toast("Reallocation loaded into the trade ticket.");
+      });
+    }
     var rebalance = document.querySelector("[data-create-rebalance]");
     if (rebalance) {
       rebalance.addEventListener("click", function () {
@@ -3186,34 +3470,55 @@
     var accounts = (payload.accounts || []).map(normalizeAccount);
     state.payload = payload;
     state.feedSource = sourceUrl;
-    sessionExpiresAt = session.session_expires_at || session.expires_at || sessionExpiresAt;
-    persistSession(profile);
-    state.accounts = visibleRows(accounts);
-    state.expectedAccounts = expectedAccountRows(payload);
-    state.accountDiagnostics = buildAccountDiagnostics(state.accounts, visibleRows(state.expectedAccounts));
+    state.allAccounts = visibleRows(accounts);
+    state.accounts = developerFilteredAccounts(state.allAccounts);
     var aggregated = aggregateHoldings(state.accounts);
     state.holdings = aggregated.holdings;
     state.foreignHoldings = aggregated.foreign;
-    var visibleAccountIds = {};
-    state.accounts.forEach(function (account) { visibleAccountIds[account.id] = true; });
+    var visibleAccountIds = visibleAccountIdSet(state.accounts);
     var history = payload.history || {};
     state.history = {
-      accounts: visibleRows(history.accounts || []).filter(function (row) { return visibleAccountIds[rowAccountId(row)]; }),
-      positions: visibleRows(history.positions || []).filter(function (row) { return visibleAccountIds[rowAccountId(row)]; })
+      accounts: developerVisibleRows(visibleRows(history.accounts || [])).filter(function (row) { return visibleAccountIds[rowAccountId(row)]; }),
+      positions: developerVisibleRows(visibleRows(history.positions || [])).filter(function (row) { return visibleAccountIds[rowAccountId(row)]; })
     };
-    state.serverTrades = visibleRows(payload.trades || []);
+    state.serverTrades = developerVisibleRows(scopedRowsForVisibleAccounts(payload.trades || [], visibleAccountIds));
     notifyOrderFeedChanges(state.serverTrades);
-    state.brain = visibleRows(payload.brain || []);
-    state.reports = ensureStockPickReports(payload.reports || []);
-    state.daemonHealth = deriveDaemonHealth(payload, state.accounts);
+    state.brain = developerVisibleRows(scopedRowsForVisibleAccounts(payload.brain || [], visibleAccountIds));
+    state.reports = ensureStockPickReports(scopedRowsForVisibleAccounts(payload.reports || [], visibleAccountIds));
+    state.accountCoverage = payload.accountCoverage || null;
     state.feedWarning = null;
     text("snapshot-source", payload.source || "Private SmartSleeve API");
-    text("snapshot-time", payload.generated_at ? "Generated " + payload.generated_at : "Generated time unavailable");
+    text("snapshot-time", "Latest daemon " + latestDaemonLabel(payload));
     text("sync-pill", "Private API synced");
     addActivity("Cloud feed synced", "EXTERNAL_BROKER_SYNC", appEdition === "developer" ? "All accounts" : principalEmail, state.accounts.length + " account(s), " + state.serverTrades.length + " trades, " + state.brain.length + " brain rows.");
     renderAll();
     handleNav((window.location.hash || "#dashboard").replace("#", "") || "dashboard");
     scheduleFeedRefresh();
+  }
+
+  function latestDaemonLabel(payload) {
+    var source = payload || state.payload || {};
+    var timestamps = [];
+    collectDaemonTimestamps(source, timestamps);
+    var latest = timestamps.map(function (value) { return new Date(value); }).filter(function (date) {
+      return !Number.isNaN(date.getTime());
+    }).sort(function (a, b) { return b - a; })[0];
+    return latest ? latest.toLocaleString([], {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"}) : "time unavailable";
+  }
+
+  function collectDaemonTimestamps(value, out) {
+    if (!value || out.length > 80) return;
+    if (Array.isArray(value)) {
+      value.slice(0, 80).forEach(function (item) { collectDaemonTimestamps(item, out); });
+      return;
+    }
+    if (typeof value !== "object") return;
+    ["generated_at", "generatedAt", "last_reconciled_at", "lastReconciledAt", "updated_at", "timestamp", "as_of"].forEach(function (key) {
+      if (value[key]) out.push(value[key]);
+    });
+    Object.keys(value).slice(0, 40).forEach(function (key) {
+      if (typeof value[key] === "object") collectDaemonTimestamps(value[key], out);
+    });
   }
 
   function feedStamp(payload) {
@@ -3227,6 +3532,20 @@
     });
   }
 
+  function waitForUpdatedFeed(previousStamp, attempts) {
+    if (!previousStamp || attempts <= 0) return Promise.resolve(true);
+    return wait(3500).then(function () {
+      return loadFeed({silent: true}).then(function (ok) {
+        return ok && feedStamp(state.payload || {}) !== previousStamp;
+      }).catch(function () {
+        return false;
+      });
+    }).then(function (updated) {
+      if (updated || attempts <= 1) return updated;
+      return waitForUpdatedFeed(previousStamp, attempts - 1);
+    });
+  }
+
   function fetchAppFeed(options) {
     options = options || {};
     if (!appFeedEndpoint) {
@@ -3235,17 +3554,9 @@
     var separator = appFeedEndpoint.indexOf("?") === -1 ? "?" : "&";
     var query = [];
     if (options.refresh) query.push("refresh=1");
-    if (accountScope !== "all") query.push("scope=user");
     query.push("ts=" + Date.now());
-    var url = appFeedEndpoint + separator + query.join("&");
     var headers = options.refresh ? {"X-SmartSleeve-Refresh": "pull-to-refresh"} : {};
-    var controller = window.AbortController ? new AbortController() : null;
-    var timeout = window.setTimeout(function () {
-      if (controller) controller.abort();
-    }, options.refresh ? 8000 : 14000);
-    var fetchOptions = {headers: headers};
-    if (controller) fetchOptions.signal = controller.signal;
-    return authFetch(url, fetchOptions)
+    return authFetch(appFeedEndpoint + separator + query.join("&"), {headers: headers})
       .then(function (response) {
         return response.json().catch(function () { return {}; }).then(function (payload) {
           if (response.status === 401) {
@@ -3256,58 +3567,53 @@
           if (!response.ok || payload.ok === false) {
             throw new Error(payload.error || "Private API returned HTTP " + response.status);
           }
-          return {payload: payload.feed || payload, url: url};
+          return {payload: payload.feed || payload, url: appFeedEndpoint};
         });
-      }).catch(function (error) {
-        if (error && error.name === "AbortError") {
-          throw new Error("Private API refresh timed out.");
-        }
-        throw error;
-      }).finally(function () {
-        window.clearTimeout(timeout);
       });
   }
 
   function loadFeed(options) {
     options = options || {};
     return fetchAppFeed(options)
-      .then(function (result) { applyFeed(result.payload, result.url); })
+      .then(function (result) {
+        applyFeed(result.payload, result.url);
+        return true;
+      })
       .catch(function (error) {
-        text("sync-pill", state.payload ? "Cached view kept" : "Sync unavailable");
-        if (state.payload && (options.refresh || options.silent)) {
-          text("snapshot-time", "Showing latest cached feed");
-          state.feedWarning = recommendation("feed-refresh-kept-current", "Current dashboard kept", "Retry sync", "SmartSleeve", "Data", 0, error.message, "Displayed holdings were not cleared; verify freshness before making decisions.", "EXTERNAL_BROKER_SYNC");
+        text("sync-pill", "Sync failed");
+        if (state.payload && (options.refresh || options.silent || options.interactiveRefresh || error.authRequired)) {
+          text("snapshot-time", "Current view kept; refresh did not replace the feed");
+          state.feedWarning = recommendation("feed-refresh-kept-current", "Current dashboard kept", "Retry sync", "SmartSleeve", "Data", 0, error.message, "Displayed holdings were preserved; verify freshness before making decisions.", "EXTERNAL_BROKER_SYNC");
           renderAll();
-          if (!options.silent) toast("Current dashboard kept; no newer feed loaded.");
-          return false;
+          if (options.refresh || options.interactiveRefresh) {
+            toast("Current view kept. SmartSleeve did not replace the feed.");
+          }
         } else {
           text("snapshot-time", "Feed unavailable");
           state.accounts = [];
+          state.allAccounts = [];
           state.holdings = [];
           state.sleeves = [];
-          state.daemonHealth = [];
-          state.accountDiagnostics = [];
           state.recommendations = [recommendation("feed-failed", "Reconnect cloud feed", "Broker sync", "SmartSleeve", "Data", 0, error.message, "No portfolio decisions should be made until current holdings are available.", "EXTERNAL_BROKER_SYNC")];
           renderAll();
           if (error.authRequired) {
+            clearStoredSession();
             showAuthGate(error.message);
           } else {
             showAuthGate("Private feed unavailable: " + error.message);
           }
-          if (!options.silent) toast("Portfolio feed failed to load.");
-          throw error;
         }
+        if (!options.silent) toast("Portfolio feed failed to load.");
+        return false;
       });
   }
 
   document.addEventListener("DOMContentLoaded", function () {
-    restorePersistedSession();
+    restoreStoredSession();
     restoreDraftOrders();
     restoreOrderNotificationSeen();
     renderSession();
     wireEvents();
-    loadFeed().catch(function () {
-      // loadFeed renders the unavailable/auth state itself; keep startup free of uncaught rejections.
-    });
+    loadFeed();
   });
 })();
