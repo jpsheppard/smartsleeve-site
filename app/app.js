@@ -4,6 +4,7 @@
   var params = new URLSearchParams(window.location.search);
   var appEdition = params.get("app_edition") || "web";
   var accountScope = params.get("account_scope") || "user";
+  var requestedDeveloperView = appEdition === "developer" || accountScope === "all";
   var principalEmail = normalizeEmail(params.get("principal_email") || "");
   var authEndpoint = metaContent("smartsleeve-auth-endpoint");
   var orderIntentEndpoint = metaContent("smartsleeve-order-intent-endpoint") || (authEndpoint ? authEndpoint.replace(/\/$/, "") + "/order-intents" : "");
@@ -93,6 +94,10 @@
     direct_proposed_order: "Direct broker preview path",
     broker_native_adapter_required: "Broker-native adapter path",
     synthetic_supervised: "SmartSleeve synthetic supervisor"
+  };
+
+  var settlementRestrictedBrokerLabels = {
+    robinhood: "Robinhood"
   };
 
   var strategyLabels = {
@@ -303,7 +308,7 @@
           sessionToken = payload.session_token || sessionToken;
           sessionExpiresAt = payload.session_expires_at || "";
           principalEmail = normalizeEmail((payload.profile || {}).email || email);
-          if ((payload.profile || {}).role === "developer") {
+          if ((payload.profile || {}).role === "developer" && requestedDeveloperView) {
             appEdition = "developer";
             accountScope = "all";
           } else {
@@ -1298,6 +1303,9 @@
     if (marginUsed() > 0) {
       recs.push(recommendation("margin-cash", "Review margin usage before adding risk", "Check margin buffer", state.accounts.filter(function (account) { return (numeric(account.cash) || 0) < 0; }).map(function (account) { return account.account; }).join(", "), "Margin", marginUsed(), "One or more margin accounts are using margin; negative cash can be normal in IBKR margin accounts.", "Watch margin buffer and buying power so volatility does not force less patient execution.", "SQTS_RISK_EXIT"));
     }
+    if (state.accounts.some(function (account) { return brokerKey(account) === "robinhood"; })) {
+      recs.push(recommendation("settlement-restricted-broker", "Review settlement-restricted broker routing", "Broker migration review", "Robinhood accounts", "T+ settlement", 0, "Sage risk-off sells in Robinhood-style accounts can leave proceeds unavailable during fast earnings-window rebounds.", "Keep Sage in observe/recommend mode for near-earnings pullbacks or route reviewed capital through a broker with richer settlement and buying-power controls.", "SQTS_RISK_EXIT"));
+    }
     recs.push(recommendation("broker-pl", "Enable intraday P/L and cost basis sync", "Broker sync", "All connected brokers", "P/L", 0, "Holdings are visible; daily P/L, total P/L, and return need broker basis/history.", "Without live P/L, contributors and detractors remain unavailable.", "SQTS_AUTO"));
     return recs;
   }
@@ -1838,12 +1846,49 @@
         enabled: isSmartTradeStrategy(valueOf("trade-strategy"), action),
         workflow: strategyLabels[valueOf("trade-strategy")] || valueOf("trade-strategy"),
         window_end_local: valueOf("trade-window-end") || null
+      },
+      risk_controls: {
+        settlement_restricted_broker: false,
+        sage_risk_off_sell: false,
+        earnings_or_pullback_context: false,
+        requires_settlement_risk_review: false,
+        block_server_preview: false,
+        policy: "Sage risk-off sells in settlement-restricted brokers require review when earnings or pullback context is present."
       }
     };
+    intent.risk_controls = settlementRiskControls(intent, account);
     if (intent.order_type === "trailing_stop_limit" && intent.limit_price != null) {
       intent.limit_offset = intent.limit_price;
     }
     return intent;
+  }
+
+  function settlementRiskControls(intent, account) {
+    var broker = brokerKey(account);
+    var notes = String(intent.notes || "").toLowerCase();
+    var strategy = String(intent.strategy || "").toLowerCase();
+    var operator = String(intent.operator_id || "").toLowerCase();
+    var action = String(intent.action || "").toLowerCase();
+    var settlementRestrictedBroker = Boolean(settlementRestrictedBrokerLabels[broker]);
+    var sageRiskOffSell = intent.side === "sell" && (
+      operator.indexOf("sage") !== -1
+      || operator.indexOf("risk") !== -1
+      || strategy.indexOf("autoguard") !== -1
+      || strategy.indexOf("protective") !== -1
+      || action === "exit"
+      || action === "protect"
+    );
+    var earningsOrPullbackContext = /\b(earnings|report|print|pullback|drawdown|risk[- ]?off|t\+1|settlement|cash available|rebound|rally)\b/.test(notes);
+    var requiresReview = settlementRestrictedBroker && sageRiskOffSell;
+    return {
+      settlement_restricted_broker: settlementRestrictedBroker,
+      sage_risk_off_sell: sageRiskOffSell,
+      earnings_or_pullback_context: earningsOrPullbackContext,
+      requires_settlement_risk_review: requiresReview,
+      block_server_preview: requiresReview && earningsOrPullbackContext,
+      broker: broker,
+      policy: "Sage risk-off sells in settlement-restricted brokers require review when earnings or pullback context is present."
+    };
   }
 
   function validateIntent(intent) {
@@ -1883,6 +1928,15 @@
     var observedPrice = holding && holding.avgPrice ? holding.avgPrice : null;
     if (observedPrice && intent.limit_price && intent.side === "buy" && intent.limit_price / observedPrice > 5) {
       warnings.push("The buy limit is far above the visible average/mark; Robinhood may treat that as extremely marketable or reject/cancel it.");
+    }
+    if (intent.risk_controls && intent.risk_controls.requires_settlement_risk_review) {
+      warnings.push("Settlement-risk review required: Sage/risk-off sells in " + (settlementRestrictedBrokerLabels[broker] || "this broker") + " can lock proceeds behind T+ settlement and miss a fast rebound.");
+      if (!intent.risk_controls.earnings_or_pullback_context) {
+        warnings.push("If this is within roughly 72 hours of company earnings, a sector peer earnings event, or a sharp pullback, keep Sage in observe/recommend mode or move the decision to a broker without the same cash-availability restriction.");
+      }
+      if (intent.risk_controls.block_server_preview) {
+        errors.push("Blocked: settlement-restricted Sage risk-off sell during earnings/pullback context. Use manual review, wait for settlement/earnings clarity, or route through an unrestricted broker after developer approval.");
+      }
     }
     if (broker === "robinhood") {
       if (intent.session === "all_day") {
@@ -1944,6 +1998,7 @@
       previewRow("Time in force", intent.time_in_force),
       previewRow("Execution route", routeLabels[intent.execution_route] || intent.execution_route),
       previewRow("Execution mode", executionModeLabels[intent.execution_mode] || intent.execution_mode),
+      previewRow("Settlement guard", settlementGuardLabel(intent.risk_controls)),
       previewRow("Portfolio weight after trade", accountTotal("equity") && notional ? pct(notional, accountTotal("equity")) + " before existing position adjustment" : "Needs notional"),
       previewRow("Estimated cash after buy", accountRow && numeric(accountRow.cash) != null ? money(accountRow.cash - notional) : "Needs broker cash"),
       previewRow("Compatibility", validation.errors.length ? "Fix required" : validation.warnings.length ? "Preview with warnings" : "Ready for server preview"),
@@ -1954,6 +2009,12 @@
     renderCompatibility(validation);
     renderIntentJson(intent);
     return {intent: intent, validation: validation};
+  }
+
+  function settlementGuardLabel(controls) {
+    if (!controls || !controls.requires_settlement_risk_review) return "No broker settlement restriction flagged";
+    if (controls.block_server_preview) return "Blocked for earnings/pullback settlement review";
+    return "Review before Sage risk-off sell";
   }
 
   function renderCompatibility(validation) {
@@ -2510,6 +2571,7 @@
       context.innerHTML = [
         stackItem("Portfolio scope", money(total), appEdition === "developer" ? "Developer view may include multiple users depending on filters." : "This view is restricted to " + (principalEmail || "the signed-in user") + ".", 80),
         stackItem("Buying power", money(accountTotal("buyPower")), "Available buying power helps determine whether entries can begin before exits fully complete.", 60),
+        stackItem("Settlement guard", "Risk-off sells", "Sage sell/exit drafts in Robinhood-style accounts are flagged, and earnings or pullback context blocks server preview until manually reviewed.", 70, "compat-warn"),
         stackItem("Review discipline", state.recommendations.length + " open", "Create drafts from recommendations, then preview broker/session compatibility before any live placement.", state.recommendations.length ? 70 : 20)
       ].join("");
     }
@@ -2799,8 +2861,8 @@
       })
       .then(function (result) {
         state.pullRefresh.refreshing = false;
-        updatePullRefreshIndicator(result.ok ? 96 : 72, false, result.ok ? (result.updated ? "Latest daemon cycle synced" : "Newest cached daemon cycle loaded") : "Sync failed; current view kept");
-        toast(result.ok ? (result.updated ? "Latest daemon cycle synced." : (result.refreshStarted ? "Showing cached data while SmartSleeve refreshes in the background." : "Showing the newest daemon cache already available.")) : "Refresh failed. Current session and data were kept.");
+        updatePullRefreshIndicator(result.ok ? 96 : 72, false, result.ok ? (result.updated ? "Latest daemon cycle synced" : "Newest cached daemon cycle loaded") : "Current view kept; no newer cache available");
+        toast(result.ok ? (result.updated ? "Latest daemon cycle synced." : (result.refreshStarted ? "Showing cached data while SmartSleeve refreshes in the background." : "Showing the newest daemon cache already available.")) : "Current session and dashboard were kept.");
         resetPullRefresh(900);
       }).catch(function () {
         state.pullRefresh.refreshing = false;
@@ -3173,6 +3235,7 @@
     var separator = appFeedEndpoint.indexOf("?") === -1 ? "?" : "&";
     var query = [];
     if (options.refresh) query.push("refresh=1");
+    if (accountScope !== "all") query.push("scope=user");
     query.push("ts=" + Date.now());
     var url = appFeedEndpoint + separator + query.join("&");
     var headers = options.refresh ? {"X-SmartSleeve-Refresh": "pull-to-refresh"} : {};
@@ -3193,7 +3256,7 @@
           if (!response.ok || payload.ok === false) {
             throw new Error(payload.error || "Private API returned HTTP " + response.status);
           }
-          return {payload: payload.feed || payload, url: appFeedEndpoint};
+          return {payload: payload.feed || payload, url: url};
         });
       }).catch(function (error) {
         if (error && error.name === "AbortError") {
@@ -3210,12 +3273,12 @@
     return fetchAppFeed(options)
       .then(function (result) { applyFeed(result.payload, result.url); })
       .catch(function (error) {
-        text("sync-pill", "Sync failed");
+        text("sync-pill", state.payload ? "Cached view kept" : "Sync unavailable");
         if (state.payload && (options.refresh || options.silent)) {
-          text("snapshot-time", "Refresh failed; showing last synced feed");
-          state.feedWarning = recommendation("feed-refresh-failed", "Refresh failed; kept current dashboard", "Retry sync", "SmartSleeve", "Data", 0, error.message, "Displayed holdings were not cleared; verify freshness before making decisions.", "EXTERNAL_BROKER_SYNC");
+          text("snapshot-time", "Showing latest cached feed");
+          state.feedWarning = recommendation("feed-refresh-kept-current", "Current dashboard kept", "Retry sync", "SmartSleeve", "Data", 0, error.message, "Displayed holdings were not cleared; verify freshness before making decisions.", "EXTERNAL_BROKER_SYNC");
           renderAll();
-          if (!options.silent) toast("Portfolio feed failed to load.");
+          if (!options.silent) toast("Current dashboard kept; no newer feed loaded.");
           return false;
         } else {
           text("snapshot-time", "Feed unavailable");
