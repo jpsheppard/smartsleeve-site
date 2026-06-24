@@ -31,8 +31,8 @@ body {
   color: var(--text);
   background: linear-gradient(135deg, #020617 0%, #07111f 52%, #020617 100%);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  font-size: 11.5px;
-  line-height: 1.28;
+  font-size: 11px;
+  line-height: 1.24;
   overflow-x: hidden;
   overscroll-behavior-y: contain;
 }
@@ -329,7 +329,7 @@ a {
 
 main {
   min-width: 0;
-  padding: clamp(9px, 1.4vw, 15px);
+  padding: clamp(8px, 1.2vw, 13px);
 }
 
 .topbar {
@@ -349,15 +349,15 @@ main {
 
 .topbar h1 {
   margin: 0;
-  font-size: clamp(26px, 3.1vw, 42px);
+  font-size: clamp(23px, 2.5vw, 34px);
   line-height: 1;
 }
 
 .topbar p {
   max-width: 840px;
-  margin: 8px 0 0;
+  margin: 5px 0 0;
   color: var(--muted);
-  line-height: 1.45;
+  line-height: 1.32;
 }
 
 .pull-refresh-indicator {
@@ -368,14 +368,14 @@ main {
   align-items: center;
   gap: 8px;
   width: fit-content;
-  max-width: min(420px, 100%);
-  margin: -6px auto 10px;
-  padding: 7px 12px 7px 9px;
+  max-width: min(310px, 100%);
+  margin: -8px auto 7px;
+  padding: 5px 9px 5px 7px;
   border: 1px solid rgba(148, 163, 184, 0.2);
   border-radius: 999px;
   background: rgba(7, 17, 31, 0.92);
   color: var(--muted);
-  font-size: 12px;
+  font-size: 10.5px;
   font-weight: 850;
   letter-spacing: 0.02em;
   opacity: 0;
@@ -387,8 +387,8 @@ main {
 
 .pull-refresh-indicator::before {
   content: "";
-  width: 18px;
-  height: 18px;
+  width: 14px;
+  height: 14px;
   border: 2px solid rgba(148, 163, 184, 0.38);
   border-top-color: var(--green);
   border-radius: 50%;
@@ -482,14 +482,14 @@ main {
 
 .section-heading {
   display: grid;
-  gap: 8px;
+  gap: 5px;
   max-width: 940px;
-  margin-bottom: 18px;
+  margin-bottom: 12px;
 }
 
 .section-heading h2 {
   margin: 0;
-  font-size: clamp(21px, 2.6vw, 32px);
+  font-size: clamp(18px, 2vw, 26px);
   line-height: 1.08;
 }
 
@@ -505,7 +505,7 @@ main {
 .recommendation-grid,
 .gauge-grid {
   display: grid;
-  gap: 7px;
+  gap: 6px;
 }
 
 .dashboard-grid {
@@ -536,7 +536,7 @@ main {
 .sleeve-grid,
 .recommendation-grid,
 .gauge-grid {
-  margin-top: 14px;
+  margin-top: 10px;
 }
 
 .sleeve-grid,
@@ -564,9 +564,9 @@ main {
 .metric-card {
   display: grid;
   align-content: start;
-  gap: 4px;
-  min-height: 68px;
-  padding: 7px;
+  gap: 3px;
+  min-height: 58px;
+  padding: 6px;
 }
 
 .metric-card.primary-metric {
@@ -579,14 +579,14 @@ main {
 .sleeve-card span,
 .gauge-card span {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 10.5px;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
 
 .metric-card strong {
-  font-size: clamp(18px, 1.7vw, 24px);
+  font-size: clamp(16px, 1.4vw, 21px);
   line-height: 1;
 }
 
@@ -599,26 +599,26 @@ main {
 .stack-item p {
   margin: 0;
   color: var(--muted);
-  font-size: 10.5px;
-  line-height: 1.23;
+  font-size: 10px;
+  line-height: 1.18;
 }
 
 .panel-card {
   min-width: 0;
-  padding: 7px;
+  padding: 6px;
 }
 
 .card-head {
   display: flex;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
   align-items: flex-start;
-  margin-bottom: 6px;
+  margin-bottom: 5px;
 }
 
 .card-head h2 {
   margin: 2px 0 0;
-  font-size: 18px;
+  font-size: 15px;
 }
 
 .text-button,
@@ -627,8 +627,8 @@ button.primary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 36px;
-  padding: 0 12px;
+  min-height: 31px;
+  padding: 0 9px;
   border-radius: 8px;
   color: var(--text);
   background: rgba(148, 163, 184, 0.12);
@@ -709,8 +709,8 @@ button.primary {
 .account-card,
 .mode-row {
   display: grid;
-  gap: 3px;
-  padding: 6px;
+  gap: 2px;
+  padding: 5px;
   border: 1px solid rgba(148, 163, 184, 0.14);
   border-radius: 8px;
   background: rgba(15, 23, 42, 0.62);
@@ -745,14 +745,14 @@ button.primary {
 .stack-item-head b,
 .account-card b,
 .mode-row b {
-  font-size: 14px;
+  font-size: 12.5px;
 }
 
 .stack-item-head span,
 .account-card span,
 .mode-row span {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 10.5px;
   font-weight: 800;
 }
 
@@ -766,8 +766,8 @@ button.primary {
   display: grid;
   gap: 2px;
   min-width: 0;
-  min-height: 35px;
-  padding: 4px 5px;
+  min-height: 31px;
+  padding: 3px 4px;
   border: 1px solid rgba(148, 163, 184, 0.12);
   border-radius: 7px;
   background: rgba(2, 6, 23, 0.28);
@@ -776,7 +776,7 @@ button.primary {
 .mini-metric i {
   overflow: hidden;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 9px;
   font-style: normal;
   font-weight: 900;
   line-height: 1.1;
@@ -788,7 +788,7 @@ button.primary {
 .mini-metric b {
   overflow: hidden;
   color: var(--text);
-  font-size: 12px;
+  font-size: 10.5px;
   line-height: 1.15;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -825,16 +825,16 @@ table {
 
 th,
 td {
-  padding: 9px 8px;
+  padding: 6px 5px;
   border-bottom: 1px solid rgba(148, 163, 184, 0.13);
   text-align: left;
   vertical-align: top;
-  font-size: 12px;
+  font-size: 10.5px;
 }
 
 th {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 9.5px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -1184,20 +1184,20 @@ textarea:focus {
 .sleeve-card,
 .gauge-card {
   display: grid;
-  gap: 10px;
-  padding: 12px;
+  gap: 7px;
+  padding: 8px;
 }
 
 .stock-pick-sleeves {
   display: grid;
-  gap: 10px;
+  gap: 6px;
 }
 
 .stock-pick-sleeve {
   width: 100%;
   display: grid;
-  gap: 6px;
-  padding: 12px;
+  gap: 4px;
+  padding: 8px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: rgba(15, 23, 42, 0.72);
@@ -1217,14 +1217,14 @@ textarea:focus {
 .stock-pick-sleeve span,
 .stock-pick-sleeve small {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 10.5px;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
 
 .stock-pick-sleeve b {
-  font-size: 14px;
+  font-size: 12.5px;
 }
 
 .stock-pick-description {
@@ -1239,24 +1239,24 @@ textarea:focus {
 .symbol-chip-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 4px;
 }
 
 .symbol-chip-row span {
-  min-width: 46px;
-  padding: 5px 8px;
+  min-width: 40px;
+  padding: 4px 6px;
   border: 1px solid rgba(34, 211, 238, 0.22);
   border-radius: 6px;
   color: #dffcf6;
   background: rgba(34, 211, 238, 0.08);
-  font-size: 12px;
+  font-size: 10.5px;
   font-weight: 900;
   text-align: center;
 }
 
 .stock-pick-hedges {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 10.5px;
   font-weight: 800;
 }
 
@@ -1264,7 +1264,7 @@ textarea:focus {
 .sleeve-card h3,
 .gauge-card h3 {
   margin: 0;
-  font-size: 16px;
+  font-size: 14px;
 }
 
 .recommendation-actions {
@@ -1331,10 +1331,10 @@ textarea:focus {
 .toast {
   position: fixed;
   left: 50%;
-  bottom: 88px;
+  bottom: 74px;
   z-index: 50;
-  max-width: min(520px, calc(100vw - 32px));
-  padding: 10px 12px;
+  max-width: min(430px, calc(100vw - 28px));
+  padding: 8px 10px;
   border: 1px solid rgba(57, 255, 20, 0.3);
   border-radius: 8px;
   color: var(--text);

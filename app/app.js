@@ -4,6 +4,7 @@
   var params = new URLSearchParams(window.location.search);
   var appEdition = params.get("app_edition") || "web";
   var accountScope = params.get("account_scope") || "user";
+  var requestedDeveloperView = appEdition === "developer" || accountScope === "all";
   var principalEmail = normalizeEmail(params.get("principal_email") || "");
   var authEndpoint = metaContent("smartsleeve-auth-endpoint");
   var orderIntentEndpoint = metaContent("smartsleeve-order-intent-endpoint") || (authEndpoint ? authEndpoint.replace(/\/$/, "") + "/order-intents" : "");
@@ -170,10 +171,11 @@
       }
       sessionToken = payload.sessionToken;
       principalEmail = storedPrincipal || requestedPrincipal;
-      if (payload.role === "developer") {
+      if (payload.role === "developer" && requestedDeveloperView) {
         appEdition = "developer";
         accountScope = "all";
       } else {
+        appEdition = appEdition === "developer" ? "web" : appEdition;
         accountScope = "user";
       }
     } catch (_err) {
@@ -183,7 +185,7 @@
 
   function persistStoredSession(profile) {
     try {
-      var role = (profile || {}).role === "developer" ? "developer" : "user";
+      var role = (profile || {}).role === "developer" && requestedDeveloperView ? "developer" : "user";
       var profileEmail = normalizeEmail((profile || {}).email || principalEmail);
       window.localStorage.setItem("smartsleeve_session:" + role, JSON.stringify({
         sessionToken: sessionToken,
@@ -350,7 +352,7 @@
           }
           sessionToken = payload.session_token || sessionToken;
           principalEmail = normalizeEmail((payload.profile || {}).email || email);
-          if ((payload.profile || {}).role === "developer") {
+          if ((payload.profile || {}).role === "developer" && requestedDeveloperView) {
             appEdition = "developer";
             accountScope = "all";
           } else {
@@ -573,8 +575,47 @@
     return fallback || "";
   }
 
+  function isOperationalNoiseLabel(value) {
+    var label = String(value || "").trim().toLowerCase();
+    if (!label) return true;
+    if (/^(0|off|hibernate|hibernating|paused|inactive|unknown|false|none|null|nan)(\s*\/\s*(0|off|hibernate|hibernating|paused|inactive|unknown|false|none|null|nan))*$/.test(label)) {
+      return true;
+    }
+    return false;
+  }
+
   function sleeveLabel(value, fallback) {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      var explicit = [
+        value.label,
+        value.name,
+        value.displayName,
+        value.display_name,
+        value.title,
+        value.sleeveLabel,
+        value.sleeve_label,
+        value.sleeve,
+        value.sleeveName,
+        value.sleeve_name,
+        value.tradingSystem,
+        value.trading_system,
+        value.strategy,
+        value.sleeveInstanceId,
+        value.sleeve_instance_id,
+        value.instanceId,
+        value.instance_id
+      ];
+      for (var i = 0; i < explicit.length; i += 1) {
+        var explicitLabel = displayLabel(explicit[i], "");
+        if (explicitLabel && !isOperationalNoiseLabel(explicitLabel)) {
+          return sleeveLabel(explicitLabel, fallback);
+        }
+      }
+    }
     var label = displayLabel(value, fallback || "Unassigned");
+    if (isOperationalNoiseLabel(label)) {
+      return fallback || "";
+    }
     if (/^unassigned$/i.test(label) && value && typeof value === "object") {
       var context = [
         value.sleeve,
@@ -628,7 +669,7 @@
     return String(value || "")
       .split(",")
       .map(function (item) { return item.trim(); })
-      .filter(function (item) { return item && item !== "[object Object]"; })
+      .filter(function (item) { return item && item !== "[object Object]" && !isOperationalNoiseLabel(item); })
       .map(function (item) { return item === "Hyper Savage" ? "Covered Sage" : item; });
   }
 
@@ -966,8 +1007,11 @@
     accounts.forEach(function (account) {
       var liveSleeves = Array.isArray(account.sleeves) ? account.sleeves : [];
       if (liveSleeves.length) {
+        var foundLiveSleeve = false;
         liveSleeves.forEach(function (sleeve) {
-          var name = sleeveLabel(sleeve, "Unassigned");
+          var name = sleeveLabel(sleeve, "");
+          if (!name) return;
+          foundLiveSleeve = true;
           ensureSleeve(bySleeve, name, account.account);
           bySleeve[name].exactValue += numeric(sleeve.netLiquidationUsd != null ? sleeve.netLiquidationUsd : sleeve.net_liquidation_usd) || 0;
           bySleeve[name].cash += numeric(sleeve.cashUsd != null ? sleeve.cashUsd : sleeve.cash_usd) || 0;
@@ -981,7 +1025,7 @@
             }
           });
         });
-        return;
+        if (foundLiveSleeve) return;
       }
       var names = splitSleeves(account.sleevesText || account.sleeves);
       if (!names.length) {
@@ -3157,9 +3201,13 @@
     }).then(function (result) {
       state.pullRefresh.refreshing = false;
       runRefreshBounce(result.ok);
-      updatePullRefreshIndicator(result.ok ? 96 : 72, false, result.ok ? (result.updated ? "Latest daemon cycle synced: " + latestDaemonLabel() : "Newest cached daemon cycle loaded") : "Current view kept while SmartSleeve checks for newer data");
-      toast(result.ok ? (result.updated ? "Latest daemon cycle synced." : (result.refreshStarted ? "Showing cached data while SmartSleeve refreshes in the background." : "Showing the newest daemon cache already available.")) : "Current view kept while SmartSleeve checks for newer data.");
-      resetPullRefresh(900);
+      updatePullRefreshIndicator(result.ok ? 72 : 48, false, result.ok ? (result.updated ? "Synced " + latestDaemonLabel() : "Already current") : "Kept current view");
+      if (result.ok && result.updated) {
+        toast("Latest daemon cycle synced.");
+      } else if (!result.ok && !state.payload) {
+        toast("Private feed unavailable. Sign in or retry.");
+      }
+      resetPullRefresh(result.updated ? 750 : 350);
     });
   }
 
@@ -3359,9 +3407,11 @@
     if (refreshFeed) refreshFeed.addEventListener("click", function () {
       var refreshStarted = requestServerFeedRefresh();
       loadFeed({silent: true, interactiveRefresh: true}).then(function (ok) {
-        toast(ok
-          ? (refreshStarted ? "Showing cached data while SmartSleeve refreshes in the background." : "Private feed refreshed from the latest cache.")
-          : "Current view kept while SmartSleeve checks for newer data.");
+        if (ok) {
+          toast(refreshStarted ? "Refresh requested." : "Private feed checked.");
+        } else if (!state.payload) {
+          toast("Private feed unavailable. Sign in or retry.");
+        }
       });
     });
     wirePullRefresh();
@@ -3578,7 +3628,7 @@
     if (profile.email) {
       principalEmail = normalizeEmail(profile.email);
     }
-    if (profile.role === "developer") {
+    if (profile.role === "developer" && requestedDeveloperView) {
       appEdition = "developer";
       accountScope = "all";
     } else {
