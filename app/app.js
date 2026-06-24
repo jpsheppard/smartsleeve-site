@@ -458,6 +458,23 @@
     return String(value || "").trim().toLowerCase();
   }
 
+  function canonicalEmail(value) {
+    var email = normalizeEmail(value);
+    return email === "john@smartsleeve.ai" ? "jpsheppard88@gmail.com" : email;
+  }
+
+  function knownUserEmailFromText(value) {
+    var context = displayLabel(value, "").toLowerCase();
+    if (!context) return "";
+    if (context.indexOf("criseldasarenas") !== -1 || context.indexOf("crissy") !== -1 || context.indexOf("criselda") !== -1 || /\bcrissy[\s_-]*rh\b/.test(context)) {
+      return "criseldasarenas@gmail.com";
+    }
+    if (context.indexOf("jpsheppard88") !== -1 || context.indexOf("john@smartsleeve.ai") !== -1 || context.indexOf("john sheppard") !== -1 || /\bjohn[\s_-]*(rh|ibkr|etrade|e[-\s]?trade)\b/.test(context)) {
+      return "jpsheppard88@gmail.com";
+    }
+    return "";
+  }
+
   function html(value) {
     return String(value == null ? "" : value)
       .replace(/&/g, "&amp;")
@@ -615,6 +632,63 @@
       .map(function (item) { return item === "Hyper Savage" ? "Covered Sage" : item; });
   }
 
+  function inferAccountOwnerEmail(account) {
+    var context = [
+      account.ownerEmail,
+      account.owner_email,
+      account.userEmail,
+      account.user_email,
+      account.principalEmail,
+      account.principal_email,
+      account.accountOwnerEmail,
+      account.account_owner_email,
+      account.owner,
+      account.ownerName,
+      account.owner_name,
+      account.user,
+      account.userName,
+      account.user_name,
+      account.household,
+      account.customer,
+      account.displayOwner,
+      account.display_owner,
+      account.account,
+      account.name,
+      account.id,
+      account.accountId,
+      account.account_id,
+      account.nickname,
+      account.label
+    ].map(function (item) { return displayLabel(item, ""); }).join(" ");
+    return knownUserEmailFromText(context);
+  }
+
+  function rowOwnerEmail(row) {
+    if (!row) return "";
+    return canonicalEmail(
+      row.ownerEmail
+        || row.owner_email
+        || row.userEmail
+        || row.user_email
+        || row.principalEmail
+        || row.principal_email
+        || row.email
+        || inferAccountOwnerEmail(row)
+    );
+  }
+
+  function rowBelongsToAnotherKnownUser(row) {
+    var owner = rowOwnerEmail(row);
+    var principal = canonicalEmail(principalEmail);
+    if (!owner || !principal) return false;
+    return owner !== principal && (
+      owner === "jpsheppard88@gmail.com"
+        || owner === "criseldasarenas@gmail.com"
+        || principal === "jpsheppard88@gmail.com"
+        || principal === "criseldasarenas@gmail.com"
+    );
+  }
+
   function normalizeAccount(account) {
     var positions = (account.positions || []).map(function (position) {
       return {
@@ -647,7 +721,7 @@
     return {
       id: account.id || account.accountId || account.account_id || account.account,
       account: displayLabel(account.account || account.name || account.id, "Account"),
-      ownerEmail: account.ownerEmail || account.owner_email,
+      ownerEmail: rowOwnerEmail(account),
       developerEmail: account.developerEmail || account.developer_email,
       broker: brokerName,
       status: account.status || "synced",
@@ -681,8 +755,13 @@
       if (typeof audience === "string") {
         audience = audience.split(/[,\s]+/);
       }
-      return normalizeEmail(row.ownerEmail || row.owner_email) === principalEmail
-        || (Array.isArray(audience) ? audience.map(normalizeEmail).indexOf(principalEmail) !== -1 : false);
+      if (rowBelongsToAnotherKnownUser(row)) {
+        return false;
+      }
+      var ownerEmail = rowOwnerEmail(row);
+      var principal = canonicalEmail(principalEmail);
+      return ownerEmail === principal
+        || (Array.isArray(audience) ? audience.map(canonicalEmail).indexOf(principal) !== -1 : false);
     });
   }
 
@@ -694,7 +773,7 @@
       return [];
     }
     return rows.filter(function (row) {
-      return normalizeEmail(row.ownerEmail || row.owner_email) === principalEmail;
+      return rowOwnerEmail(row) === canonicalEmail(principalEmail);
     });
   }
 
@@ -703,7 +782,7 @@
       return accounts;
     }
     return accounts.filter(function (account) {
-      var owner = normalizeEmail(account.ownerEmail || account.owner_email);
+      var owner = rowOwnerEmail(account);
       var accountId = String(account.id || account.accountId || account.account_id || "");
       return (state.selectedOwnerEmail === "all" || owner === state.selectedOwnerEmail)
         && (state.selectedAccountId === "all" || accountId === state.selectedAccountId);
@@ -715,7 +794,7 @@
       return rows;
     }
     return rows.filter(function (row) {
-      var owner = normalizeEmail(row.ownerEmail || row.owner_email);
+      var owner = rowOwnerEmail(row);
       var accountId = String(row.accountId || row.account_id || row.id || "");
       return (state.selectedOwnerEmail === "all" || owner === state.selectedOwnerEmail)
         && (state.selectedAccountId === "all" || accountId === state.selectedAccountId);
@@ -1391,6 +1470,9 @@
     if (!target) return;
     var coverage = state.accountCoverage || {};
     var expected = coverage.expected || [];
+    if (appEdition !== "developer" && principalEmail) {
+      expected = expected.filter(function (row) { return rowOwnerEmail(row) === canonicalEmail(principalEmail); });
+    }
     if (!expected.length) {
       target.innerHTML = emptyItem("Account coverage unavailable", "The private feed did not include an expected-account checklist.");
       return;
@@ -1398,11 +1480,11 @@
     var missing = coverage.missing || [];
     var configuredOnly = coverage.configured_without_live || [];
     if (appEdition !== "developer" && principalEmail) {
-      missing = missing.filter(function (row) { return normalizeEmail(row.ownerEmail) === principalEmail; });
-      configuredOnly = configuredOnly.filter(function (row) { return normalizeEmail(row.ownerEmail) === principalEmail; });
+      missing = missing.filter(function (row) { return rowOwnerEmail(row) === canonicalEmail(principalEmail); });
+      configuredOnly = configuredOnly.filter(function (row) { return rowOwnerEmail(row) === canonicalEmail(principalEmail); });
     }
-    var visible = Number(coverage.visible_count || 0);
-    var total = Number(coverage.expected_count || expected.length || 0);
+    var visible = appEdition === "developer" ? Number(coverage.visible_count || state.accounts.length || 0) : state.accounts.length;
+    var total = appEdition === "developer" ? Number(coverage.expected_count || expected.length || 0) : expected.length;
     var rows = [
       stackItem(
         "Expected account coverage",
@@ -1513,6 +1595,22 @@
     if (textValue.indexOf("general") !== -1) return "general_sage";
     if (textValue.indexOf("value") !== -1) return "value_sage";
     return textValue.replace(/\s+/g, "_");
+  }
+
+  function stockPickLatestUrl(report) {
+    var key = stockPickKey(report.algo || report.sleeve || report.sleeves || report.title || report.url);
+    if (key === "grand_sage") return "/app/reports/stock-picks/grand_sage/latest.html";
+    if (key === "general_sage") return "/app/reports/stock-picks/general_sage/latest.html";
+    return "";
+  }
+
+  function normalizeStockPickUrl(report) {
+    var url = report.url || report.latestUrl || report.latest_url || report.displayUrl || "#";
+    var latestUrl = stockPickLatestUrl(report);
+    if (latestUrl && !/^https?:\/\//i.test(String(url))) {
+      return latestUrl;
+    }
+    return url;
   }
 
   function stockPickFallbackReports() {
@@ -1662,7 +1760,7 @@
   }
 
   function stockPickArchiveCard(report) {
-    var url = report.url || report.latestUrl || report.latest_url || report.displayUrl || "#";
+    var url = normalizeStockPickUrl(report);
     var title = displayLabel(report.title || report.subject, "Weekly stock picks");
     var date = displayLabel(report.date || report.generatedAt || report.generated_at || report.timestamp, "latest");
     var body = displayLabel(report.description || report.summary || report.notes, "Open the archived weekly stock-pick email/report for ticker list, rationale, and universe notes.");
@@ -1688,7 +1786,7 @@
   }
 
   function reportCard(report) {
-    var url = report.url || report.latestUrl || "#";
+    var url = report.type === "stock_pick" ? normalizeStockPickUrl(report) : (report.url || report.latestUrl || "#");
     return "<article class=\"stack-item\">"
       + "<div class=\"stack-item-head\"><b>" + html(report.title) + "</b><span>" + html(report.date || "latest") + "</span></div>"
       + "<p>" + html(report.type === "stock_pick" ? "Stock pick email/report archive" : "Daily performance report archive") + "</p>"
@@ -3059,8 +3157,8 @@
     }).then(function (result) {
       state.pullRefresh.refreshing = false;
       runRefreshBounce(result.ok);
-      updatePullRefreshIndicator(result.ok ? 96 : 72, false, result.ok ? (result.updated ? "Latest daemon cycle synced: " + latestDaemonLabel() : "Newest cached daemon cycle loaded") : "Current view kept; refresh did not replace data");
-      toast(result.ok ? (result.updated ? "Latest daemon cycle synced." : (result.refreshStarted ? "Showing cached data while SmartSleeve refreshes in the background." : "Showing the newest daemon cache already available.")) : "Current view kept. SmartSleeve did not replace the feed.");
+      updatePullRefreshIndicator(result.ok ? 96 : 72, false, result.ok ? (result.updated ? "Latest daemon cycle synced: " + latestDaemonLabel() : "Newest cached daemon cycle loaded") : "Current view kept while SmartSleeve checks for newer data");
+      toast(result.ok ? (result.updated ? "Latest daemon cycle synced." : (result.refreshStarted ? "Showing cached data while SmartSleeve refreshes in the background." : "Showing the newest daemon cache already available.")) : "Current view kept while SmartSleeve checks for newer data.");
       resetPullRefresh(900);
     });
   }
@@ -3263,7 +3361,7 @@
       loadFeed({silent: true, interactiveRefresh: true}).then(function (ok) {
         toast(ok
           ? (refreshStarted ? "Showing cached data while SmartSleeve refreshes in the background." : "Private feed refreshed from the latest cache.")
-          : "Current view kept. SmartSleeve did not replace the feed.");
+          : "Current view kept while SmartSleeve checks for newer data.");
       });
     });
     wirePullRefresh();
@@ -3612,11 +3710,11 @@
       .catch(function (error) {
         if (state.payload && (options.refresh || options.silent || options.interactiveRefresh || error.authRequired)) {
           text("sync-pill", "Current view kept");
-          text("snapshot-time", "Current view kept; refresh did not replace the feed");
+          text("snapshot-time", "Current view kept while SmartSleeve checks for newer data");
           state.feedWarning = recommendation("feed-refresh-kept-current", "Current dashboard kept", "Retry sync", "SmartSleeve", "Data", 0, error.message, "Displayed holdings were preserved; verify freshness before making decisions.", "EXTERNAL_BROKER_SYNC");
           renderAll();
           if (options.refresh || options.interactiveRefresh) {
-            toast("Current view kept. SmartSleeve did not replace the feed.");
+            toast("Current view kept while SmartSleeve checks for newer data.");
           }
         } else {
           text("snapshot-time", "Feed unavailable");
