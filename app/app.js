@@ -4,6 +4,7 @@
   var params = new URLSearchParams(window.location.search);
   var appEdition = params.get("app_edition") || "web";
   var accountScope = params.get("account_scope") || "user";
+  var requestedDeveloperView = appEdition === "developer" || accountScope === "all" || params.get("developer") === "1";
   var principalEmail = normalizeEmail(params.get("principal_email") || "");
   var authEndpoint = metaContent("smartsleeve-auth-endpoint");
   var orderIntentEndpoint = metaContent("smartsleeve-order-intent-endpoint") || (authEndpoint ? authEndpoint.replace(/\/$/, "") + "/order-intents" : "");
@@ -608,6 +609,23 @@
       .map(function (item) { return item === "Hyper Savage" ? "Covered Sage" : item; });
   }
 
+  function inferAccountOwnerEmail(account) {
+    var context = [
+      account.ownerEmail,
+      account.owner_email,
+      account.account,
+      account.name,
+      account.id,
+      account.accountId,
+      account.account_id,
+      account.nickname,
+      account.label
+    ].map(function (item) { return displayLabel(item, ""); }).join(" ").toLowerCase();
+    if (context.indexOf("crissy") !== -1 || context.indexOf("criseldasarenas") !== -1) return "criseldasarenas@gmail.com";
+    if (context.indexOf("jpsheppard") !== -1 || context.indexOf("john") !== -1 || context.indexOf("sheppard") !== -1) return "jpsheppard88@gmail.com";
+    return "";
+  }
+
   function normalizeAccount(account) {
     var positions = (account.positions || []).map(function (position) {
       return {
@@ -637,10 +655,11 @@
       equity = positionValue + (cash || 0);
       equitySource = "positions_plus_cash_estimate";
     }
+    var ownerEmail = normalizeEmail(account.ownerEmail || account.owner_email || inferAccountOwnerEmail(account));
     return {
       id: account.id || account.accountId || account.account_id || account.account,
       account: displayLabel(account.account || account.name || account.id, "Account"),
-      ownerEmail: account.ownerEmail || account.owner_email,
+      ownerEmail: ownerEmail,
       developerEmail: account.developerEmail || account.developer_email,
       broker: brokerName,
       status: account.status || "synced",
@@ -675,9 +694,7 @@
         audience = audience.split(/[,\s]+/);
       }
       var ownerEmail = normalizeEmail(row.ownerEmail || row.owner_email);
-      var developerEmail = normalizeEmail(row.developerEmail || row.developer_email);
       return ownerEmail === principalEmail
-        || (!ownerEmail && developerEmail === principalEmail)
         || (Array.isArray(audience) ? audience.map(normalizeEmail).indexOf(principalEmail) !== -1 : false);
     });
   }
@@ -1647,6 +1664,7 @@
 
   function stockPickArchiveCard(report) {
     var url = report.url || report.latestUrl || report.latest_url || report.displayUrl || "#";
+    var isLockedFallback = isLocalFallbackReport(report);
     var title = displayLabel(report.title || report.subject, "Weekly stock picks");
     var date = displayLabel(report.date || report.generatedAt || report.generated_at || report.timestamp, "latest");
     var body = displayLabel(report.description || report.summary || report.notes, "Open the archived weekly stock-pick email/report for ticker list, rationale, and universe notes.");
@@ -1667,16 +1685,17 @@
       + "<p>" + html(body) + "</p>"
       + symbolMarkup
       + hedgeMarkup
-      + "<div class=\"recommendation-actions\"><a class=\"text-button\" href=\"" + html(url) + "\" target=\"_blank\" rel=\"noopener\">Open archive</a></div>"
+      + "<div class=\"recommendation-actions\"><a class=\"text-button\" href=\"" + html(url) + "\" target=\"_blank\" rel=\"noopener\">" + (isLockedFallback ? "Open private placeholder" : "Open archive") + "</a></div>"
       + "</article>";
   }
 
   function reportCard(report) {
     var url = report.url || report.latestUrl || "#";
+    var isLockedFallback = isLocalFallbackReport(report);
     return "<article class=\"stack-item\">"
       + "<div class=\"stack-item-head\"><b>" + html(report.title) + "</b><span>" + html(report.date || "latest") + "</span></div>"
-      + "<p>" + html(report.type === "stock_pick" ? "Stock pick email/report archive" : "Daily performance report archive") + "</p>"
-      + "<div class=\"recommendation-actions\"><a class=\"text-button\" href=\"" + html(url) + "\" target=\"_blank\" rel=\"noopener\">Open report</a></div>"
+      + "<p>" + html(isLockedFallback ? "Private stock-pick archive placeholder; full report requires the private gateway." : (report.type === "stock_pick" ? "Stock pick email/report archive" : "Daily performance report archive")) + "</p>"
+      + "<div class=\"recommendation-actions\"><a class=\"text-button\" href=\"" + html(url) + "\" target=\"_blank\" rel=\"noopener\">" + (isLockedFallback ? "Open private placeholder" : "Open report") + "</a></div>"
       + "</article>";
   }
 
@@ -3589,15 +3608,18 @@
         return true;
       })
       .catch(function (error) {
-        text("sync-pill", "Sync failed");
         if (state.payload && (options.refresh || options.silent || options.interactiveRefresh || error.authRequired)) {
-          text("snapshot-time", "Current view kept; refresh did not replace the feed");
-          state.feedWarning = recommendation("feed-refresh-kept-current", "Current dashboard kept", "Retry sync", "SmartSleeve", "Data", 0, error.message, "Displayed holdings were preserved; verify freshness before making decisions.", "EXTERNAL_BROKER_SYNC");
+          text("sync-pill", "Current cache kept");
+          text("snapshot-time", "Current view kept; no newer cache loaded");
+          if (!options.silent || options.refresh || options.interactiveRefresh) {
+            state.feedWarning = recommendation("feed-refresh-kept-current", "Current dashboard kept", "Retry sync", "SmartSleeve", "Data", 0, error.message, "Displayed holdings were preserved; verify freshness before making decisions.", "EXTERNAL_BROKER_SYNC");
+          }
           renderAll();
           if (options.refresh || options.interactiveRefresh) {
-            toast("Current view kept. SmartSleeve did not replace the feed.");
+            toast("Current view kept; no newer daemon cache loaded.");
           }
         } else {
+          text("sync-pill", "Sync failed");
           text("snapshot-time", "Feed unavailable");
           state.accounts = [];
           state.allAccounts = [];
@@ -3612,7 +3634,7 @@
             showAuthGate("Private feed unavailable: " + error.message);
           }
         }
-        if (!options.silent) toast("Portfolio feed failed to load.");
+        if (!options.silent && !state.payload) toast("Portfolio feed failed to load.");
         return false;
       });
   }
