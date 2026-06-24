@@ -4,10 +4,7 @@
   var params = new URLSearchParams(window.location.search);
   var appEdition = params.get("app_edition") || "web";
   var accountScope = params.get("account_scope") || "user";
-  if (appEdition !== "developer" && accountScope === "all") {
-    accountScope = "user";
-  }
-  var requestedDeveloperView = appEdition === "developer";
+  var requestedDeveloperView = appEdition === "developer" || accountScope === "all";
   var principalEmail = normalizeEmail(params.get("principal_email") || "");
   var authEndpoint = metaContent("smartsleeve-auth-endpoint");
   var orderIntentEndpoint = metaContent("smartsleeve-order-intent-endpoint") || (authEndpoint ? authEndpoint.replace(/\/$/, "") + "/order-intents" : "");
@@ -572,9 +569,7 @@
         var item = value[key];
         if (item && typeof item === "object") return "";
         return displayLabel(item, "");
-      }).filter(function (item) {
-        return item && !isOperationalNoiseLabel(item);
-      });
+      }).filter(Boolean);
       return shallow.join(" / ") || (fallback || "");
     }
     return fallback || "";
@@ -797,6 +792,9 @@
       if (row && isLocalFallbackReport(row)) {
         return true;
       }
+      if (rowHasConflictingOwner(row)) {
+        return false;
+      }
       var audience = row.audienceEmails || row.audience_emails || [];
       if (typeof audience === "string") {
         audience = audience.split(/[,\s]+/);
@@ -821,6 +819,10 @@
     return rows.filter(function (row) {
       return rowOwnerEmail(row) === canonicalEmail(principalEmail);
     });
+  }
+
+  function rowHasConflictingOwner(row) {
+    return rowBelongsToAnotherKnownUser(row);
   }
 
   function developerFilteredAccounts(accounts) {
@@ -871,6 +873,9 @@
     return visibleRows(rows || []).filter(function (row) {
       if (row && isLocalFallbackReport(row)) {
         return true;
+      }
+      if (rowHasConflictingOwner(row)) {
+        return false;
       }
       var accountId = rowAccountId(row);
       return !accountId || Boolean(visibleIds[accountId]);
@@ -3206,7 +3211,7 @@
     }).then(function (result) {
       state.pullRefresh.refreshing = false;
       runRefreshBounce(result.ok);
-      updatePullRefreshIndicator(result.ok ? 72 : 48, false, result.ok ? (result.updated ? "Synced " + latestDaemonLabel() : "Already current") : "Kept current view");
+      updatePullRefreshIndicator(result.ok ? 72 : 48, false, result.ok ? (result.updated ? "Latest trader cycle synced." : "Already current") : "Kept current view");
       if (result.ok && result.updated) {
         toast("Latest trader cycle synced.");
       } else if (!result.ok && !state.payload) {
@@ -3413,7 +3418,7 @@
       var refreshStarted = requestServerFeedRefresh();
       loadFeed({silent: true, interactiveRefresh: true}).then(function (ok) {
         if (ok) {
-          toast(refreshStarted ? "Refresh requested." : "Private feed checked.");
+          toast(refreshStarted ? "Refresh requested. Latest available trader cycle is showing." : "Private feed checked.");
         } else if (!state.payload) {
           toast("Private feed unavailable. Sign in or retry.");
         }
@@ -3670,8 +3675,8 @@
     state.reports = ensureStockPickReports(scopedRowsForVisibleAccounts(payload.reports || [], visibleAccountIds));
     state.accountCoverage = payload.accountCoverage || null;
     state.feedWarning = null;
-    text("snapshot-source", sourceLabel(payload));
-    text("snapshot-time", "Last synced trader cycle at " + latestDaemonLabel(payload));
+    text("snapshot-source", appEdition === "developer" ? (payload.source || "Private SmartSleeve API") : "Private portfolio feed");
+    text("snapshot-time", latestDaemonLabel(payload));
     text("sync-pill", "Private API synced");
     addActivity("Cloud feed synced", "EXTERNAL_BROKER_SYNC", appEdition === "developer" ? "All accounts" : principalEmail, state.accounts.length + " account(s), " + state.serverTrades.length + " trades, " + state.brain.length + " brain rows.");
     renderAll();
@@ -3686,15 +3691,7 @@
     var latest = timestamps.map(function (value) { return new Date(value); }).filter(function (date) {
       return !Number.isNaN(date.getTime());
     }).sort(function (a, b) { return b - a; })[0];
-    return latest ? latest.toLocaleString([], {month: "long", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit"}) : "time unavailable";
-  }
-
-  function sourceLabel(payload) {
-    var label = displayLabel((payload || {}).source, "");
-    if (appEdition !== "developer" && /^smartsleeve analytics exports and report archive$/i.test(label)) {
-      return "Private SmartSleeve feed";
-    }
-    return label || "Private SmartSleeve feed";
+    return latest ? "Last synced trader cycle at " + latest.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit", second: "2-digit"}) + " on " + latest.toLocaleDateString([], {month: "long", day: "numeric", year: "numeric"}) + "." : "Last synced trader cycle unavailable.";
   }
 
   function collectDaemonTimestamps(value, out) {
@@ -3776,7 +3773,7 @@
           text("snapshot-time", "Current view kept while SmartSleeve checks for newer data");
           state.feedWarning = recommendation("feed-refresh-kept-current", "Current dashboard kept", "Retry sync", "SmartSleeve", "Data", 0, error.message, "Displayed holdings were preserved; verify freshness before making decisions.", "EXTERNAL_BROKER_SYNC");
           renderAll();
-          if (options.refresh && !options.interactiveRefresh) {
+          if (options.refresh || options.interactiveRefresh) {
             toast("Current view kept while SmartSleeve checks for newer data.");
           }
         } else {
