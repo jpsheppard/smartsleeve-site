@@ -28,7 +28,6 @@
         <a href="#portfolio" data-nav="portfolio">Portfolio</a>
         <a href="#onboarding" data-nav="onboarding">Account</a>
         <a href="#plans" data-nav="plans">Plans & Billing</a>
-        <a href="#shop" data-nav="shop">Shop</a>
         <a href="#funding" data-nav="funding">Funding</a>
         <a href="#broker" data-nav="broker">Robinhood Link</a>
         <a href="#sleeves" data-nav="sleeves">Sleeves</a>
@@ -361,94 +360,6 @@
             <p class="billing-note">Discount codes must be validated again by the billing backend before payment or subscription activation.</p>
           </div>
           <button type="button" disabled>Secure checkout connector required</button>
-        </div>
-      </section>
-
-      <section id="shop" class="panel" data-section="shop">
-        <div class="section-heading">
-          <p class="eyebrow">SQTS Shop</p>
-          <h2>SmartSleeve merch, starting with black tees</h2>
-          <p>Merch checkout is designed for SmartSleeve Quantitative Trading Systems, LLC to be the merchant of record. Customers pay SmartSleeve through hosted Stripe Checkout; after payment clears, a server-side fulfillment webhook sends the order to Printify, Printful, or another print-on-demand vendor.</p>
-        </div>
-
-        <div class="merch-grid featured-merch">
-          <article class="merch-card featured">
-            <img src="/merch/sqts-original-tee-preview.png" alt="Preview of the SQTS Circuit Logo black tee">
-            <div class="merch-copy">
-              <span class="plan-kicker">Launch tee</span>
-              <h3>SQTS Circuit Logo Tee</h3>
-              <strong>$19.99 <span>+ shipping</span></strong>
-              <p>Black men's or women's tee with the original SQTS neon circuit logo on the front.</p>
-              <ul class="check-list">
-                <li>Value tee target: $19.99 before shipping when provider base cost allows.</li>
-                <li>Premium tee option can use higher-grade cotton or embroidery where available.</li>
-                <li>Print art: <code>/merch/sqts-original-front-print.png</code></li>
-              </ul>
-              <div class="action-row">
-                <button type="button" class="button primary" data-merch-checkout="sqts-tee">Order SQTS tee</button>
-                <a class="button ghost" href="/merch/sqts-original-front-print.png">Open print art</a>
-              </div>
-            </div>
-          </article>
-
-          <article class="merch-card featured">
-            <img src="/merch/semisage-signature-tee-preview.png" alt="Preview of the Semi Sage Signature black tee">
-            <div class="merch-copy">
-              <span class="plan-kicker">Signature tee</span>
-              <h3>Semi Sage Signature Tee</h3>
-              <strong>$19.99 <span>+ shipping</span></strong>
-              <p>Black tee with the high-resolution Semi Sage artwork and SmartSleeve Quantitative Trading Systems lockup.</p>
-              <ul class="check-list">
-                <li>Designed for the same men's and women's black tee product family.</li>
-                <li>Green typography and guide lines are baked into the print-ready artwork.</li>
-                <li>Print art: <code>/merch/semisage-signature-front-print.png</code></li>
-              </ul>
-              <div class="action-row">
-                <button type="button" class="button primary" data-merch-checkout="semisage-tee">Order Semi Sage tee</button>
-                <a class="button ghost" href="/merch/semisage-signature-front-print.png">Open print art</a>
-              </div>
-            </div>
-          </article>
-        </div>
-
-        <div class="merch-grid compact-merch">
-          <article class="merch-mini-card">
-            <span>Next product</span>
-            <h3>Black hoodie</h3>
-            <p>Same two logo variants, likely priced above tee range because blanks and shipping cost more.</p>
-          </article>
-          <article class="merch-mini-card">
-            <span>Next product</span>
-            <h3>Black tank top</h3>
-            <p>Summer cut with SQTS or Semi Sage front art.</p>
-          </article>
-          <article class="merch-mini-card">
-            <span>Embroidery-first</span>
-            <h3>Black baseball cap</h3>
-            <p>Best with the compact SQTS chip/favicon mark or small SQTS wordmark.</p>
-          </article>
-          <article class="merch-mini-card">
-            <span>Desk gear</span>
-            <h3>Mug, mouse pad, pen</h3>
-            <p>Black accessories with either full SQTS logo or Semi Sage signature art.</p>
-          </article>
-        </div>
-
-        <div class="grid two">
-          <article class="card">
-            <h3>Fulfillment setup path</h3>
-            <ol class="numbered-list">
-              <li>Create a Stripe account under SmartSleeve Quantitative Trading Systems, LLC and connect a SmartSleeve business bank account.</li>
-              <li>Create the two tee products in a print-on-demand vendor account owned or paid by SmartSleeve, using the print PNGs above.</li>
-              <li>Configure the server-side merch checkout endpoint to create hosted Stripe Checkout Sessions for each product.</li>
-              <li>Configure the Stripe payment-success webhook to submit the paid order to the fulfillment vendor and store the vendor order id.</li>
-            </ol>
-          </article>
-          <article class="card">
-            <h3>Quality note</h3>
-            <p>For lowest friction, launch with direct-to-garment black tees. For a premium drop, use embroidered caps or embroidered chest marks where the provider supports it; large full-color art is usually better printed than embroidered.</p>
-            <p class="billing-note">Current checkout buttons are merchant-of-record ready but disabled until <code>MERCH_STRIPE_CHECKOUT_ENDPOINT</code> is configured. Card data must stay in Stripe-hosted checkout, never on this static site.</p>
-          </article>
         </div>
       </section>
 

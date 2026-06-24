@@ -30,10 +30,14 @@
       </div>
       <nav class="primary-nav concise-nav" aria-label="Primary">
         <a href="#dashboard" data-nav="dashboard" class="active">Dashboard</a>
+        <a href="#accounts" data-nav="accounts">Accounts</a>
+        <a href="#sleeves" data-nav="sleeves">Sleeves</a>
         <a href="#stock-picks" data-nav="stock-picks">Stock Picks</a>
         <a href="#recommendations" data-nav="recommendations">Recs</a>
         <a href="#trade" data-nav="trade">Trade Center</a>
+        <a href="#reallocation" data-nav="reallocation">Reallocation</a>
         <a href="#sage" data-nav="sage">Sage</a>
+        <a href="#diagnostics" data-nav="diagnostics">Diagnostics</a>
       </nav>
       <div class="sidebar-status">
         <b>Data source</b>
@@ -49,13 +53,26 @@
           <h1 id="page-title">Dashboard</h1>
           <p id="page-subtitle">What you own, why you own it, what changed, and what needs review.</p>
         </div>
-        <div class="sync-pill" id="sync-pill">Syncing</div>
+        <div class="topbar-actions">
+          <button type="button" class="text-button" id="refresh-feed-button">Refresh</button>
+          <button type="button" class="text-button subtle" id="sign-out-button">Sign out</button>
+          <div class="sync-pill" id="sync-pill">Syncing</div>
+        </div>
       </header>
       <div id="pull-refresh-indicator" class="pull-refresh-indicator" aria-live="polite">
         <span id="pull-refresh-label">Pull down to sync latest daemon cycle</span>
       </div>
 
       <section id="dashboard" class="panel active" data-section="dashboard">
+        <div class="operator-strip" id="developer-controls" hidden>
+          <label>User
+            <select id="developer-user-filter"></select>
+          </label>
+          <label>Account
+            <select id="developer-account-filter"></select>
+          </label>
+        </div>
+
         <div class="dashboard-grid">
           <article class="metric-card primary-metric">
             <span id="portfolio-value-label">Portfolio value</span>
@@ -78,11 +95,6 @@
             <p>Negative cash and explicit margin exposure.</p>
           </article>
           <article class="metric-card">
-            <span>Feed coverage</span>
-            <strong id="feed-coverage">Checking</strong>
-            <p id="feed-coverage-note">Account freshness and expected-account coverage.</p>
-          </article>
-          <article class="metric-card">
             <span>Daily P/L</span>
             <strong id="daily-pl">Needs sync</strong>
             <p>Intraday P/L is awaiting broker-level sync.</p>
@@ -90,7 +102,7 @@
           <article class="metric-card">
             <span>Total P/L</span>
             <strong id="total-pl">Needs basis</strong>
-            <p id="pnl-quality-note">Cost basis sync is required before total P/L is shown.</p>
+            <p>Cost basis sync is required before total P/L is shown.</p>
           </article>
           <article class="metric-card">
             <span>Portfolio return</span>
@@ -137,6 +149,7 @@
               </div>
               <button type="button" class="text-button" data-nav-button="trade">Trade Center</button>
             </div>
+            <div id="account-coverage" class="stack-list account-coverage"></div>
             <div id="account-cards" class="account-grid"></div>
           </article>
 
@@ -152,30 +165,6 @@
           </article>
         </div>
 
-        <article class="panel-card">
-          <div class="card-head">
-            <div>
-              <span>Coverage</span>
-              <h2>Account coverage and freshness</h2>
-            </div>
-            <span id="coverage-status" class="status-chip">Checking</span>
-          </div>
-          <div id="account-coverage" class="coverage-grid"></div>
-        </article>
-
-        <article class="panel-card">
-          <div class="card-head">
-            <div>
-              <span>Daemon health</span>
-              <h2>Broker auth and trading heartbeat</h2>
-            </div>
-            <span id="daemon-health-status" class="status-chip">Checking</span>
-          </div>
-          <div id="daemon-health" class="daemon-grid"></div>
-        </article>
-
-        <details class="dashboard-details">
-          <summary>Charts and report archive</summary>
         <div class="content-grid two-columns">
           <article class="panel-card">
             <div class="card-head">
@@ -220,13 +209,10 @@
               </div>
               <span class="status-chip">Algo active days</span>
             </div>
-            <div id="stock-pick-report-list-dashboard" class="stack-list" data-report-list="stock-picks"></div>
+            <div id="stock-pick-report-list" class="stack-list"></div>
           </article>
         </div>
-        </details>
 
-        <details class="dashboard-details">
-          <summary>Full holdings ledger</summary>
         <article class="panel-card">
           <div class="card-head">
             <div>
@@ -263,32 +249,106 @@
             </table>
           </div>
         </article>
-        </details>
+      </section>
+
+      <section id="accounts" class="panel" data-section="accounts">
+        <div class="section-heading">
+          <p class="eyebrow">Accounts</p>
+          <h2>Account values, broker status, and drilldowns</h2>
+          <p>Tap an account to inspect holdings, cash, margin buffer, sleeve assignments, and sync quality without scrolling through the full dashboard.</p>
+        </div>
+        <div id="accounts-directory" class="account-grid detail-grid-wide"></div>
+      </section>
+
+      <section id="account-detail" class="panel" data-section="account-detail">
+        <div class="section-heading">
+          <p class="eyebrow">Account Detail</p>
+          <h2 id="account-detail-title">Account</h2>
+          <p id="account-detail-subtitle">Broker, holdings, cash, margin buffer, and sleeve coverage.</p>
+        </div>
+        <div id="account-detail-content" class="content-grid two-columns"></div>
+      </section>
+
+      <section id="sleeves" class="panel" data-section="sleeves">
+        <div class="section-heading">
+          <p class="eyebrow">Sleeves</p>
+          <h2>Sleeve operating map</h2>
+          <p>Review active sleeves by account, holdings, target drift, ledger quality, and automation mode.</p>
+        </div>
+        <div id="sleeve-cards" class="sleeve-grid"></div>
+        <div class="content-grid two-columns">
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Rebalance queue</span>
+                <h2>Next sleeve actions</h2>
+              </div>
+              <button type="button" class="text-button" data-create-rebalance>Draft rebalance</button>
+            </div>
+            <div id="rebalance-list" class="stack-list"></div>
+          </article>
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Sleeve ledger</span>
+                <h2>Current assignments</h2>
+              </div>
+              <span class="status-chip">Tap sleeve cards</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <tbody id="sleeve-table"></tbody>
+              </table>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section id="sleeve-detail" class="panel" data-section="sleeve-detail">
+        <div class="section-heading">
+          <p class="eyebrow">Sleeve Detail</p>
+          <h2 id="sleeve-detail-title">Sleeve</h2>
+          <p id="sleeve-detail-subtitle">Behavior, holdings, trades, and account coverage for one active sleeve.</p>
+        </div>
+        <div id="sleeve-detail-content" class="content-grid two-columns"></div>
       </section>
 
       <section id="stock-picks" class="panel" data-section="stock-picks">
         <div class="section-heading">
           <p class="eyebrow">Stock Picks</p>
-          <h2>Stock-pick report archive</h2>
-          <p>Review weekly stock-pick emails and reports tied to the visible user or developer account scope.</p>
+          <h2>Subscribed sleeve stock-pick archive</h2>
+          <p>Review stock-pick universes for active and hibernating sleeve algos, then open the weekly email/report archive for each sleeve.</p>
         </div>
-        <article class="panel-card">
-          <div class="card-head">
-            <div>
-              <span>Weekly archive</span>
-              <h2>Stock-pick reports</h2>
+        <div class="content-grid stock-picks-layout">
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Subscribed sleeves</span>
+                <h2>Universes</h2>
+              </div>
+              <span class="status-chip">Active + hibernating</span>
             </div>
-            <span class="status-chip">Private feed</span>
-          </div>
-          <div id="stock-pick-report-list" class="stack-list" data-report-list="stock-picks"></div>
-        </article>
+            <div id="stock-pick-sleeves" class="stock-pick-sleeves"></div>
+          </article>
+
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Weekly archive</span>
+                <h2 id="stock-pick-title">Stock-pick reports</h2>
+              </div>
+              <span class="status-chip">Clickable reports</span>
+            </div>
+            <div id="stock-pick-archive" class="stack-list"></div>
+          </article>
+        </div>
       </section>
 
       <section id="recommendations" class="panel" data-section="recommendations">
         <div class="section-heading">
           <p class="eyebrow">Recs</p>
           <h2>Sage recommendations ready for review</h2>
-          <p>Review actionable findings and draft trade tickets without digging through the full Sage workspace.</p>
+          <p>Review actionable findings, draft trade tickets, and jump into the underlying account, sleeve, or Sage context without digging through the full dashboard.</p>
         </div>
         <div class="content-grid two-columns">
           <article class="panel-card">
@@ -305,9 +365,9 @@
             <div class="card-head">
               <div>
                 <span>Context</span>
-                <h2>Scope and buying power</h2>
+                <h2>Why this matters</h2>
               </div>
-              <span class="status-chip">Live feed</span>
+              <span class="status-chip">User-scoped</span>
             </div>
             <div id="recommendations-page-context" class="stack-list"></div>
           </article>
@@ -547,6 +607,70 @@
         </div>
       </section>
 
+      <section id="reallocation" class="panel" data-section="reallocation">
+        <div class="section-heading">
+          <p class="eyebrow">Sage Reallocation Lab</p>
+          <h2>Model basis cost before moving money</h2>
+          <p>Sketch a source, target, amount, and time window. Sage estimates basis risk, settlement friction, and how much patience may improve execution before a trade ticket is drafted.</p>
+        </div>
+        <div class="content-grid trade-layout">
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Proposal</span>
+                <h2>Reallocation inputs</h2>
+              </div>
+              <span class="status-chip">Analysis only</span>
+            </div>
+            <form id="reallocation-form" class="trade-form">
+              <label>Account
+                <select id="reallocation-account"></select>
+              </label>
+              <label>Sleeve
+                <select id="reallocation-sleeve"></select>
+              </label>
+              <label>Source ticker
+                <input id="reallocation-source" value="MU" autocomplete="off">
+              </label>
+              <label>Target ticker
+                <input id="reallocation-target" value="SNDK" autocomplete="off">
+              </label>
+              <label>Amount
+                <input id="reallocation-notional" inputmode="decimal" value="1500">
+              </label>
+              <label>Time horizon
+                <select id="reallocation-window">
+                  <option value="same_day">Same day</option>
+                  <option value="two_day">Two trading days</option>
+                  <option value="week">One week</option>
+                  <option value="patient">Patient Sage window</option>
+                </select>
+              </label>
+              <label>Latest buy deadline
+                <input id="reallocation-deadline" type="datetime-local">
+              </label>
+              <label class="wide">Reason
+                <textarea id="reallocation-reason" rows="3">Explore whether Sage should wait for better basis capture before rotating exposure.</textarea>
+              </label>
+              <div class="button-row wide">
+                <button type="button" class="primary" id="analyze-reallocation">Analyze</button>
+                <button type="button" class="text-button" id="draft-reallocation">Send to trade ticket</button>
+              </div>
+            </form>
+          </article>
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Sage readout</span>
+                <h2>Basis, settlement, and timing</h2>
+              </div>
+              <span class="status-chip warning">No live order</span>
+            </div>
+            <div id="reallocation-preview" class="preview-box"></div>
+          </article>
+        </div>
+      </section>
+
       <section id="sage" class="panel" data-section="sage">
         <div class="section-heading sage-heading">
           <div>
@@ -640,15 +764,85 @@
         </article>
       </section>
 
+      <section id="diagnostics" class="panel" data-section="diagnostics">
+        <div class="section-heading">
+          <p class="eyebrow">Diagnostics</p>
+          <h2>Broker health, margin clarity, and sync gaps</h2>
+          <p>Developer mode shows cross-account diagnostics; user mode stays scoped to the signed-in owner.</p>
+        </div>
+        <div class="dashboard-grid compact-metrics">
+          <article class="metric-card">
+            <span>Largest position</span>
+            <strong id="largest-position">Loading...</strong>
+            <p id="largest-position-note">Connect broker to calculate.</p>
+          </article>
+          <article class="metric-card">
+            <span>Top three risk</span>
+            <strong id="top-three-risk">Loading...</strong>
+            <p>Share of visible equity in the three largest holdings.</p>
+          </article>
+          <article class="metric-card">
+            <span>Margin balance</span>
+            <strong id="risk-margin">Loading...</strong>
+            <p>Margin usage and buffer, not a plain negative-cash error.</p>
+          </article>
+          <article class="metric-card">
+            <span>Broker health</span>
+            <strong id="broker-health">Loading...</strong>
+            <p>Visible synced accounts in the current app scope.</p>
+          </article>
+        </div>
+        <div class="content-grid two-columns">
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Actions</span>
+                <h2>Risk and data follow-up</h2>
+              </div>
+              <button type="button" class="danger-button small" id="risk-kill-switch">Kill switch</button>
+            </div>
+            <div id="risk-actions" class="stack-list"></div>
+          </article>
+          <article class="panel-card">
+            <div class="card-head">
+              <div>
+                <span>Connections</span>
+                <h2>Broker sync status</h2>
+              </div>
+              <span class="status-chip">Read-only view</span>
+            </div>
+            <div id="broker-connections" class="stack-list"></div>
+          </article>
+        </div>
+        <article class="panel-card">
+          <div class="card-head">
+            <div>
+              <span>Account diagnostics</span>
+              <h2>Cash, buying power, and margin notes</h2>
+            </div>
+            <span class="status-chip">Scoped</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <tbody id="risk-account-table"></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
     </main>
   </div>
 
   <nav class="bottom-nav concise-bottom-nav" aria-label="Primary mobile">
     <a href="#dashboard" data-nav="dashboard" class="active">Dashboard</a>
+    <a href="#accounts" data-nav="accounts">Accounts</a>
+    <a href="#sleeves" data-nav="sleeves">Sleeves</a>
     <a href="#stock-picks" data-nav="stock-picks">Picks</a>
     <a href="#recommendations" data-nav="recommendations">Recs</a>
     <a href="#trade" data-nav="trade">Trade</a>
+    <a href="#reallocation" data-nav="reallocation">Reallocate</a>
     <a href="#sage" data-nav="sage">Sage</a>
+    <a href="#diagnostics" data-nav="diagnostics">Health</a>
   </nav>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
