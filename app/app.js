@@ -160,10 +160,16 @@
   function restoreStoredSession() {
     if (sessionToken) return;
     try {
+      var requestedPrincipal = principalEmail;
       var payload = JSON.parse(window.localStorage.getItem(sessionStorageKey()) || "{}");
       if (!payload || !payload.sessionToken) return;
+      var storedPrincipal = normalizeEmail(payload.principalEmail || "");
+      if (requestedPrincipal && storedPrincipal && storedPrincipal !== requestedPrincipal) {
+        clearStoredSession();
+        return;
+      }
       sessionToken = payload.sessionToken;
-      principalEmail = normalizeEmail(payload.principalEmail || principalEmail);
+      principalEmail = storedPrincipal || requestedPrincipal;
       if (payload.role === "developer") {
         appEdition = "developer";
         accountScope = "all";
@@ -178,9 +184,10 @@
   function persistStoredSession(profile) {
     try {
       var role = (profile || {}).role === "developer" ? "developer" : "user";
+      var profileEmail = normalizeEmail((profile || {}).email || principalEmail);
       window.localStorage.setItem("smartsleeve_session:" + role, JSON.stringify({
         sessionToken: sessionToken,
-        principalEmail: principalEmail,
+        principalEmail: profileEmail,
         role: role,
         savedAt: new Date().toISOString()
       }));
@@ -3469,6 +3476,7 @@
     removeAuthGate();
     var session = payload.session || {};
     var profile = session.profile || {};
+    var requestedPrincipal = principalEmail;
     if (profile.email) {
       principalEmail = normalizeEmail(profile.email);
     }
@@ -3484,6 +3492,16 @@
     state.feedSource = sourceUrl;
     state.allAccounts = visibleAccountRows(accounts);
     state.accounts = developerFilteredAccounts(state.allAccounts);
+    if (requestedPrincipal && appEdition !== "developer" && principalEmail !== requestedPrincipal) {
+      state.accounts = [];
+      state.allAccounts = [];
+      state.feedWarning = recommendation("session-principal-mismatch", "Wrong account session", "Sign in again", "SmartSleeve", "Auth", 0, "This browser session is for " + principalEmail + ", but this app link is scoped to " + requestedPrincipal + ".", "Sign out and sign in with the requested SmartSleeve account before reviewing balances or trades.", "EXTERNAL_BROKER_SYNC");
+      text("snapshot-time", "Sign in with " + requestedPrincipal);
+      clearStoredSession();
+      renderAll();
+      showAuthGate("Sign in with " + requestedPrincipal + " to load this SmartSleeve app.");
+      return;
+    }
     var aggregated = aggregateHoldings(state.accounts);
     state.holdings = aggregated.holdings;
     state.foreignHoldings = aggregated.foreign;
