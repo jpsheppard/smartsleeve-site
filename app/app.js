@@ -229,7 +229,7 @@
       "<label>First name<input id=\"auth-first-name\" type=\"text\" autocomplete=\"given-name\" autocapitalize=\"words\"></label>",
       "<label>Last name<input id=\"auth-last-name\" type=\"text\" autocomplete=\"family-name\" autocapitalize=\"words\"></label>",
       "</div>",
-      "<label>Email<input id=\"auth-email\" type=\"email\" autocomplete=\"username\" autocapitalize=\"none\" spellcheck=\"false\" required></label>",
+      "<label>Email or username<input id=\"auth-email\" type=\"text\" autocomplete=\"username\" autocapitalize=\"none\" spellcheck=\"false\" required></label>",
       "<label>Password<input id=\"auth-password\" type=\"password\" autocomplete=\"off\" minlength=\"8\" data-lpignore=\"true\" data-1p-ignore=\"true\" autocapitalize=\"none\" spellcheck=\"false\" required></label>",
       "<label class=\"auth-register-field\">Confirm password<input id=\"auth-password-confirm\" type=\"password\" autocomplete=\"off\" minlength=\"8\" data-lpignore=\"true\" data-1p-ignore=\"true\" autocapitalize=\"none\" spellcheck=\"false\"></label>",
       "<label class=\"auth-check auth-register-field\"><input id=\"auth-accepted-terms\" type=\"checkbox\"><span>I understand SmartSleeve account access is for verified users and does not itself authorize broker trading.</span></label>",
@@ -329,13 +329,14 @@
       text("auth-gate-message", "SmartSleeve auth endpoint is not configured.");
       return;
     }
-    var email = normalizeEmail(($("auth-email") || {}).value || "");
+    var identity = String(($("auth-email") || {}).value || "").trim();
+    var email = normalizeEmail(identity);
     var password = String(($("auth-password") || {}).value || "");
     text("auth-gate-message", "Signing in...");
     authFetch(loginEndpoint, {
       method: "POST",
       headers: {"Content-Type": "application/json", "Accept": "application/json"},
-      body: JSON.stringify({identity: email, password: password})
+      body: JSON.stringify({identity: identity, password: password})
     })
       .then(function (response) {
         return response.json().then(function (payload) {
@@ -450,6 +451,23 @@
 
   function normalizeEmail(value) {
     return String(value || "").trim().toLowerCase();
+  }
+
+  function canonicalEmail(value) {
+    var email = normalizeEmail(value);
+    return email === "john@smartsleeve.ai" ? "jpsheppard88@gmail.com" : email;
+  }
+
+  function knownUserEmailFromText(value) {
+    var context = displayLabel(value, "").toLowerCase();
+    if (!context) return "";
+    if (context.indexOf("criseldasarenas") !== -1 || context.indexOf("crissy") !== -1 || context.indexOf("criselda") !== -1) {
+      return "criseldasarenas@gmail.com";
+    }
+    if (context.indexOf("jpsheppard88") !== -1 || context.indexOf("john@smartsleeve.ai") !== -1 || context.indexOf("john sheppard") !== -1) {
+      return "jpsheppard88@gmail.com";
+    }
+    return "";
   }
 
   function html(value) {
@@ -613,6 +631,12 @@
     var context = [
       account.ownerEmail,
       account.owner_email,
+      account.userEmail,
+      account.user_email,
+      account.principalEmail,
+      account.principal_email,
+      account.owner,
+      account.user,
       account.account,
       account.name,
       account.id,
@@ -620,10 +644,34 @@
       account.account_id,
       account.nickname,
       account.label
-    ].map(function (item) { return displayLabel(item, ""); }).join(" ").toLowerCase();
-    if (context.indexOf("crissy") !== -1 || context.indexOf("criseldasarenas") !== -1) return "criseldasarenas@gmail.com";
-    if (context.indexOf("jpsheppard") !== -1 || context.indexOf("john") !== -1 || context.indexOf("sheppard") !== -1) return "jpsheppard88@gmail.com";
-    return "";
+    ].map(function (item) { return displayLabel(item, ""); }).join(" ");
+    return knownUserEmailFromText(context);
+  }
+
+  function rowOwnerEmail(row) {
+    if (!row) return "";
+    return canonicalEmail(
+      row.ownerEmail
+        || row.owner_email
+        || row.userEmail
+        || row.user_email
+        || row.principalEmail
+        || row.principal_email
+        || row.email
+        || inferAccountOwnerEmail(row)
+    );
+  }
+
+  function rowBelongsToAnotherKnownUser(row) {
+    var owner = rowOwnerEmail(row);
+    var principal = canonicalEmail(principalEmail);
+    if (!owner || !principal) return false;
+    return owner !== principal && (
+      owner === "jpsheppard88@gmail.com"
+        || owner === "criseldasarenas@gmail.com"
+        || principal === "jpsheppard88@gmail.com"
+        || principal === "criseldasarenas@gmail.com"
+    );
   }
 
   function normalizeAccount(account) {
@@ -655,7 +703,7 @@
       equity = positionValue + (cash || 0);
       equitySource = "positions_plus_cash_estimate";
     }
-    var ownerEmail = normalizeEmail(account.ownerEmail || account.owner_email || inferAccountOwnerEmail(account));
+    var ownerEmail = rowOwnerEmail(account);
     return {
       id: account.id || account.accountId || account.account_id || account.account,
       account: displayLabel(account.account || account.name || account.id, "Account"),
@@ -693,9 +741,13 @@
       if (typeof audience === "string") {
         audience = audience.split(/[,\s]+/);
       }
-      var ownerEmail = normalizeEmail(row.ownerEmail || row.owner_email);
-      return ownerEmail === principalEmail
-        || (Array.isArray(audience) ? audience.map(normalizeEmail).indexOf(principalEmail) !== -1 : false);
+      if (rowBelongsToAnotherKnownUser(row)) {
+        return false;
+      }
+      var ownerEmail = rowOwnerEmail(row);
+      var principal = canonicalEmail(principalEmail);
+      return ownerEmail === principal
+        || (Array.isArray(audience) ? audience.map(canonicalEmail).indexOf(principal) !== -1 : false);
     });
   }
 
@@ -704,7 +756,7 @@
       return accounts;
     }
     return accounts.filter(function (account) {
-      var owner = normalizeEmail(account.ownerEmail || account.owner_email);
+      var owner = rowOwnerEmail(account);
       var accountId = String(account.id || account.accountId || account.account_id || "");
       return (state.selectedOwnerEmail === "all" || owner === state.selectedOwnerEmail)
         && (state.selectedAccountId === "all" || accountId === state.selectedAccountId);
@@ -716,7 +768,7 @@
       return rows;
     }
     return rows.filter(function (row) {
-      var owner = normalizeEmail(row.ownerEmail || row.owner_email);
+      var owner = rowOwnerEmail(row);
       var accountId = String(row.accountId || row.account_id || row.id || "");
       return (state.selectedOwnerEmail === "all" || owner === state.selectedOwnerEmail)
         && (state.selectedAccountId === "all" || accountId === state.selectedAccountId);
@@ -1245,7 +1297,7 @@
     var owners = {};
     var accounts = {};
     (state.allAccounts || state.accounts || []).forEach(function (account) {
-      var owner = normalizeEmail(account.ownerEmail);
+      var owner = rowOwnerEmail(account);
       if (owner) owners[owner] = accountOwnerLabel(owner);
       accounts[String(account.id)] = account.account + " / " + accountOwnerLabel(owner);
     });
@@ -1399,8 +1451,8 @@
     var missing = coverage.missing || [];
     var configuredOnly = coverage.configured_without_live || [];
     if (appEdition !== "developer" && principalEmail) {
-      missing = missing.filter(function (row) { return normalizeEmail(row.ownerEmail) === principalEmail; });
-      configuredOnly = configuredOnly.filter(function (row) { return normalizeEmail(row.ownerEmail) === principalEmail; });
+      missing = missing.filter(function (row) { return rowOwnerEmail(row) === canonicalEmail(principalEmail); });
+      configuredOnly = configuredOnly.filter(function (row) { return rowOwnerEmail(row) === canonicalEmail(principalEmail); });
     }
     var visible = Number(coverage.visible_count || 0);
     var total = Number(coverage.expected_count || expected.length || 0);
@@ -1514,6 +1566,22 @@
     if (textValue.indexOf("general") !== -1) return "general_sage";
     if (textValue.indexOf("value") !== -1) return "value_sage";
     return textValue.replace(/\s+/g, "_");
+  }
+
+  function stockPickLatestUrl(report) {
+    var key = stockPickKey(report.algo || report.sleeve || report.sleeves || report.title || report.url);
+    if (key === "grand_sage") return "/app/reports/stock-picks/grand_sage/latest.html";
+    if (key === "general_sage") return "/app/reports/stock-picks/general_sage/latest.html";
+    return "";
+  }
+
+  function normalizeStockPickUrl(report) {
+    var url = report.url || report.latestUrl || report.latest_url || report.displayUrl || "#";
+    var latestUrl = stockPickLatestUrl(report);
+    if (latestUrl && /^\/app\/reports\/stock-picks\/[^/]+\/(?!latest\.html)[^/]+\.html(?:[?#].*)?$/.test(String(url))) {
+      return latestUrl;
+    }
+    return url;
   }
 
   function stockPickFallbackReports() {
@@ -1663,7 +1731,7 @@
   }
 
   function stockPickArchiveCard(report) {
-    var url = report.url || report.latestUrl || report.latest_url || report.displayUrl || "#";
+    var url = normalizeStockPickUrl(report);
     var isLockedFallback = isLocalFallbackReport(report);
     var title = displayLabel(report.title || report.subject, "Weekly stock picks");
     var date = displayLabel(report.date || report.generatedAt || report.generated_at || report.timestamp, "latest");
@@ -1690,7 +1758,7 @@
   }
 
   function reportCard(report) {
-    var url = report.url || report.latestUrl || "#";
+    var url = report.type === "stock_pick" ? normalizeStockPickUrl(report) : (report.url || report.latestUrl || "#");
     var isLockedFallback = isLocalFallbackReport(report);
     return "<article class=\"stack-item\">"
       + "<div class=\"stack-item-head\"><b>" + html(report.title) + "</b><span>" + html(report.date || "latest") + "</span></div>"
@@ -3054,7 +3122,7 @@
       wait(650)
     ]).then(function (results) {
       var ok = Boolean(results[0]);
-      if (!ok) return {ok: false, updated: false, refreshStarted: false};
+      if (!ok) return {ok: false, updated: false, refreshStarted: refreshStarted};
       return wait(150).then(function () {
         var updated = Boolean(previousStamp && feedStamp(state.payload || {}) !== previousStamp);
         return {ok: true, updated: updated, refreshStarted: refreshStarted};
@@ -3062,13 +3130,13 @@
     }).then(function (result) {
       state.pullRefresh.refreshing = false;
       runRefreshBounce(result.ok);
-      updatePullRefreshIndicator(result.ok ? 96 : 72, false, result.ok ? (result.updated ? "Latest daemon cycle synced: " + latestDaemonLabel() : "Newest cached daemon cycle loaded") : "Current view kept; no newer daemon cache yet");
+      updatePullRefreshIndicator(result.ok ? 96 : 72, false, result.ok ? (result.updated ? "Latest daemon cycle synced: " + latestDaemonLabel() : "Newest cached daemon cycle loaded") : "Current view kept while SmartSleeve checks the cache");
       toast(result.ok ? (result.updated ? "Latest daemon cycle synced." : (result.refreshStarted ? "Showing cached data while SmartSleeve refreshes in the background." : "You are already viewing the newest daemon cache.")) : "Current view kept; no newer daemon cache yet.");
       resetPullRefresh(900);
     }).catch(function () {
       state.pullRefresh.refreshing = false;
       runRefreshBounce(false);
-      updatePullRefreshIndicator(72, false, "Current view kept; daemon cache unavailable");
+      updatePullRefreshIndicator(72, false, "Current view kept while SmartSleeve checks the cache");
       toast("Current signed-in view kept while SmartSleeve checks for newer data.");
       resetPullRefresh(900);
     });
@@ -3095,7 +3163,7 @@
     if (!shell) return;
     shell.classList.remove("refresh-bounce", "refresh-bounce-failed");
     void shell.offsetWidth;
-    shell.classList.add(ok ? "refresh-bounce" : "refresh-bounce-failed");
+    shell.classList.add("refresh-bounce");
     window.setTimeout(function () {
       shell.classList.remove("refresh-bounce", "refresh-bounce-failed");
     }, 780);
@@ -3389,7 +3457,7 @@
     });
     document.addEventListener("change", function (event) {
       if (event.target && event.target.id === "developer-user-filter") {
-        state.selectedOwnerEmail = normalizeEmail(event.target.value || "all") || "all";
+        state.selectedOwnerEmail = canonicalEmail(event.target.value || "all") || "all";
         state.selectedAccountId = "all";
         if (state.payload) applyFeed(state.payload, state.feedSource);
         return;
