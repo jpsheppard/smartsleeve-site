@@ -221,7 +221,7 @@
       "<p id=\"auth-gate-message\">" + html(message || "Sign in to load your private SmartSleeve data.") + "</p>",
       "<div class=\"auth-switch\" role=\"tablist\" aria-label=\"SmartSleeve access mode\">",
       "<button type=\"button\" data-auth-mode=\"login\" aria-selected=\"true\">Sign in</button>",
-      "<button type=\"button\" data-auth-mode=\"register\" aria-selected=\"false\">Create account</button>",
+      "<button type=\"button\" data-auth-mode=\"register\" aria-selected=\"false\">Create</button>",
       "</div>",
       "<label class=\"auth-register-field\">Username<input id=\"auth-username\" type=\"text\" autocomplete=\"username\" minlength=\"3\"></label>",
       "<div class=\"auth-name-grid auth-register-field\">",
@@ -674,7 +674,10 @@
       if (typeof audience === "string") {
         audience = audience.split(/[,\s]+/);
       }
-      return normalizeEmail(row.ownerEmail || row.owner_email) === principalEmail
+      var ownerEmail = normalizeEmail(row.ownerEmail || row.owner_email);
+      var developerEmail = normalizeEmail(row.developerEmail || row.developer_email);
+      return ownerEmail === principalEmail
+        || (!ownerEmail && developerEmail === principalEmail)
         || (Array.isArray(audience) ? audience.map(normalizeEmail).indexOf(principalEmail) !== -1 : false);
     });
   }
@@ -3040,8 +3043,14 @@
     }).then(function (result) {
       state.pullRefresh.refreshing = false;
       runRefreshBounce(result.ok);
-      updatePullRefreshIndicator(result.ok ? 96 : 72, false, result.ok ? (result.updated ? "Latest daemon cycle synced: " + latestDaemonLabel() : "Newest cached daemon cycle loaded") : "Current view kept; refresh did not replace data");
-      toast(result.ok ? (result.updated ? "Latest daemon cycle synced." : (result.refreshStarted ? "Showing cached data while SmartSleeve refreshes in the background." : "Showing the newest daemon cache already available.")) : "Current view kept. SmartSleeve did not replace the feed.");
+      updatePullRefreshIndicator(result.ok ? 96 : 72, false, result.ok ? (result.updated ? "Latest daemon cycle synced: " + latestDaemonLabel() : "Newest cached daemon cycle loaded") : "Current view kept; no newer daemon cache yet");
+      toast(result.ok ? (result.updated ? "Latest daemon cycle synced." : (result.refreshStarted ? "Showing cached data while SmartSleeve refreshes in the background." : "You are already viewing the newest daemon cache.")) : "Current view kept; no newer daemon cache yet.");
+      resetPullRefresh(900);
+    }).catch(function () {
+      state.pullRefresh.refreshing = false;
+      runRefreshBounce(false);
+      updatePullRefreshIndicator(72, false, "Current view kept; daemon cache unavailable");
+      toast("Current signed-in view kept while SmartSleeve checks for newer data.");
       resetPullRefresh(900);
     });
   }
@@ -3460,7 +3469,7 @@
     if (profile.email) {
       principalEmail = normalizeEmail(profile.email);
     }
-    if (profile.role === "developer") {
+    if (profile.role === "developer" && requestedDeveloperView) {
       appEdition = "developer";
       accountScope = "all";
     } else {
