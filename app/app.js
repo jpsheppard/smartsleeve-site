@@ -706,7 +706,8 @@
 
   function rowOwnerEmail(row) {
     if (!row) return "";
-    return canonicalEmail(
+    var inferred = canonicalEmail(inferAccountOwnerEmail(row));
+    var explicit = canonicalEmail(
       row.ownerEmail
         || row.owner_email
         || row.userEmail
@@ -714,8 +715,12 @@
         || row.principalEmail
         || row.principal_email
         || row.email
-        || inferAccountOwnerEmail(row)
     );
+    var knownOwners = ["jpsheppard88@gmail.com", "criseldasarenas@gmail.com"];
+    if (inferred && explicit && inferred !== explicit && knownOwners.indexOf(inferred) !== -1 && knownOwners.indexOf(explicit) !== -1) {
+      return inferred;
+    }
+    return explicit || inferred;
   }
 
   function rowBelongsToAnotherKnownUser(row) {
@@ -1830,22 +1835,33 @@
     var hedgeMarkup = hedges.length
       ? "<p class=\"stock-pick-hedges\">Hedges: " + html(hedges.join(", ")) + "</p>"
       : "";
+    var action = validReportUrl(url)
+      ? "<a class=\"text-button\" href=\"" + html(url) + "\" target=\"_blank\" rel=\"noopener\">Open archive</a>"
+      : "<span class=\"status-chip warning\">Archive pending</span>";
     return "<article class=\"stack-item stock-pick-description\">"
       + "<div class=\"stack-item-head\"><b>" + html(title) + "</b><span>" + html(date) + "</span></div>"
       + "<p>" + html(body) + "</p>"
       + symbolMarkup
       + hedgeMarkup
-      + "<div class=\"recommendation-actions\"><a class=\"text-button\" href=\"" + html(url) + "\" target=\"_blank\" rel=\"noopener\">Open archive</a></div>"
+      + "<div class=\"recommendation-actions\">" + action + "</div>"
       + "</article>";
   }
 
   function reportCard(report) {
     var url = report.type === "stock_pick" ? normalizeStockPickUrl(report) : (report.url || report.latestUrl || "#");
+    var action = validReportUrl(url)
+      ? "<a class=\"text-button\" href=\"" + html(url) + "\" target=\"_blank\" rel=\"noopener\">Open report</a>"
+      : "<span class=\"status-chip warning\">Archive pending</span>";
     return "<article class=\"stack-item\">"
       + "<div class=\"stack-item-head\"><b>" + html(report.title) + "</b><span>" + html(report.date || "latest") + "</span></div>"
       + "<p>" + html(report.type === "stock_pick" ? "Stock pick email/report archive" : "Daily performance report archive") + "</p>"
-      + "<div class=\"recommendation-actions\"><a class=\"text-button\" href=\"" + html(url) + "\" target=\"_blank\" rel=\"noopener\">Open report</a></div>"
+      + "<div class=\"recommendation-actions\">" + action + "</div>"
       + "</article>";
+  }
+
+  function validReportUrl(url) {
+    var value = String(url || "").trim();
+    return Boolean(value && value !== "#" && !/^javascript:/i.test(value));
   }
 
   function renderHoldingsTable() {
@@ -2752,6 +2768,7 @@
       var connected = state.accounts.map(function (account) {
         return stackItem(account.broker, account.status || "Connected", account.account + " last snapshot " + (account.generatedAt || "unknown"), 80);
       });
+      connected.unshift(stackItem("Daemon outage alerts", "Needs backend confirmation", "IBKR gateway, RH/E-Trade reauth, and abnormal daemon stops should share the same phone/email escalation schedule.", 55, "compat-warn"));
       connected.push(stackItem("Fidelity via Plaid", "Pending production access / read-only", "Sandbox keys cannot view John's live Fidelity accounts until production consent is approved.", 30));
       connected.push(stackItem("Schwab PCRA", "Pending official API onboarding", "Use read-only mode first; trading permission must be explicit.", 20));
       brokerConnections.innerHTML = connected.join("");
@@ -3769,11 +3786,13 @@
       })
       .catch(function (error) {
         if (state.payload && (options.refresh || options.silent || options.interactiveRefresh || error.authRequired)) {
-          text("sync-pill", "Current view kept");
-          text("snapshot-time", "Current view kept while SmartSleeve checks for newer data");
-          state.feedWarning = recommendation("feed-refresh-kept-current", "Current dashboard kept", "Retry sync", "SmartSleeve", "Data", 0, error.message, "Displayed holdings were preserved; verify freshness before making decisions.", "EXTERNAL_BROKER_SYNC");
+          text("sync-pill", options.interactiveRefresh || options.silent ? "Checked" : "Current view kept");
+          text("snapshot-time", "Last synced trader cycle at " + latestDaemonLabel());
+          state.feedWarning = options.interactiveRefresh || options.silent
+            ? null
+            : recommendation("feed-refresh-kept-current", "Current dashboard kept", "Retry sync", "SmartSleeve", "Data", 0, error.message, "Displayed holdings were preserved; verify freshness before making decisions.", "EXTERNAL_BROKER_SYNC");
           renderAll();
-          if (options.refresh || options.interactiveRefresh) {
+          if (options.refresh && !options.interactiveRefresh) {
             toast("Current view kept while SmartSleeve checks for newer data.");
           }
         } else {
