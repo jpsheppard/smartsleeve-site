@@ -4,7 +4,10 @@
   var params = new URLSearchParams(window.location.search);
   var appEdition = params.get("app_edition") || "web";
   var accountScope = params.get("account_scope") || "user";
-  var requestedDeveloperView = appEdition === "developer" || accountScope === "all";
+  if (appEdition !== "developer" && accountScope === "all") {
+    accountScope = "user";
+  }
+  var requestedDeveloperView = appEdition === "developer";
   var principalEmail = normalizeEmail(params.get("principal_email") || "");
   var authEndpoint = metaContent("smartsleeve-auth-endpoint");
   var orderIntentEndpoint = metaContent("smartsleeve-order-intent-endpoint") || (authEndpoint ? authEndpoint.replace(/\/$/, "") + "/order-intents" : "");
@@ -569,7 +572,9 @@
         var item = value[key];
         if (item && typeof item === "object") return "";
         return displayLabel(item, "");
-      }).filter(Boolean);
+      }).filter(function (item) {
+        return item && !isOperationalNoiseLabel(item);
+      });
       return shallow.join(" / ") || (fallback || "");
     }
     return fallback || "";
@@ -3185,7 +3190,7 @@
     state.pullRefresh.refreshing = true;
     state.pullRefresh.tracking = false;
     state.pullRefresh.armed = false;
-    updatePullRefreshIndicator(96, true, "Loading newest cached daemon cycle...");
+    updatePullRefreshIndicator(96, true, "Checking latest trader cycle...");
     text("sync-pill", "Refreshing cache");
     var refreshStarted = requestServerFeedRefresh();
     Promise.all([
@@ -3203,7 +3208,7 @@
       runRefreshBounce(result.ok);
       updatePullRefreshIndicator(result.ok ? 72 : 48, false, result.ok ? (result.updated ? "Synced " + latestDaemonLabel() : "Already current") : "Kept current view");
       if (result.ok && result.updated) {
-        toast("Latest daemon cycle synced.");
+        toast("Latest trader cycle synced.");
       } else if (!result.ok && !state.payload) {
         toast("Private feed unavailable. Sign in or retry.");
       }
@@ -3665,8 +3670,8 @@
     state.reports = ensureStockPickReports(scopedRowsForVisibleAccounts(payload.reports || [], visibleAccountIds));
     state.accountCoverage = payload.accountCoverage || null;
     state.feedWarning = null;
-    text("snapshot-source", payload.source || "Private SmartSleeve API");
-    text("snapshot-time", "Latest daemon " + latestDaemonLabel(payload));
+    text("snapshot-source", sourceLabel(payload));
+    text("snapshot-time", "Last synced trader cycle at " + latestDaemonLabel(payload));
     text("sync-pill", "Private API synced");
     addActivity("Cloud feed synced", "EXTERNAL_BROKER_SYNC", appEdition === "developer" ? "All accounts" : principalEmail, state.accounts.length + " account(s), " + state.serverTrades.length + " trades, " + state.brain.length + " brain rows.");
     renderAll();
@@ -3681,7 +3686,15 @@
     var latest = timestamps.map(function (value) { return new Date(value); }).filter(function (date) {
       return !Number.isNaN(date.getTime());
     }).sort(function (a, b) { return b - a; })[0];
-    return latest ? latest.toLocaleString([], {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"}) : "time unavailable";
+    return latest ? latest.toLocaleString([], {month: "long", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit"}) : "time unavailable";
+  }
+
+  function sourceLabel(payload) {
+    var label = displayLabel((payload || {}).source, "");
+    if (appEdition !== "developer" && /^smartsleeve analytics exports and report archive$/i.test(label)) {
+      return "Private SmartSleeve feed";
+    }
+    return label || "Private SmartSleeve feed";
   }
 
   function collectDaemonTimestamps(value, out) {
@@ -3763,7 +3776,7 @@
           text("snapshot-time", "Current view kept while SmartSleeve checks for newer data");
           state.feedWarning = recommendation("feed-refresh-kept-current", "Current dashboard kept", "Retry sync", "SmartSleeve", "Data", 0, error.message, "Displayed holdings were preserved; verify freshness before making decisions.", "EXTERNAL_BROKER_SYNC");
           renderAll();
-          if (options.refresh || options.interactiveRefresh) {
+          if (options.refresh && !options.interactiveRefresh) {
             toast("Current view kept while SmartSleeve checks for newer data.");
           }
         } else {
