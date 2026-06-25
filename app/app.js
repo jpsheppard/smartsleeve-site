@@ -880,6 +880,7 @@
       };
     });
     var brokerName = account.broker || "Broker";
+    var brokerEquity = numeric(account.brokerEquity != null ? account.brokerEquity : account.broker_equity);
     var equity = numeric(account.equity != null ? account.equity : account.account_equity);
     var cash = numeric(account.cash);
     var buyPower = numeric(account.buyPower != null ? account.buyPower : account.cash_available_for_buys);
@@ -887,6 +888,10 @@
       return sum + (numeric(position.value) || 0);
     }, 0);
     var equitySource = "broker";
+    if (brokerEquity != null && Math.abs(brokerEquity) >= 0.005 && (equity == null || Math.abs(brokerEquity - equity) > Math.max(100, Math.abs(brokerEquity) * 0.01))) {
+      equity = brokerEquity;
+      equitySource = "broker_equity";
+    }
     if ((equity == null || equity === 0) && positionValue > 0 && /e[-*\s]?trade/i.test(brokerName)) {
       equity = positionValue + (cash || 0);
       equitySource = "positions_plus_cash_estimate";
@@ -905,6 +910,7 @@
       sourceIsStale: Boolean(account.sourceIsStale || account.source_is_stale),
       sourceFreshness: account.sourceFreshness || account.source_freshness,
       sourceFreshnessLabel: account.sourceFreshnessLabel || account.source_freshness_label,
+      brokerEquity: brokerEquity,
       strategy: account.strategy,
       tradingSystem: account.tradingSystem || account.trading_system,
       operator: account.operator,
@@ -1302,6 +1308,30 @@
       }
     });
     return {positionValue: positionValue, cash: cash};
+  }
+
+  function sleeveHasCurrentOwnership(sleeve) {
+    if (!sleeve || typeof sleeve !== "object") return false;
+    var directValue = [
+      sleeve.cashUsd,
+      sleeve.cash_usd,
+      sleeve.positionValueUsd,
+      sleeve.position_value_usd,
+      sleeve.netLiquidationUsd,
+      sleeve.net_liquidation_usd
+    ].some(function (value) { return Math.abs(numeric(value) || 0) >= 0.005; });
+    if (directValue) return true;
+    var positionValues = sleeve.positionValues || sleeve.position_values || {};
+    if (positionValues && typeof positionValues === "object" && Object.keys(positionValues).some(function (symbol) {
+      return Math.abs(numeric(positionValues[symbol]) || 0) >= 0.005;
+    })) return true;
+    var positionQuantities = sleeve.positionQuantities || sleeve.position_quantities || {};
+    if (positionQuantities && typeof positionQuantities === "object" && Object.keys(positionQuantities).some(function (symbol) {
+      return Math.abs(numeric(positionQuantities[symbol]) || 0) >= 0.000001;
+    })) return true;
+    return (sleeve.holdings || []).some(function (holding) {
+      return holding && holding.source === "current_position" && Math.abs(numeric(holding.shares) || 0) >= 0.000001;
+    });
   }
 
   function ensureSleeve(map, name, accountName) {
@@ -1748,7 +1778,7 @@
     var emptyAccountWarning = !holdings.length && !(numeric(account.equity) > 0) && /awaiting|configured|pending|sync/i.test(account.status || "");
     target.innerHTML = [
       "<article class=\"panel-card\"><div class=\"card-head\"><div><span>Broker values</span><h2>Cash and margin</h2></div><span class=\"status-chip\">" + html(account.broker) + "</span></div><div class=\"stack-list\">"
-        + stackItem("Account value", money(account.equity), account.equitySource === "positions_plus_cash_estimate" ? "Estimated from E-Trade positions plus cash because broker value was zero." : "Broker-reported account value.", null)
+        + stackItem("Account value", money(account.equity), accountValueSourceCopy(account), null)
         + stackItem("Data freshness", accountFreshnessLabel(account), account.sourceIsStale ? "Broker positions may be stale. Refresh the daemon/account analytics before trading from this view." : "Broker/account export is inside the freshness window.", account.sourceIsStale ? 25 : null, account.sourceIsStale ? "with-progress" : "")
         + stackItem("Cash / margin", cashMarginMeta(account), marginPlainText(account), numeric(account.cash) < 0 ? 45 : 0, numeric(account.cash) < 0 ? "with-progress" : "")
         + stackItem("Buying power", money(account.buyPower), "Buying power can be zero even when account value is positive.", null)
@@ -1805,6 +1835,7 @@
       });
       var mode = String(sleeve.operatingMode || sleeve.operating_mode || "unknown").toLowerCase();
       var hasValue = Math.abs(values.net) >= 0.005 || Math.abs(values.cash) >= 0.005 || Math.abs(values.positionValue) >= 0.005;
+      var hasCurrentOwnership = sleeveHasCurrentOwnership(sleeve);
       var isOff = /^(off|disabled|inactive|hibernate|hibernating|paused|sleep)$/i.test(mode);
       var row = {
         label: sleeveLabel(sleeve, "Sleeve"),
@@ -1816,7 +1847,7 @@
         lastReconciledAt: sleeve.lastReconciledAt || sleeve.last_reconciled_at,
         initialized: Boolean(sleeve.initialized)
       };
-      if (!isOff && (hasValue || hasAccountHolding)) {
+      if (!isOff && hasCurrentOwnership && (hasValue || hasAccountHolding)) {
         active.push(row);
       } else {
         inactive.push(row);
@@ -1913,6 +1944,16 @@
       status = "stale analytics export";
     }
     return status + (account.equitySource === "positions_plus_cash_estimate" ? " est." : "");
+  }
+
+  function accountValueSourceCopy(account) {
+    if (account.equitySource === "broker_equity") {
+      return "Fresh broker equity was preferred because it differed materially from the older normalized account value.";
+    }
+    if (account.equitySource === "positions_plus_cash_estimate") {
+      return "Estimated from E-Trade positions plus cash because broker value was zero.";
+    }
+    return "Broker-reported account value.";
   }
 
   function marginPlainText(account) {
