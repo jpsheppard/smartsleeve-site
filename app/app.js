@@ -566,6 +566,27 @@
     return Number.isFinite(number) ? number : null;
   }
 
+  function firstNumericField(source, keys) {
+    for (var i = 0; i < keys.length; i += 1) {
+      var key = keys[i];
+      if (source && source[key] != null) {
+        var value = numeric(source[key]);
+        if (value != null) {
+          return {key: key, value: value};
+        }
+      }
+    }
+    return null;
+  }
+
+  function firstTextField(source, keys) {
+    for (var i = 0; i < keys.length; i += 1) {
+      var key = keys[i];
+      if (source && source[key]) return String(source[key]);
+    }
+    return "";
+  }
+
   function money(value) {
     var number = numeric(value);
     if (number == null) {
@@ -816,12 +837,33 @@
 
   function normalizeAccount(account) {
     var positions = (account.positions || []).map(function (position) {
+      var priceField = firstNumericField(position, [
+        "currentPrice",
+        "current_price",
+        "markPrice",
+        "mark_price",
+        "lastPrice",
+        "last_price",
+        "lastTradePrice",
+        "last_trade_price",
+        "quotePrice",
+        "quote_price",
+        "marketPrice",
+        "market_price",
+        "price"
+      ]);
+      var shares = numeric(position.shares != null ? position.shares : position.quantity);
+      var value = numeric(position.value != null ? position.value : position.market_value_usd);
+      var impliedPrice = shares && value != null ? value / shares : null;
       return {
         symbol: String(position.symbol || "").toUpperCase(),
         name: position.name || tickerNames[String(position.symbol || "").toUpperCase()],
-        shares: numeric(position.shares != null ? position.shares : position.quantity),
-        price: numeric(position.price != null ? position.price : position.current_price),
-        value: numeric(position.value != null ? position.value : position.market_value_usd),
+        shares: shares,
+        price: priceField ? priceField.value : impliedPrice,
+        impliedPrice: impliedPrice,
+        priceSource: priceField ? priceField.key : "value_per_share",
+        priceAsOf: firstTextField(position, ["priceAsOf", "price_as_of", "quoteAsOf", "quote_as_of", "marketDataAt", "market_data_at", "updatedAt", "updated_at", "timestamp"]),
+        value: value,
         averageCost: numeric(position.averageCost != null ? position.averageCost : position.average_cost),
         costBasis: numeric(position.costBasis != null ? position.costBasis : position.cost_basis),
         dailyPnl: numeric(position.dailyPnl != null ? position.dailyPnl : position.daily_pnl),
@@ -1053,6 +1095,12 @@
             priceValue: 0,
             costBasis: null,
             costShares: 0,
+            quotePriceValue: 0,
+            quoteShares: 0,
+            impliedPrice: null,
+            priceSource: "",
+            priceAsOf: "",
+            priceDivergencePct: null,
             dailyPnl: null,
             unrealizedPnl: null,
             realizedPnl: null,
@@ -1064,6 +1112,14 @@
         grouped[symbol].shares += shares;
         grouped[symbol].value += value;
         grouped[symbol].priceValue += price * shares;
+        if (numeric(position.price) != null && shares) {
+          grouped[symbol].quotePriceValue += numeric(position.price) * shares;
+          grouped[symbol].quoteShares += shares;
+          grouped[symbol].priceSource = grouped[symbol].priceSource || position.priceSource || "quote";
+        }
+        if (position.priceAsOf && (!grouped[symbol].priceAsOf || new Date(position.priceAsOf) > new Date(grouped[symbol].priceAsOf))) {
+          grouped[symbol].priceAsOf = position.priceAsOf;
+        }
         var averageCost = numeric(position.averageCost);
         var costBasis = numeric(position.costBasis);
         if (costBasis == null && averageCost != null && shares) {
@@ -1091,7 +1147,11 @@
     });
     var holdings = Object.keys(grouped).map(function (symbol) {
       var row = grouped[symbol];
-      row.price = row.shares ? (row.value ? row.value / row.shares : row.priceValue / row.shares) : null;
+      row.impliedPrice = row.shares && row.value ? row.value / row.shares : null;
+      row.price = row.quoteShares ? row.quotePriceValue / row.quoteShares : row.impliedPrice;
+      if (row.price != null && row.impliedPrice != null && row.impliedPrice > 0) {
+        row.priceDivergencePct = Math.abs(row.price - row.impliedPrice) / row.impliedPrice * 100;
+      }
       row.avgPrice = row.price;
       row.averageCost = row.costBasis != null && row.costShares ? row.costBasis / row.costShares : null;
       return row;
@@ -1985,7 +2045,7 @@
         + cell("Ticker", "<span class=\"ticker-lockup\">" + holdingBadge + "<span><b>" + html(holding.symbol) + "</b><small>" + html(holding.name) + "</small></span></span>")
         + cell("Company", html(holding.name))
         + cell("Shares", numberText(holding.shares, 6))
-        + cell("Stock price", money(holding.price))
+        + cell("Stock price", holdingPriceCell(holding))
         + cell("Avg buy price", holding.averageCost == null ? "<span class=\"needs-sync\">Needs basis sync</span>" : money(holding.averageCost))
         + cell("Market value", money(holding.value))
         + cell("Cost basis", holding.costBasis == null ? "<span class=\"needs-sync\">Needs basis sync</span>" : money(holding.costBasis))
@@ -1997,6 +2057,37 @@
         + cell("Weight", pct(holding.value, total) + "<small>" + html(thesisStatus(holding.symbol, weightNum)) + "</small>")
         + "</tr>";
     }).join("") || "<tr>" + cell("Holdings", "No holdings synced") + "</tr>";
+  }
+
+  function priceSourceLabel(source) {
+    var key = String(source || "").replace(/_/g, " ").trim();
+    if (!key || key === "value per share") return "Value / shares";
+    if (/current/i.test(key)) return "Current quote";
+    if (/mark/i.test(key)) return "Mark quote";
+    if (/last/i.test(key)) return "Last trade";
+    if (/market/i.test(key)) return "Market quote";
+    if (/price/i.test(key)) return "Quote";
+    return key;
+  }
+
+  function compactDateTime(value) {
+    var date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    return date.toLocaleString([], {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"});
+  }
+
+  function holdingPriceCell(holding) {
+    if (numeric(holding.price) == null) {
+      return "<span class=\"needs-sync\">Needs quote sync</span>";
+    }
+    var meta = priceSourceLabel(holding.priceSource);
+    var asOf = compactDateTime(holding.priceAsOf);
+    if (asOf) meta += " " + asOf;
+    var warning = "";
+    if (holding.priceDivergencePct != null && holding.priceDivergencePct > 1.5) {
+      warning = "<small class=\"price-warning\">Value implies " + html(money(holding.impliedPrice)) + " (" + holding.priceDivergencePct.toFixed(1) + "% diff)</small>";
+    }
+    return html(money(holding.price)) + "<small>" + html(meta) + "</small>" + warning;
   }
 
   function renderSleeves() {

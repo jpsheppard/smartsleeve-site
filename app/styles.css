@@ -916,6 +916,11 @@ td small {
   color: var(--muted);
 }
 
+td small.price-warning {
+  color: var(--amber);
+  font-weight: 750;
+}
+
 .ticker-lockup,
 .feature-badges {
   display: inline-flex;
