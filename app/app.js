@@ -468,7 +468,13 @@
   function knownUserEmailFromText(value) {
     var context = displayLabel(value, "").toLowerCase();
     if (!context) return "";
-    if (context.indexOf("criseldasarenas") !== -1 || context.indexOf("crissy") !== -1 || context.indexOf("criselda") !== -1 || /\bcrissy[\s_-]*rh\b/.test(context)) {
+    if (
+      context.indexOf("criseldasarenas") !== -1
+      || context.indexOf("crissy") !== -1
+      || context.indexOf("criselda") !== -1
+      || /\bcrissy[\s_-]*(rh|robinhood)\b/.test(context)
+      || /\b(criselda|sarenas)[\s_-]*(rh|robinhood)\b/.test(context)
+    ) {
       return "criseldasarenas@gmail.com";
     }
     if (context.indexOf("jpsheppard88") !== -1 || context.indexOf("john@smartsleeve.ai") !== -1 || context.indexOf("john sheppard") !== -1 || /\bjohn[\s_-]*(rh|ibkr|etrade|e[-\s]?trade)\b/.test(context)) {
@@ -1648,7 +1654,10 @@
   function renderSleeveSummary(total) {
     var target = $("sleeve-summary");
     if (!target) return;
-    target.innerHTML = state.sleeves.slice(0, 8).map(function (sleeve) {
+    var sleeves = state.sleeves.filter(function (sleeve) {
+      return sleeve && sleeve.name && !isOperationalNoiseLabel(sleeve.name);
+    });
+    target.innerHTML = sleeves.slice(0, 8).map(function (sleeve) {
       var value = sleeve.exactValue ? money(sleeve.exactValue) : "Ledger split pending";
       return stackItem(sleeve.name, value, sleeve.accounts.join(", ") + " / " + (sleeve.holdings.slice(0, 7).join(", ") || "No current holdings"), sleeve.exactValue && total ? sleeve.exactValue / total * 100 : 20);
     }).join("") || emptyItem("No active sleeve holdings", "No funded sleeve positions are visible for this account scope.");
@@ -2790,6 +2799,7 @@
       var connected = state.accounts.map(function (account) {
         return stackItem(account.broker, account.status || "Connected", account.account + " last snapshot " + (account.generatedAt || "unknown"), 80);
       });
+      connected.unshift(stackItem("Daemon outage alerts", "Escalation parity required", "IBKR gateway, RH/E-Trade reauth, daemon crashes, and abnormal stops should use the same phone/email cadence.", 55, "compat-warn"));
       connected.push(stackItem("Fidelity via Plaid", "Pending production access / read-only", "Sandbox keys cannot view John's live Fidelity accounts until production consent is approved.", 30));
       connected.push(stackItem("Schwab PCRA", "Pending official API onboarding", "Use read-only mode first; trading permission must be explicit.", 20));
       brokerConnections.innerHTML = connected.join("");
@@ -3807,9 +3817,11 @@
       })
       .catch(function (error) {
         if (state.payload && (options.refresh || options.silent || options.interactiveRefresh || error.authRequired)) {
-          text("sync-pill", "Current view kept");
+          text("sync-pill", options.interactiveRefresh || options.silent ? "Checked" : "Current view kept");
           text("snapshot-time", latestDaemonLabel(state.payload));
-          state.feedWarning = recommendation("feed-refresh-kept-current", "Current dashboard kept", "Retry sync", "SmartSleeve", "Data", 0, error.message, "Displayed holdings were preserved; verify freshness before making decisions.", "EXTERNAL_BROKER_SYNC");
+          state.feedWarning = options.interactiveRefresh || options.silent
+            ? null
+            : recommendation("feed-refresh-kept-current", "Current dashboard kept", "Retry sync", "SmartSleeve", "Data", 0, error.message, "Displayed holdings were preserved; verify freshness before making decisions.", "EXTERNAL_BROKER_SYNC");
           renderAll();
           if (options.refresh || options.interactiveRefresh) {
             toast("Still showing latest available trader cycle.");
