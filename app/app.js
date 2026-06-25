@@ -1926,12 +1926,12 @@
 
   function accountValueSourceCopy(account) {
     if (account.equitySource === "broker_equity") {
-      return "Fresh broker equity was preferred because it differed materially from the older normalized account value.";
+      return "Broker equity preferred.";
     }
     if (account.equitySource === "positions_plus_cash_estimate") {
-      return "Estimated from E-Trade positions plus cash because broker value was zero.";
+      return "Positions plus cash estimate.";
     }
-    return "Broker-reported account value.";
+    return "Broker value.";
   }
 
   function priceMarkCell(position) {
@@ -3578,7 +3578,7 @@
     var lineColor = trendClass === "negative" ? "var(--red)" : "var(--green)";
     var chart = buildLineChart(cleanPoints, lineColor, yLabel);
     var sub = cleanPoints.length > 1
-      ? shortDate(first.at) + " to " + shortDate(last.at) + " / " + signedMoney(last.value - first.value)
+      ? shortDate(first.at) + " to " + shortDate(last.at) + " / " + signedMoney(last.value - first.value) + " / " + cleanPoints.length + " pts"
       : "One synced point / more history needed";
     return "<article class=\"chart-card\">"
       + "<div class=\"stack-item-head\"><b>" + html(title) + "</b><span class=\"" + trendClass + "\">" + html(sub) + "</span></div>"
@@ -3621,9 +3621,11 @@
       return "<line x1=\"" + left + "\" y1=\"" + yy + "\" x2=\"" + (width - right) + "\" y2=\"" + yy + "\" class=\"chart-grid-line\"/>"
         + (options.compact ? "" : "<text x=\"" + (left - 8) + "\" y=\"" + (Number(yy) + 4) + "\" class=\"chart-tick\" text-anchor=\"end\">" + html(compactMoney(tick)) + "</text>");
     }).join("");
-    var dots = points.length === 1
-      ? "<circle cx=\"" + x(points[0]).toFixed(1) + "\" cy=\"" + y(points[0].value).toFixed(1) + "\" r=\"4\" fill=\"" + lineColor + "\"/>"
-      : "";
+    var dotStep = points.length > 180 ? Math.ceil(points.length / 180) : 1;
+    var dots = points.map(function (point, index) {
+      if (points.length > 1 && index !== 0 && index !== points.length - 1 && index % dotStep !== 0) return "";
+      return "<circle cx=\"" + x(point).toFixed(1) + "\" cy=\"" + y(point.value).toFixed(1) + "\" r=\"" + (points.length === 1 ? 4 : 2.2) + "\" class=\"chart-sample-dot\"/>";
+    }).join("");
     var chartPoints = points.map(function (point) {
       return {
         at: point.at,
@@ -3649,9 +3651,26 @@
       + scrub
       + (options.compact ? "" : "<text x=\"" + ((left + width - right) / 2) + "\" y=\"" + (height - 12) + "\" class=\"chart-label\" text-anchor=\"middle\">Time</text>"
         + "<text x=\"16\" y=\"" + ((top + height - bottom) / 2) + "\" class=\"chart-label\" transform=\"rotate(-90 16 " + ((top + height - bottom) / 2) + ")\" text-anchor=\"middle\">" + html(yLabel) + "</text>")
-      + "<text x=\"" + left + "\" y=\"" + (height - 28) + "\" class=\"chart-tick\" text-anchor=\"start\">" + html(shortDate(points[0].at)) + "</text>"
-      + "<text x=\"" + (width - right) + "\" y=\"" + (height - 28) + "\" class=\"chart-tick\" text-anchor=\"end\">" + html(shortDate(points[points.length - 1].at)) + "</text>"
+      + chartTimeTicks(points, left, right, width, height)
       + "</svg>";
+  }
+
+  function chartTimeTicks(points, left, right, width, height) {
+    if (!points.length) return "";
+    var maxTicks = points.length < 3 ? points.length : 5;
+    var seen = {};
+    var ticks = [];
+    for (var index = 0; index < maxTicks; index += 1) {
+      var pointIndex = maxTicks === 1 ? 0 : Math.round(index * (points.length - 1) / (maxTicks - 1));
+      if (seen[pointIndex]) continue;
+      seen[pointIndex] = true;
+      ticks.push({point: points[pointIndex], index: index});
+    }
+    return ticks.map(function (tick, index) {
+      var anchor = index === 0 ? "start" : index === ticks.length - 1 ? "end" : "middle";
+      var xPos = left + (new Date(tick.point.at).getTime() - new Date(points[0].at).getTime()) / Math.max(1, new Date(points[points.length - 1].at).getTime() - new Date(points[0].at).getTime()) * (width - left - right);
+      return "<text x=\"" + xPos.toFixed(1) + "\" y=\"" + (height - 28) + "\" class=\"chart-tick\" text-anchor=\"" + anchor + "\">" + html(shortDate(tick.point.at)) + "</text>";
+    }).join("");
   }
 
   function chartEventX(svg, event) {
