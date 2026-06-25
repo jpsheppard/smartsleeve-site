@@ -470,21 +470,12 @@
     "crissy": "criseldasarenas@gmail.com",
     "crissy-rh": "criseldasarenas@gmail.com",
     "crissy rh": "criseldasarenas@gmail.com",
-    "crissy-robinhood": "criseldasarenas@gmail.com",
-    "crissy robinhood": "criseldasarenas@gmail.com",
-    "crissy-rh-account": "criseldasarenas@gmail.com",
-    "criselda-rh": "criseldasarenas@gmail.com",
-    "criseldasarenas": "criseldasarenas@gmail.com",
-    "john": "jpsheppard88@gmail.com",
     "john-rh": "jpsheppard88@gmail.com",
     "john rh": "jpsheppard88@gmail.com",
     "john-etrade": "jpsheppard88@gmail.com",
     "john etrade": "jpsheppard88@gmail.com",
-    "etrade": "jpsheppard88@gmail.com",
     "u25739525": "jpsheppard88@gmail.com",
-    "u25815215": "jpsheppard88@gmail.com",
-    "john-ibkr-margin": "jpsheppard88@gmail.com",
-    "john-ibkr-roth": "jpsheppard88@gmail.com"
+    "u25815215": "jpsheppard88@gmail.com"
   };
 
   function knownUserEmailFromText(value) {
@@ -531,20 +522,6 @@
     return configuredAccountOwners[raw] || configuredAccountOwners[normalized] || "";
   }
 
-  function accountOwnerEmailById(value) {
-    var id = String(value || "").trim();
-    if (!id) return "";
-    var account = (state.allAccounts || state.accounts || []).find(function (item) {
-      return [
-        item.id,
-        item.accountId,
-        item.account_id,
-        item.account
-      ].map(function (part) { return String(part || "").trim(); }).indexOf(id) !== -1;
-    });
-    return account ? rowOwnerEmail(account) : knownAccountOwnerEmail(id);
-  }
-
   function html(value) {
     return String(value == null ? "" : value)
       .replace(/&/g, "&amp;")
@@ -564,27 +541,6 @@
   function numeric(value) {
     var number = Number(value);
     return Number.isFinite(number) ? number : null;
-  }
-
-  function firstNumericField(source, keys) {
-    for (var i = 0; i < keys.length; i += 1) {
-      var key = keys[i];
-      if (source && source[key] != null) {
-        var value = numeric(source[key]);
-        if (value != null) {
-          return {key: key, value: value};
-        }
-      }
-    }
-    return null;
-  }
-
-  function firstTextField(source, keys) {
-    for (var i = 0; i < keys.length; i += 1) {
-      var key = keys[i];
-      if (source && source[key]) return String(source[key]);
-    }
-    return "";
   }
 
   function money(value) {
@@ -818,7 +774,6 @@
         || row.principal_email
         || row.email
         || knownAccountOwnerEmail(row)
-        || accountOwnerEmailById(row.accountId || row.account_id || row.account)
         || inferAccountOwnerEmail(row)
     );
   }
@@ -837,39 +792,22 @@
 
   function normalizeAccount(account) {
     var positions = (account.positions || []).map(function (position) {
-      var priceField = firstNumericField(position, [
-        "currentPrice",
-        "current_price",
-        "markPrice",
-        "mark_price",
-        "lastPrice",
-        "last_price",
-        "lastTradePrice",
-        "last_trade_price",
-        "quotePrice",
-        "quote_price",
-        "marketPrice",
-        "market_price",
-        "price"
-      ]);
-      var shares = numeric(position.shares != null ? position.shares : position.quantity);
-      var value = numeric(position.value != null ? position.value : position.market_value_usd);
-      var impliedPrice = shares && value != null ? value / shares : null;
       return {
         symbol: String(position.symbol || "").toUpperCase(),
         name: position.name || tickerNames[String(position.symbol || "").toUpperCase()],
-        shares: shares,
-        price: priceField ? priceField.value : impliedPrice,
-        impliedPrice: impliedPrice,
-        priceSource: priceField ? priceField.key : "value_per_share",
-        priceAsOf: firstTextField(position, ["priceAsOf", "price_as_of", "quoteAsOf", "quote_as_of", "marketDataAt", "market_data_at", "updatedAt", "updated_at", "timestamp"]),
-        value: value,
+        shares: numeric(position.shares != null ? position.shares : position.quantity),
+        price: numeric(position.price != null ? position.price : position.current_price),
+        brokerPrice: numeric(position.brokerPrice != null ? position.brokerPrice : position.broker_price),
+        value: numeric(position.value != null ? position.value : position.market_value_usd),
+        brokerValue: numeric(position.brokerValue != null ? position.brokerValue : position.broker_value),
         averageCost: numeric(position.averageCost != null ? position.averageCost : position.average_cost),
         costBasis: numeric(position.costBasis != null ? position.costBasis : position.cost_basis),
         dailyPnl: numeric(position.dailyPnl != null ? position.dailyPnl : position.daily_pnl),
         unrealizedPnl: numeric(position.unrealizedPnl != null ? position.unrealizedPnl : position.unrealized_pnl),
         realizedPnl: numeric(position.realizedPnl != null ? position.realizedPnl : position.realized_pnl),
         totalPnl: numeric(position.totalPnl != null ? position.totalPnl : position.total_pnl),
+        priceAsOf: position.priceAsOf || position.price_as_of,
+        priceSource: position.priceSource || position.price_source,
         currency: position.currency || "USD"
       };
     });
@@ -893,6 +831,9 @@
       broker: brokerName,
       status: account.status || "synced",
       generatedAt: account.generatedAt || account.generated_at,
+      latestGeneratedAt: account.latestGeneratedAt || account.latest_generated_at,
+      portfolioSource: account.portfolioSource || account.portfolio_source,
+      brokerEquity: numeric(account.brokerEquity != null ? account.brokerEquity : account.broker_equity),
       strategy: account.strategy,
       tradingSystem: account.tradingSystem || account.trading_system,
       operator: account.operator,
@@ -1095,12 +1036,6 @@
             priceValue: 0,
             costBasis: null,
             costShares: 0,
-            quotePriceValue: 0,
-            quoteShares: 0,
-            impliedPrice: null,
-            priceSource: "",
-            priceAsOf: "",
-            priceDivergencePct: null,
             dailyPnl: null,
             unrealizedPnl: null,
             realizedPnl: null,
@@ -1112,14 +1047,6 @@
         grouped[symbol].shares += shares;
         grouped[symbol].value += value;
         grouped[symbol].priceValue += price * shares;
-        if (numeric(position.price) != null && shares) {
-          grouped[symbol].quotePriceValue += numeric(position.price) * shares;
-          grouped[symbol].quoteShares += shares;
-          grouped[symbol].priceSource = grouped[symbol].priceSource || position.priceSource || "quote";
-        }
-        if (position.priceAsOf && (!grouped[symbol].priceAsOf || new Date(position.priceAsOf) > new Date(grouped[symbol].priceAsOf))) {
-          grouped[symbol].priceAsOf = position.priceAsOf;
-        }
         var averageCost = numeric(position.averageCost);
         var costBasis = numeric(position.costBasis);
         if (costBasis == null && averageCost != null && shares) {
@@ -1147,11 +1074,7 @@
     });
     var holdings = Object.keys(grouped).map(function (symbol) {
       var row = grouped[symbol];
-      row.impliedPrice = row.shares && row.value ? row.value / row.shares : null;
-      row.price = row.quoteShares ? row.quotePriceValue / row.quoteShares : row.impliedPrice;
-      if (row.price != null && row.impliedPrice != null && row.impliedPrice > 0) {
-        row.priceDivergencePct = Math.abs(row.price - row.impliedPrice) / row.impliedPrice * 100;
-      }
+      row.price = row.shares ? (row.value ? row.value / row.shares : row.priceValue / row.shares) : null;
       row.avgPrice = row.price;
       row.averageCost = row.costBasis != null && row.costShares ? row.costBasis / row.costShares : null;
       return row;
@@ -1675,6 +1598,7 @@
             + cell("Ticker", "<b>" + html(position.symbol) + "</b><small>" + html(position.name || tickerNames[position.symbol] || "") + "</small>")
             + cell("Shares", numberText(position.shares, 6))
             + cell("Value", money(position.value))
+            + cell("Mark", priceMarkCell(position))
             + cell("Cost basis", position.costBasis == null ? "<span class=\"needs-sync\">Needs basis sync</span>" : money(position.costBasis))
             + cell("P/L", pnlCell(position.totalPnl, "Needs basis sync"))
             + "</tr>";
@@ -1686,6 +1610,28 @@
   function cashMarginMeta(account) {
     var cash = numeric(account.cash) || 0;
     return cash < 0 ? "Margin used " + money(Math.abs(cash)) : "Cash " + money(cash);
+  }
+
+  function priceMarkCell(position) {
+    var source = priceSourceLabel(position.priceSource);
+    var asOf = shortTimestamp(position.priceAsOf);
+    return "<b>" + html(money(position.price)) + "</b><small>" + html(source + (asOf ? " / " + asOf : "")) + "</small>";
+  }
+
+  function priceSourceLabel(value) {
+    var source = String(value || "").toLowerCase();
+    if (source === "yfinance_1m") return "yfinance 1m";
+    if (source === "last_good_broker_export") return "last good broker mark";
+    if (source.indexOf("last_good") !== -1) return "last good + refreshed";
+    if (source) return source.replace(/_/g, " ");
+    return "broker mark";
+  }
+
+  function shortTimestamp(value) {
+    if (!value) return "";
+    var date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    return date.toLocaleString([], {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"});
   }
 
   function marginPlainText(account) {
@@ -2045,7 +1991,7 @@
         + cell("Ticker", "<span class=\"ticker-lockup\">" + holdingBadge + "<span><b>" + html(holding.symbol) + "</b><small>" + html(holding.name) + "</small></span></span>")
         + cell("Company", html(holding.name))
         + cell("Shares", numberText(holding.shares, 6))
-        + cell("Stock price", holdingPriceCell(holding))
+        + cell("Stock price", money(holding.price))
         + cell("Avg buy price", holding.averageCost == null ? "<span class=\"needs-sync\">Needs basis sync</span>" : money(holding.averageCost))
         + cell("Market value", money(holding.value))
         + cell("Cost basis", holding.costBasis == null ? "<span class=\"needs-sync\">Needs basis sync</span>" : money(holding.costBasis))
@@ -2057,37 +2003,6 @@
         + cell("Weight", pct(holding.value, total) + "<small>" + html(thesisStatus(holding.symbol, weightNum)) + "</small>")
         + "</tr>";
     }).join("") || "<tr>" + cell("Holdings", "No holdings synced") + "</tr>";
-  }
-
-  function priceSourceLabel(source) {
-    var key = String(source || "").replace(/_/g, " ").trim();
-    if (!key || key === "value per share") return "Value / shares";
-    if (/current/i.test(key)) return "Current quote";
-    if (/mark/i.test(key)) return "Mark quote";
-    if (/last/i.test(key)) return "Last trade";
-    if (/market/i.test(key)) return "Market quote";
-    if (/price/i.test(key)) return "Quote";
-    return key;
-  }
-
-  function compactDateTime(value) {
-    var date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "";
-    return date.toLocaleString([], {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"});
-  }
-
-  function holdingPriceCell(holding) {
-    if (numeric(holding.price) == null) {
-      return "<span class=\"needs-sync\">Needs quote sync</span>";
-    }
-    var meta = priceSourceLabel(holding.priceSource);
-    var asOf = compactDateTime(holding.priceAsOf);
-    if (asOf) meta += " " + asOf;
-    var warning = "";
-    if (holding.priceDivergencePct != null && holding.priceDivergencePct > 1.5) {
-      warning = "<small class=\"price-warning\">Value implies " + html(money(holding.impliedPrice)) + " (" + holding.priceDivergencePct.toFixed(1) + "% diff)</small>";
-    }
-    return html(money(holding.price)) + "<small>" + html(meta) + "</small>" + warning;
   }
 
   function renderSleeves() {
@@ -3891,7 +3806,7 @@
     state.reports = ensureStockPickReports(scopedRowsForVisibleAccounts(payload.reports || [], visibleAccountIds));
     state.accountCoverage = payload.accountCoverage || null;
     state.feedWarning = null;
-    text("snapshot-source", appEdition === "developer" ? (payload.source || "Private API") : "");
+    text("snapshot-source", appEdition === "developer" ? (payload.source || "Private SmartSleeve API") : "");
     text("snapshot-time", latestDaemonLabel(payload));
     text("sync-pill", "Private API synced");
     addActivity("Cloud feed synced", "EXTERNAL_BROKER_SYNC", appEdition === "developer" ? "All accounts" : principalEmail, state.accounts.length + " account(s), " + state.serverTrades.length + " trades, " + state.brain.length + " brain rows.");
