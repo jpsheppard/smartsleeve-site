@@ -36,6 +36,7 @@
     selectedDetailAccountId: "",
     selectedDetailSleeveName: "",
     selectedStockPickSleeve: "",
+    selectedAccountChartRange: "1W",
     sageMode: "recommend",
     selectedTradeId: null,
     orderNotificationSeen: {},
@@ -1735,7 +1736,7 @@
     text("account-detail-title", account.account);
     text("account-detail-subtitle", accountOwnerLabel(account.ownerEmail) + " / " + account.broker + " / " + accountStatusLabel(account));
     var holdings = (account.positions || []).slice().sort(function (a, b) { return (numeric(b.value) || 0) - (numeric(a.value) || 0); });
-    var sleeveNames = splitSleeves(account.sleeves.length ? account.sleeves : account.sleevesText);
+    var sleeveCoverage = accountSleeveCoverage(account);
     target.innerHTML = [
       "<article class=\"panel-card\"><div class=\"card-head\"><div><span>Broker values</span><h2>Cash and margin</h2></div><span class=\"status-chip\">" + html(account.broker) + "</span></div><div class=\"stack-list\">"
         + stackItem("Account value", money(account.equity), account.equitySource === "positions_plus_cash_estimate" ? "Estimated from E-Trade positions plus cash because broker value was zero." : "Broker-reported account value.", null)
@@ -1743,10 +1744,14 @@
         + stackItem("Cash / margin", cashMarginMeta(account), marginPlainText(account), numeric(account.cash) < 0 ? 45 : 0, numeric(account.cash) < 0 ? "with-progress" : "")
         + stackItem("Buying power", money(account.buyPower), "Buying power can be zero even when account value is positive.", null)
       + "</div></article>",
+      accountDetailValueChart(account),
       "<article class=\"panel-card\"><div class=\"card-head\"><div><span>Sleeves</span><h2>Active sleeve coverage</h2></div><button type=\"button\" class=\"text-button\" data-nav-button=\"sleeves\">All sleeves</button></div><div class=\"stack-list\">"
-        + (sleeveNames.length ? sleeveNames.map(function (name) {
-          return stackItem(name, "Tap sleeve cards for full detail", "Account participates in this sleeve or reports this sleeve label.", 65);
-        }).join("") : emptyItem("No sleeve assignment", "Sleeve metadata is not present for this account."))
+        + (sleeveCoverage.active.length ? sleeveCoverage.active.map(function (sleeve) {
+          return stackItem(sleeve.label, sleeveCoverageMeta(sleeve), sleeveCoverageBody(sleeve), 80);
+        }).join("") : emptyItem("No funded active sleeve", "This account has no sleeve row with both live coverage and non-zero value/holdings."))
+        + (sleeveCoverage.inactive.length ? "<div class=\"coverage-subhead\">Inactive or config-only</div>" + sleeveCoverage.inactive.slice(0, 8).map(function (sleeve) {
+          return stackItem(sleeve.label, sleeveCoverageMeta(sleeve), "Configured row only; not counted as active sleeve coverage until it has value, holdings, or live ownership.", 20, "muted-stack");
+        }).join("") : "")
       + "</div></article>",
       "<article class=\"panel-card wide-card\"><div class=\"card-head\"><div><span>Holdings</span><h2>Account positions</h2></div><span class=\"status-chip\">" + holdings.length + " positions</span></div><div class=\"table-wrap\"><table><tbody>"
         + (holdings.map(function (position) {
@@ -1761,6 +1766,109 @@
         }).join("") || "<tr>" + cell("Holdings", "No positions synced") + "</tr>")
       + "</tbody></table></div></article>"
     ].join("");
+  }
+
+  function accountSleeveCoverage(account) {
+    var rows = Array.isArray(account.sleeves) ? account.sleeves : [];
+    if (!rows.length) {
+      return {
+        active: splitSleeves(account.sleevesText).map(function (name) {
+          return {label: name, operatingMode: "reported", net: 0, cash: 0, positionValue: 0, holdings: []};
+        }),
+        inactive: []
+      };
+    }
+    var active = [];
+    var inactive = [];
+    rows.forEach(function (sleeve) {
+      var values = resolvedSleeveValues(sleeve, account);
+      var holdings = (sleeve.holdings || []).filter(function (holding) {
+        return Math.abs(numeric(holding.shares) || 0) >= 0.000001;
+      });
+      var mode = String(sleeve.operatingMode || sleeve.operating_mode || "unknown").toLowerCase();
+      var hasValue = Math.abs(values.net) >= 0.005 || Math.abs(values.cash) >= 0.005 || Math.abs(values.positionValue) >= 0.005;
+      var hasHoldings = holdings.length > 0;
+      var isOff = /^(off|disabled|inactive|hibernate|hibernating|paused|sleep)$/i.test(mode);
+      var row = {
+        label: sleeveLabel(sleeve, "Sleeve"),
+        operatingMode: sleeve.operatingMode || sleeve.operating_mode || "unknown",
+        net: values.net,
+        cash: values.cash,
+        positionValue: values.positionValue,
+        holdings: holdings,
+        lastReconciledAt: sleeve.lastReconciledAt || sleeve.last_reconciled_at,
+        initialized: Boolean(sleeve.initialized)
+      };
+      if (!isOff && (hasValue || hasHoldings)) {
+        active.push(row);
+      } else {
+        inactive.push(row);
+      }
+    });
+    active.sort(function (a, b) { return Math.abs(b.net) - Math.abs(a.net) || a.label.localeCompare(b.label); });
+    inactive.sort(function (a, b) { return a.label.localeCompare(b.label); });
+    return {active: active, inactive: inactive};
+  }
+
+  function sleeveCoverageMeta(sleeve) {
+    var value = Math.abs(numeric(sleeve.net) || 0) >= 0.005 ? money(sleeve.net) : "No funded value";
+    return value + " / " + (sleeve.operatingMode || "mode unknown");
+  }
+
+  function sleeveCoverageBody(sleeve) {
+    var symbols = (sleeve.holdings || []).map(function (holding) {
+      return String(holding.symbol || "").toUpperCase();
+    }).filter(Boolean).slice(0, 8).join(", ");
+    return (symbols || "No current holdings") + (sleeve.lastReconciledAt ? " / reconciled " + compactDateTime(sleeve.lastReconciledAt) : "");
+  }
+
+  function accountDetailValueChart(account) {
+    var range = state.selectedAccountChartRange || "1W";
+    var allPoints = accountHistoryPoints(account);
+    var points = filterHistoryRange(allPoints, range);
+    if (!points.length && numeric(account.equity) != null) {
+      points = [{at: account.generatedAt || new Date().toISOString(), value: account.equity}];
+    }
+    var cleanPoints = points.map(function (point) {
+      return {at: point.at, value: numeric(point.value)};
+    }).filter(function (point) { return point.at && point.value != null; }).sort(function (a, b) {
+      return new Date(a.at).getTime() - new Date(b.at).getTime();
+    });
+    var first = cleanPoints[0];
+    var last = cleanPoints[cleanPoints.length - 1];
+    var pnl = first && last ? last.value - first.value : null;
+    var trendClass = valueClass(pnl);
+    var lineColor = trendClass === "negative" ? "var(--red)" : "var(--green)";
+    var meta = cleanPoints.length > 1
+      ? signedMoney(pnl, "$0.00") + " P&L over " + range
+      : "Needs more synced points for selected range P&L";
+    var tabs = ["1D", "1W", "1M", "ALL"].map(function (item) {
+      return "<button type=\"button\" class=\"time-tab" + (item === range ? " active" : "") + "\" data-account-chart-range=\"" + html(item) + "\">" + html(item) + "</button>";
+    }).join("");
+    return "<article class=\"panel-card wide-card account-detail-chart-card\"><div class=\"card-head\"><div><span>Account chart</span><h2>Account Holdings Value ($)</h2></div><span class=\"status-chip " + html(trendClass) + "\">" + html(meta) + "</span></div>"
+      + (cleanPoints.length ? buildLineChart(cleanPoints, lineColor, "Account value") : emptyItem("No account history", "Private account history has not synced for this account yet."))
+      + "<div class=\"time-tabs\" role=\"tablist\" aria-label=\"Account chart range\">" + tabs + "</div>"
+      + (last ? "<p class=\"chart-footnote\">Latest " + html(money(last.value)) + " / " + html(compactDateTime(last.at)) + "</p>" : "")
+      + "</article>";
+  }
+
+  function accountHistoryPoints(account) {
+    return (state.history.accounts || []).filter(function (row) {
+      return rowAccountId(row) === account.id;
+    }).map(function (row) {
+      return {at: row.at || row.generatedAt || row.generated_at, value: numeric(row.equity != null ? row.equity : row.value)};
+    }).filter(function (row) { return row.at && row.value != null; });
+  }
+
+  function filterHistoryRange(points, range) {
+    var rows = (points || []).slice().sort(function (a, b) {
+      return new Date(a.at).getTime() - new Date(b.at).getTime();
+    });
+    if (!rows.length || range === "ALL") return rows;
+    var latest = new Date(rows[rows.length - 1].at).getTime();
+    var hours = range === "1D" ? 24 : range === "1W" ? 24 * 7 : 24 * 31;
+    var cutoff = latest - hours * 60 * 60 * 1000;
+    return rows.filter(function (row) { return new Date(row.at).getTime() >= cutoff; });
   }
 
   function cashMarginMeta(account) {
@@ -3823,6 +3931,11 @@
         renderAccountDetail();
         handleNav("account-detail");
         history.replaceState(null, "", "#account-detail");
+      }
+      var accountChartRange = event.target.closest("[data-account-chart-range]");
+      if (accountChartRange) {
+        state.selectedAccountChartRange = accountChartRange.getAttribute("data-account-chart-range") || "1W";
+        renderAccountDetail();
       }
       var sleeveButton = event.target.closest("[data-sleeve-detail]");
       if (sleeveButton) {
