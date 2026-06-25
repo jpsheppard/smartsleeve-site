@@ -855,13 +855,14 @@
       var shares = numeric(position.shares != null ? position.shares : position.quantity);
       var value = numeric(position.value != null ? position.value : position.market_value_usd);
       var impliedPrice = shares && value != null ? value / shares : null;
+      var explicitPriceSource = position.priceSource || position.price_source;
       return {
         symbol: String(position.symbol || "").toUpperCase(),
         name: position.name || tickerNames[String(position.symbol || "").toUpperCase()],
         shares: shares,
         price: priceField ? priceField.value : impliedPrice,
         impliedPrice: impliedPrice,
-        priceSource: priceField ? priceField.key : "value_per_share",
+        priceSource: explicitPriceSource || (priceField ? priceField.key : "value_per_share"),
         priceAsOf: firstTextField(position, ["priceAsOf", "price_as_of", "quoteAsOf", "quote_as_of", "marketDataAt", "market_data_at", "updatedAt", "updated_at", "timestamp"]),
         value: value,
         averageCost: numeric(position.averageCost != null ? position.averageCost : position.average_cost),
