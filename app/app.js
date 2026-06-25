@@ -1745,12 +1745,14 @@
     text("account-detail-subtitle", accountOwnerLabel(account.ownerEmail) + " / " + account.broker + " / " + accountStatusLabel(account));
     var holdings = (account.positions || []).slice().sort(function (a, b) { return (numeric(b.value) || 0) - (numeric(a.value) || 0); });
     var sleeveCoverage = accountSleeveCoverage(account);
+    var emptyAccountWarning = !holdings.length && !(numeric(account.equity) > 0) && /awaiting|configured|pending|sync/i.test(account.status || "");
     target.innerHTML = [
       "<article class=\"panel-card\"><div class=\"card-head\"><div><span>Broker values</span><h2>Cash and margin</h2></div><span class=\"status-chip\">" + html(account.broker) + "</span></div><div class=\"stack-list\">"
         + stackItem("Account value", money(account.equity), account.equitySource === "positions_plus_cash_estimate" ? "Estimated from E-Trade positions plus cash because broker value was zero." : "Broker-reported account value.", null)
         + stackItem("Data freshness", accountFreshnessLabel(account), account.sourceIsStale ? "Broker positions may be stale. Refresh the daemon/account analytics before trading from this view." : "Broker/account export is inside the freshness window.", account.sourceIsStale ? 25 : null, account.sourceIsStale ? "with-progress" : "")
         + stackItem("Cash / margin", cashMarginMeta(account), marginPlainText(account), numeric(account.cash) < 0 ? 45 : 0, numeric(account.cash) < 0 ? "with-progress" : "")
         + stackItem("Buying power", money(account.buyPower), "Buying power can be zero even when account value is positive.", null)
+        + (emptyAccountWarning ? stackItem("Live holdings missing", "Awaiting broker export", "This configured account has no synced positions or equity in the current app feed, so do not treat it as a true zero-balance account.") : "")
       + "</div></article>",
       accountDetailValueChart(account),
       "<article class=\"panel-card\"><div class=\"card-head\"><div><span>Sleeves</span><h2>Active sleeve coverage</h2></div><button type=\"button\" class=\"text-button\" data-nav-button=\"sleeves\">All sleeves</button></div><div class=\"stack-list\">"
@@ -1780,12 +1782,17 @@
     var rows = Array.isArray(account.sleeves) ? account.sleeves : [];
     if (!rows.length) {
       return {
-        active: splitSleeves(account.sleevesText).map(function (name) {
+        active: [],
+        inactive: splitSleeves(account.sleevesText).map(function (name) {
           return {label: name, operatingMode: "reported", net: 0, cash: 0, positionValue: 0, holdings: []};
-        }),
-        inactive: []
+        })
       };
     }
+    var accountSymbols = {};
+    (account.positions || []).forEach(function (position) {
+      var symbol = String(position.symbol || "").toUpperCase();
+      if (symbol) accountSymbols[symbol] = true;
+    });
     var active = [];
     var inactive = [];
     rows.forEach(function (sleeve) {
@@ -1793,9 +1800,11 @@
       var holdings = (sleeve.holdings || []).filter(function (holding) {
         return Math.abs(numeric(holding.shares) || 0) >= 0.000001;
       });
+      var hasAccountHolding = holdings.some(function (holding) {
+        return Boolean(accountSymbols[String(holding.symbol || holding.ticker || holding || "").toUpperCase()]);
+      });
       var mode = String(sleeve.operatingMode || sleeve.operating_mode || "unknown").toLowerCase();
       var hasValue = Math.abs(values.net) >= 0.005 || Math.abs(values.cash) >= 0.005 || Math.abs(values.positionValue) >= 0.005;
-      var hasHoldings = holdings.length > 0;
       var isOff = /^(off|disabled|inactive|hibernate|hibernating|paused|sleep)$/i.test(mode);
       var row = {
         label: sleeveLabel(sleeve, "Sleeve"),
@@ -1807,7 +1816,7 @@
         lastReconciledAt: sleeve.lastReconciledAt || sleeve.last_reconciled_at,
         initialized: Boolean(sleeve.initialized)
       };
-      if (!isOff && (hasValue || hasHoldings)) {
+      if (!isOff && (hasValue || hasAccountHolding)) {
         active.push(row);
       } else {
         inactive.push(row);
