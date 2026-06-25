@@ -1467,8 +1467,17 @@
     var target = $("top-holdings");
     if (!target) return;
     target.innerHTML = state.holdings.slice(0, 5).map(function (holding) {
-      return stackItem(holding.symbol + " - " + holding.name, money(holding.value) + " / " + pct(holding.value, total), numberText(holding.shares, 6) + " shares across " + holding.accounts.length + " account(s)", holding.value / total * 100);
+      return holdingSummaryRow(holding, total);
     }).join("") || emptyItem("No holdings found", "Connect or sync a broker to import positions.");
+  }
+
+  function holdingSummaryRow(holding, total) {
+    var shareCount = numberText(holding.shares, 6);
+    var subtitle = (holding.name || tickerNames[holding.symbol] || "Holding") + " / " + holding.accounts.length + " acct";
+    return "<article class=\"compact-ledger-row\">"
+      + "<span><b>" + html(holding.symbol) + "</b><small>" + html(subtitle) + "</small></span>"
+      + "<span><b>" + html(money(holding.value)) + "</b><small>" + html(pct(holding.value, total) + " / " + shareCount + " sh") + "</small></span>"
+      + "</article>";
   }
 
   function renderReviewQueue() {
@@ -1486,6 +1495,7 @@
       var positionValue = (account.positions || []).reduce(function (sum, position) { return sum + (numeric(position.value) || 0); }, 0);
       return "<article class=\"account-card interactive-card\" data-account-detail=\"" + html(account.id) + "\" tabindex=\"0\">"
         + "<div class=\"stack-item-head\"><b>" + html(account.account) + "</b><span>" + html(account.broker) + "</span></div>"
+        + accountPositionsStrip(account)
         + "<div class=\"account-mini-grid\">"
         + miniMetric("Equity", money(account.equity))
         + miniMetric("Cash", money(account.cash))
@@ -1519,6 +1529,7 @@
       var positionValue = (account.positions || []).reduce(function (sum, position) { return sum + (numeric(position.value) || 0); }, 0);
       return "<article class=\"account-card interactive-card\" data-account-detail=\"" + html(account.id) + "\" tabindex=\"0\">"
         + "<div class=\"stack-item-head\"><b>" + html(account.account) + "</b><span>" + html(accountOwnerLabel(account.ownerEmail)) + " / " + html(account.broker) + "</span></div>"
+        + accountPositionsStrip(account)
         + "<div class=\"account-mini-grid\">"
         + miniMetric("Value", money(account.equity))
         + miniMetric("Cash", money(account.cash))
@@ -1530,6 +1541,18 @@
         + "<div class=\"recommendation-actions\"><button type=\"button\" class=\"text-button\" data-account-detail=\"" + html(account.id) + "\">Open details</button></div>"
         + "</article>";
     }).join("") || emptyItem("No visible accounts", "Sign in with an email that has SmartSleeve account access.");
+  }
+
+  function accountPositionsStrip(account) {
+    var rows = (account.positions || []).slice().sort(function (a, b) {
+      return (numeric(b.value) || 0) - (numeric(a.value) || 0);
+    }).slice(0, 4);
+    if (!rows.length) {
+      return "<div class=\"account-position-strip\"><span>No synced positions</span></div>";
+    }
+    return "<div class=\"account-position-strip\">" + rows.map(function (position) {
+      return "<span><b>" + html(position.symbol) + "</b> " + html(numberText(position.shares, 4)) + " / " + html(money(position.value)) + "</span>";
+    }).join("") + "</div>";
   }
 
   function findAccountById(id) {
@@ -1553,9 +1576,9 @@
     var sleeveNames = splitSleeves(account.sleeves.length ? account.sleeves : account.sleevesText);
     target.innerHTML = [
       "<article class=\"panel-card\"><div class=\"card-head\"><div><span>Broker values</span><h2>Cash and margin</h2></div><span class=\"status-chip\">" + html(account.broker) + "</span></div><div class=\"stack-list\">"
-        + stackItem("Account value", money(account.equity), account.equitySource === "positions_plus_cash_estimate" ? "Estimated from E-Trade positions plus cash because broker value was zero." : "Broker-reported account value.", 80)
-        + stackItem("Cash / margin", cashMarginMeta(account), marginPlainText(account), numeric(account.cash) < 0 ? 45 : 80)
-        + stackItem("Buying power", money(account.buyPower), "Buying power can be zero even when account value is positive.", numeric(account.buyPower) ? 70 : 25)
+        + stackItem("Account value", money(account.equity), account.equitySource === "positions_plus_cash_estimate" ? "Estimated from E-Trade positions plus cash because broker value was zero." : "Broker-reported account value.", null)
+        + stackItem("Cash / margin", cashMarginMeta(account), marginPlainText(account), numeric(account.cash) < 0 ? 45 : 0, numeric(account.cash) < 0 ? "with-progress" : "")
+        + stackItem("Buying power", money(account.buyPower), "Buying power can be zero even when account value is positive.", null)
       + "</div></article>",
       "<article class=\"panel-card\"><div class=\"card-head\"><div><span>Sleeves</span><h2>Active sleeve coverage</h2></div><button type=\"button\" class=\"text-button\" data-nav-button=\"sleeves\">All sleeves</button></div><div class=\"stack-list\">"
         + (sleeveNames.length ? sleeveNames.map(function (name) {
@@ -2863,7 +2886,11 @@
   }
 
   function stackItem(title, meta, body, progress, className) {
-    return "<article class=\"stack-item " + html(className || "") + "\"><div class=\"stack-item-head\"><b>" + html(title) + "</b><span>" + html(meta) + "</span></div><p>" + html(body) + "</p><div class=\"progress-bar\" style=\"--value:" + Math.max(0, Math.min(100, Number(progress) || 0)) + "%\"><i></i></div></article>";
+    var classes = String(className || "");
+    var showProgress = classes.split(/\s+/).indexOf("with-progress") !== -1;
+    return "<article class=\"stack-item " + html(classes) + "\"><div class=\"stack-item-head\"><b>" + html(title) + "</b><span>" + html(meta) + "</span></div><p>" + html(body) + "</p>"
+      + (showProgress ? "<div class=\"progress-bar\" style=\"--value:" + Math.max(0, Math.min(100, Number(progress) || 0)) + "%\"><i></i></div>" : "")
+      + "</article>";
   }
 
   function emptyItem(title, body) {

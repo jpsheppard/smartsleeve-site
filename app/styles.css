@@ -31,8 +31,8 @@ body {
   color: var(--text);
   background: linear-gradient(135deg, #020617 0%, #07111f 52%, #020617 100%);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  font-size: 10.5px;
-  line-height: 1.22;
+  font-size: 11px;
+  line-height: 1.24;
   overflow-x: hidden;
   overscroll-behavior-y: contain;
 }
@@ -349,7 +349,7 @@ main {
 
 .topbar h1 {
   margin: 0;
-  font-size: clamp(21px, 2.2vw, 30px);
+  font-size: clamp(23px, 2.5vw, 34px);
   line-height: 1;
 }
 
@@ -489,7 +489,7 @@ main {
 
 .section-heading h2 {
   margin: 0;
-  font-size: clamp(17px, 1.8vw, 23px);
+  font-size: clamp(18px, 2vw, 26px);
   line-height: 1.08;
 }
 
@@ -586,7 +586,7 @@ main {
 }
 
 .metric-card strong {
-  font-size: clamp(15px, 1.25vw, 19px);
+  font-size: clamp(16px, 1.4vw, 21px);
   line-height: 1;
 }
 
@@ -714,6 +714,73 @@ button.primary {
   border: 1px solid rgba(148, 163, 184, 0.14);
   border-radius: 8px;
   background: rgba(15, 23, 42, 0.62);
+}
+
+.compact-ledger-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(112px, 0.72fr);
+  gap: 8px;
+  align-items: center;
+  min-height: 40px;
+  padding: 5px 7px;
+  border: 1px solid rgba(148, 163, 184, 0.13);
+  border-radius: 7px;
+  background: rgba(15, 23, 42, 0.58);
+}
+
+.compact-ledger-row span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.compact-ledger-row span:last-child {
+  text-align: right;
+}
+
+.compact-ledger-row b {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-ledger-row small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 9.5px;
+  font-weight: 800;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-position-strip {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px;
+}
+
+.account-position-strip span {
+  overflow: hidden;
+  min-height: 21px;
+  padding: 3px 5px;
+  border: 1px solid rgba(34, 211, 238, 0.13);
+  border-radius: 6px;
+  color: var(--muted);
+  background: rgba(2, 6, 23, 0.24);
+  font-size: 9.5px;
+  font-weight: 800;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-position-strip b {
+  color: var(--text);
+  font-size: 10px;
 }
 
 .interactive-card {
@@ -1494,7 +1561,7 @@ textarea:focus {
   }
 
   .metric-card {
-    min-height: 70px;
+    min-height: 92px;
   }
 
   .account-mini-grid {
