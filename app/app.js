@@ -3814,7 +3814,7 @@
     state.pullRefresh.refreshing = true;
     state.pullRefresh.tracking = false;
     state.pullRefresh.armed = false;
-    updatePullRefreshIndicator(96, true, "Checking latest trader cycle...");
+    updatePullRefreshIndicator(96, true, "Checking latest app feed...");
     text("sync-pill", "Refreshing cache");
     var refreshStarted = requestServerFeedRefresh();
     Promise.all([
@@ -3830,9 +3830,9 @@
     }).then(function (result) {
       state.pullRefresh.refreshing = false;
       runRefreshBounce(result.ok);
-      updatePullRefreshIndicator(result.ok ? 72 : 48, false, result.ok ? (result.updated ? "Latest trader cycle synced." : "Already current") : "Still showing current view");
+      updatePullRefreshIndicator(result.ok ? 72 : 48, false, result.ok ? (result.updated ? "Latest app feed synced." : "Already current") : "Still showing current view");
       if (result.ok && result.updated) {
-        toast("Latest trader cycle synced.");
+        toast("Latest app feed synced; stale account exports are called out separately.");
       } else if (!result.ok && !state.payload) {
         toast("Private feed unavailable. Sign in or retry.");
       }
@@ -4037,7 +4037,7 @@
       var refreshStarted = requestServerFeedRefresh();
       loadFeed({silent: true, interactiveRefresh: true}).then(function (ok) {
         if (ok) {
-          toast(refreshStarted ? "Refresh requested. Latest available trader cycle is showing." : "Private feed checked.");
+          toast(refreshStarted ? "Refresh requested. Latest available app feed is showing; stale accounts are called out separately." : "Private feed checked.");
         } else if (!state.payload) {
           toast("Private feed unavailable. Sign in or retry.");
         }
@@ -4333,7 +4333,7 @@
     state.accountCoverage = payload.accountCoverage || null;
     state.feedWarning = null;
     text("snapshot-source", appEdition === "developer" ? (payload.source || "Private SmartSleeve API") : "");
-    text("snapshot-time", latestDaemonLabel(payload));
+    text("snapshot-time", feedSyncLabel(payload));
     text("sync-pill", "Private API synced");
     addActivity("Cloud feed synced", "EXTERNAL_BROKER_SYNC", appEdition === "developer" ? "All accounts" : principalEmail, state.accounts.length + " account(s), " + state.serverTrades.length + " trades, " + state.brain.length + " brain rows.");
     renderAll();
@@ -4349,6 +4349,20 @@
       return !Number.isNaN(date.getTime());
     }).sort(function (a, b) { return b - a; })[0];
     return latest ? "Last synced trader cycle at " + latest.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit", second: "2-digit"}) + " on " + latest.toLocaleDateString([], {month: "long", day: "numeric", year: "numeric"}) + "." : "Last synced trader cycle unavailable.";
+  }
+
+  function feedSyncLabel(payload) {
+    var source = payload || state.payload || {};
+    var feedAt = source.published_at || source.generated_at || source.generatedAt || source.updated_at || source.updatedAt;
+    var date = feedAt ? new Date(feedAt) : null;
+    var base = date && !Number.isNaN(date.getTime())
+      ? "App feed refreshed at " + date.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit", second: "2-digit"}) + " on " + date.toLocaleDateString([], {month: "long", day: "numeric", year: "numeric"}) + "."
+      : latestDaemonLabel(source);
+    var staleAccounts = (state.accounts || []).filter(function (account) { return account.sourceIsStale; });
+    if (!staleAccounts.length) return base;
+    return base + " " + staleAccounts.length + " account export" + (staleAccounts.length === 1 ? " is" : "s are") + " stale: " + staleAccounts.slice(0, 3).map(function (account) {
+      return account.account + " " + accountFreshnessLabel(account);
+    }).join("; ") + (staleAccounts.length > 3 ? "; +" + (staleAccounts.length - 3) + " more" : "") + ".";
   }
 
   function collectDaemonTimestamps(value, out) {
@@ -4427,7 +4441,7 @@
       .catch(function (error) {
         if (state.payload && (options.refresh || options.silent || options.interactiveRefresh || error.authRequired)) {
           text("sync-pill", options.interactiveRefresh || options.silent ? "Checked" : "Showing latest loaded data");
-          text("snapshot-time", latestDaemonLabel(state.payload) || "Latest loaded trader cycle is still displayed.");
+          text("snapshot-time", feedSyncLabel(state.payload) || "Latest loaded app feed is still displayed.");
           state.feedWarning = options.interactiveRefresh || options.silent
             ? null
             : recommendation("feed-refresh-kept-current", "Latest loaded data shown", "Retry sync", "SmartSleeve", "Data", 0, error.message, "Holdings already on screen remain visible; confirm the timestamp before acting.", "EXTERNAL_BROKER_SYNC");
