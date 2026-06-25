@@ -1753,20 +1753,14 @@
     var holdings = (account.positions || []).slice().sort(function (a, b) { return (numeric(b.value) || 0) - (numeric(a.value) || 0); });
     var sleeveCoverage = accountSleeveCoverage(account);
     var emptyAccountWarning = !holdings.length && !(numeric(account.equity) > 0) && /awaiting|configured|pending|sync/i.test(account.status || "");
+    var brokerStatusClass = account.sourceIsStale ? "status-chip warning" : "status-chip";
     target.innerHTML = [
-      "<article class=\"panel-card compact-account-detail\"><div class=\"card-head\"><div><span>Broker values</span><h2>Cash and margin</h2></div><span class=\"status-chip" + (account.sourceIsStale ? " warning" : "") + "\">" + html(account.broker) + "</span></div>"
-        + "<div class=\"account-mini-grid detail-mini-grid\">"
-        + miniMetric("Value", money(account.equity))
-        + miniMetric("Cash", money(account.cash))
-        + miniMetric("Buy power", money(account.buyPower))
-        + miniMetric("Holdings", money(holdings.reduce(function (sum, position) { return sum + (numeric(position.value) || 0); }, 0)))
-        + miniMetric("Positions", String(holdings.length))
-        + miniMetric("Last sync", accountFreshnessLabel(account))
-        + "</div><div class=\"stack-list compact-stack-list\">"
-        + (account.equitySource === "positions_plus_cash_estimate" ? stackItem("Value source", "Positions + cash estimate", accountValueSourceCopy(account), null, "compact-stack") : "")
-        + (account.sourceIsStale ? stackItem("Sync warning", accountFreshnessLabel(account), "Refresh daemon/account analytics before trading.", 25, "with-progress compact-stack") : "")
-        + (numeric(account.cash) < 0 ? stackItem("Margin used", cashMarginMeta(account), "Review maintenance and buying-power buffer before adding risk.", 45, "with-progress compact-stack") : "")
-        + (emptyAccountWarning ? stackItem("Live holdings missing", "Awaiting broker export", "Do not treat as a true zero-balance account.", null, "compact-stack") : "")
+      "<article class=\"panel-card account-detail-summary\"><div class=\"card-head\"><div><span>Broker values</span><h2>Cash and margin</h2></div><span class=\"" + brokerStatusClass + "\">" + html(account.broker) + "</span></div><div class=\"account-detail-metrics\">"
+        + detailMetric("Account value", money(account.equity), accountValueSourceCopy(account))
+        + detailMetric("Last sync", accountFreshnessLabel(account), account.sourceIsStale ? "Broker export is stale; refresh the daemon/account analytics before trading from this view." : "Broker/account export is inside the expected sync window.", account.sourceIsStale ? "warning" : "")
+        + detailMetric("Cash / margin", cashMarginMeta(account), marginPlainText(account), numeric(account.cash) < 0 ? "warning" : "")
+        + detailMetric("Buying power", money(account.buyPower), "Buying power can be zero even when account value is positive.")
+        + (emptyAccountWarning ? stackItem("Live holdings missing", "Awaiting broker export", "This configured account has no synced positions or equity in the current app feed, so do not treat it as a true zero-balance account.") : "")
       + "</div></article>",
       accountDetailValueChart(account),
       "<article class=\"panel-card\"><div class=\"card-head\"><div><span>Sleeves</span><h2>Active sleeve coverage</h2></div><button type=\"button\" class=\"text-button\" data-nav-button=\"sleeves\">All sleeves</button></div><div class=\"stack-list\">"
@@ -1883,7 +1877,7 @@
       + (last ? "<div class=\"chart-readout\" data-chart-readout=\"" + html(chartId) + "\"><b>" + html(money(last.value)) + "</b><span class=\"" + html(trendClass) + "\">" + html(meta) + "</span></div>" : "")
       + (cleanPoints.length ? buildLineChart(cleanPoints, lineColor, "Account value", {interactive: true, compact: true, chartId: chartId, baseline: first ? first.value : null, range: range}) : emptyItem("No account history", "Private account history has not synced for this account yet."))
       + "<div class=\"time-tabs\" role=\"tablist\" aria-label=\"Account chart range\">" + tabs + "</div>"
-      + (last ? "<p class=\"chart-footnote\">Latest " + html(money(last.value)) + " / " + html(shortTimestamp(last.at)) + " / " + html(cleanPoints.length + " synced point" + (cleanPoints.length === 1 ? "" : "s")) + "</p>" : "")
+      + (last ? "<p class=\"chart-footnote\">" + html(cleanPoints.length + " synced point" + (cleanPoints.length === 1 ? "" : "s")) + " / latest " + html(money(last.value)) + " / " + html(shortTimestamp(last.at)) + "</p>" : "")
       + "</article>";
   }
 
@@ -3297,6 +3291,13 @@
       + "</article>";
   }
 
+  function detailMetric(title, meta, body, className) {
+    var detail = [title, meta, body].filter(Boolean).join(": ");
+    return "<article class=\"detail-metric " + html(className || "") + "\" title=\"" + html(detail) + "\" aria-label=\"" + html(detail) + "\">"
+      + "<span>" + html(title) + "</span><b>" + html(meta) + "</b>"
+      + "</article>";
+  }
+
   function emptyItem(title, body) {
     return stackItem(title, "Action needed", body, 15);
   }
@@ -3548,15 +3549,6 @@
     return date.toLocaleDateString("en-US", {month: "short", day: "numeric"});
   }
 
-  function chartEdgeLabel(value, range) {
-    var date = new Date(value);
-    if (Number.isNaN(date.getTime())) return String(value || "");
-    if (range === "1D") {
-      return date.toLocaleTimeString("en-US", {hour: "numeric", minute: "2-digit"});
-    }
-    return shortDate(value);
-  }
-
   function compactMoney(value) {
     var number = numeric(value);
     if (number == null) return "$0";
@@ -3584,13 +3576,13 @@
     if (trend == null && cleanPoints.length > 1) trend = last.value - first.value;
     var trendClass = valueClass(trend);
     var lineColor = trendClass === "negative" ? "var(--red)" : "var(--green)";
-    var chart = buildLineChart(cleanPoints, lineColor, yLabel, {pointCountLabel: cleanPoints.length + " synced point" + (cleanPoints.length === 1 ? "" : "s")});
+    var chart = buildLineChart(cleanPoints, lineColor, yLabel);
     var sub = cleanPoints.length > 1
       ? shortDate(first.at) + " to " + shortDate(last.at) + " / " + signedMoney(last.value - first.value)
       : "One synced point / more history needed";
     return "<article class=\"chart-card\">"
       + "<div class=\"stack-item-head\"><b>" + html(title) + "</b><span class=\"" + trendClass + "\">" + html(sub) + "</span></div>"
-      + "<p>" + html(meta) + " / latest " + html(money(last.value)) + " / " + html(cleanPoints.length + " synced point" + (cleanPoints.length === 1 ? "" : "s")) + "</p>"
+      + "<p>" + html(meta) + " / latest " + html(money(last.value)) + "</p>"
       + chart
       + "</article>";
   }
@@ -3657,8 +3649,8 @@
       + scrub
       + (options.compact ? "" : "<text x=\"" + ((left + width - right) / 2) + "\" y=\"" + (height - 12) + "\" class=\"chart-label\" text-anchor=\"middle\">Time</text>"
         + "<text x=\"16\" y=\"" + ((top + height - bottom) / 2) + "\" class=\"chart-label\" transform=\"rotate(-90 16 " + ((top + height - bottom) / 2) + ")\" text-anchor=\"middle\">" + html(yLabel) + "</text>")
-      + "<text x=\"" + left + "\" y=\"" + (height - 28) + "\" class=\"chart-tick\" text-anchor=\"start\">" + html(chartEdgeLabel(points[0].at, options.range)) + "</text>"
-      + "<text x=\"" + (width - right) + "\" y=\"" + (height - 28) + "\" class=\"chart-tick\" text-anchor=\"end\">" + html(chartEdgeLabel(points[points.length - 1].at, options.range)) + "</text>"
+      + "<text x=\"" + left + "\" y=\"" + (height - 28) + "\" class=\"chart-tick\" text-anchor=\"start\">" + html(shortDate(points[0].at)) + "</text>"
+      + "<text x=\"" + (width - right) + "\" y=\"" + (height - 28) + "\" class=\"chart-tick\" text-anchor=\"end\">" + html(shortDate(points[points.length - 1].at)) + "</text>"
       + "</svg>";
   }
 

@@ -608,18 +608,6 @@ main {
   padding: 6px;
 }
 
-.compact-account-detail {
-  gap: 8px;
-}
-
-.detail-mini-grid {
-  margin: 8px 0;
-}
-
-.compact-stack {
-  gap: 5px;
-}
-
 .card-head {
   display: flex;
   justify-content: space-between;
@@ -1529,6 +1517,51 @@ textarea:focus {
   gap: 8px;
 }
 
+.account-detail-summary {
+  gap: 10px;
+}
+
+.account-detail-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.detail-metric {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  min-height: 58px;
+  padding: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.62);
+}
+
+.detail-metric.warning {
+  border-color: rgba(245, 158, 11, 0.36);
+  background: rgba(245, 158, 11, 0.09);
+}
+
+.detail-metric span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.detail-metric b {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.18;
+  text-overflow: ellipsis;
+}
+
 .account-detail-chart-card .line-chart {
   min-height: 210px;
 }
@@ -1726,6 +1759,10 @@ textarea:focus {
   }
 
   .account-mini-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .account-detail-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
