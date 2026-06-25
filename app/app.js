@@ -472,21 +472,12 @@
     "crissy": "criseldasarenas@gmail.com",
     "crissy-rh": "criseldasarenas@gmail.com",
     "crissy rh": "criseldasarenas@gmail.com",
-    "crissy-robinhood": "criseldasarenas@gmail.com",
-    "crissy robinhood": "criseldasarenas@gmail.com",
-    "crissy-rh-account": "criseldasarenas@gmail.com",
-    "criselda-rh": "criseldasarenas@gmail.com",
-    "criseldasarenas": "criseldasarenas@gmail.com",
-    "john": "jpsheppard88@gmail.com",
     "john-rh": "jpsheppard88@gmail.com",
     "john rh": "jpsheppard88@gmail.com",
     "john-etrade": "jpsheppard88@gmail.com",
     "john etrade": "jpsheppard88@gmail.com",
-    "etrade": "jpsheppard88@gmail.com",
     "u25739525": "jpsheppard88@gmail.com",
-    "u25815215": "jpsheppard88@gmail.com",
-    "john-ibkr-margin": "jpsheppard88@gmail.com",
-    "john-ibkr-roth": "jpsheppard88@gmail.com"
+    "u25815215": "jpsheppard88@gmail.com"
   };
 
   function knownUserEmailFromText(value) {
@@ -533,20 +524,6 @@
     return configuredAccountOwners[raw] || configuredAccountOwners[normalized] || "";
   }
 
-  function accountOwnerEmailById(value) {
-    var id = String(value || "").trim();
-    if (!id) return "";
-    var account = (state.allAccounts || state.accounts || []).find(function (item) {
-      return [
-        item.id,
-        item.accountId,
-        item.account_id,
-        item.account
-      ].map(function (part) { return String(part || "").trim(); }).indexOf(id) !== -1;
-    });
-    return account ? rowOwnerEmail(account) : knownAccountOwnerEmail(id);
-  }
-
   function html(value) {
     return String(value == null ? "" : value)
       .replace(/&/g, "&amp;")
@@ -566,27 +543,6 @@
   function numeric(value) {
     var number = Number(value);
     return Number.isFinite(number) ? number : null;
-  }
-
-  function firstNumericField(source, keys) {
-    for (var i = 0; i < keys.length; i += 1) {
-      var key = keys[i];
-      if (source && source[key] != null) {
-        var value = numeric(source[key]);
-        if (value != null) {
-          return {key: key, value: value};
-        }
-      }
-    }
-    return null;
-  }
-
-  function firstTextField(source, keys) {
-    for (var i = 0; i < keys.length; i += 1) {
-      var key = keys[i];
-      if (source && source[key]) return String(source[key]);
-    }
-    return "";
   }
 
   function money(value) {
@@ -764,6 +720,40 @@
       .map(function (item) { return item === "Hyper Savage" ? "Covered Sage" : item; });
   }
 
+  function accountActiveSleeveNames(account) {
+    var names = [];
+    var positions = account.positions || [];
+    var accountSymbols = {};
+    positions.forEach(function (position) {
+      var symbol = String(position.symbol || "").toUpperCase();
+      if (symbol) accountSymbols[symbol] = true;
+    });
+    (Array.isArray(account.sleeves) ? account.sleeves : []).forEach(function (sleeve) {
+      if (!sleeve || typeof sleeve !== "object") return;
+      var name = sleeveLabel(sleeve, "");
+      if (!name) return;
+      var sleeveHoldings = (sleeve.holdings || []).map(function (holding) {
+        return String(holding.symbol || holding.ticker || holding || "").toUpperCase();
+      }).filter(Boolean);
+      var hasAccountHolding = sleeveHoldings.some(function (symbol) { return Boolean(accountSymbols[symbol]); });
+      var funded = (numeric(sleeve.netLiquidationUsd != null ? sleeve.netLiquidationUsd : sleeve.net_liquidation_usd) || 0) > 0
+        || (numeric(sleeve.positionValueUsd != null ? sleeve.positionValueUsd : sleeve.position_value_usd) || 0) > 0
+        || (numeric(sleeve.cashUsd != null ? sleeve.cashUsd : sleeve.cash_usd) || 0) > 0;
+      if ((funded || hasAccountHolding) && names.indexOf(name) === -1) {
+        names.push(name);
+      }
+    });
+    if (!names.length && (!Array.isArray(account.sleeves) || !account.sleeves.some(function (item) { return item && typeof item === "object"; }))) {
+      splitSleeves(account.sleeves.length ? account.sleeves : account.sleevesText).forEach(function (name) {
+        if (names.indexOf(name) === -1) names.push(name);
+      });
+    }
+    if (!names.length && positions.length && accountDefaultSleeveName(account) !== "Unassigned") {
+      names.push(accountDefaultSleeveName(account));
+    }
+    return names;
+  }
+
   function inferAccountOwnerEmail(account) {
     var configuredOwner = knownAccountOwnerEmail(account.id)
       || knownAccountOwnerEmail(account.accountId)
@@ -820,7 +810,6 @@
         || row.principal_email
         || row.email
         || knownAccountOwnerEmail(row)
-        || accountOwnerEmailById(row.accountId || row.account_id || row.account)
         || inferAccountOwnerEmail(row)
     );
   }
@@ -839,43 +828,28 @@
 
   function normalizeAccount(account) {
     var positions = (account.positions || []).map(function (position) {
-      var priceField = firstNumericField(position, [
-        "currentPrice",
-        "current_price",
-        "markPrice",
-        "mark_price",
-        "lastPrice",
-        "last_price",
-        "lastTradePrice",
-        "last_trade_price",
-        "quotePrice",
-        "quote_price",
-        "marketPrice",
-        "market_price",
-        "price"
-      ]);
-      var shares = numeric(position.shares != null ? position.shares : position.quantity);
-      var value = numeric(position.value != null ? position.value : position.market_value_usd);
-      var impliedPrice = shares && value != null ? value / shares : null;
-      var explicitPriceSource = position.priceSource || position.price_source;
       return {
         symbol: String(position.symbol || "").toUpperCase(),
         name: position.name || tickerNames[String(position.symbol || "").toUpperCase()],
-        shares: shares,
-        price: priceField ? priceField.value : impliedPrice,
-        impliedPrice: impliedPrice,
-        priceSource: explicitPriceSource || (priceField ? priceField.key : "value_per_share"),
-        priceAsOf: firstTextField(position, ["priceAsOf", "price_as_of", "quoteAsOf", "quote_as_of", "marketDataAt", "market_data_at", "updatedAt", "updated_at", "timestamp"]),
+        shares: numeric(position.shares != null ? position.shares : position.quantity),
+        price: numeric(position.price != null ? position.price : position.current_price),
+        brokerPrice: numeric(position.brokerPrice != null ? position.brokerPrice : position.broker_price),
+        priceAsOf: position.priceAsOf || position.price_as_of || position.quoteAsOf || position.quote_as_of || position.marketDataAsOf || position.market_data_as_of,
+        priceSource: position.priceSource || position.price_source || position.quoteSource || position.quote_source || position.marketDataSource || position.market_data_source,
+        priceDerivedFromMarketValue: Boolean(position.priceDerivedFromMarketValue || position.price_derived_from_market_value),
+        value: numeric(position.value != null ? position.value : position.market_value_usd),
+        brokerValue: numeric(position.brokerValue != null ? position.brokerValue : position.broker_value),
         quotePrice: numeric(position.quotePrice != null ? position.quotePrice : position.quote_price),
         quoteAsOf: position.quoteAsOf || position.quote_as_of,
         quoteSource: position.quoteSource || position.quote_source,
-        value: value,
         averageCost: numeric(position.averageCost != null ? position.averageCost : position.average_cost),
         costBasis: numeric(position.costBasis != null ? position.costBasis : position.cost_basis),
         dailyPnl: numeric(position.dailyPnl != null ? position.dailyPnl : position.daily_pnl),
         unrealizedPnl: numeric(position.unrealizedPnl != null ? position.unrealizedPnl : position.unrealized_pnl),
         realizedPnl: numeric(position.realizedPnl != null ? position.realizedPnl : position.realized_pnl),
         totalPnl: numeric(position.totalPnl != null ? position.totalPnl : position.total_pnl),
+        priceAsOf: position.priceAsOf || position.price_as_of,
+        priceSource: position.priceSource || position.price_source,
         currency: position.currency || "USD"
       };
     });
@@ -1118,14 +1092,14 @@
             shares: 0,
             value: 0,
             priceValue: 0,
+            priceShares: 0,
+            impliedPriceValue: 0,
+            impliedPriceShares: 0,
+            priceAsOf: null,
+            priceSource: "",
+            priceDerivedFromMarketValue: false,
             costBasis: null,
             costShares: 0,
-            quotePriceValue: 0,
-            quoteShares: 0,
-            impliedPrice: null,
-            priceSource: "",
-            priceAsOf: "",
-            priceDivergencePct: null,
             dailyPnl: null,
             unrealizedPnl: null,
             realizedPnl: null,
@@ -1136,14 +1110,20 @@
         }
         grouped[symbol].shares += shares;
         grouped[symbol].value += value;
-        grouped[symbol].priceValue += price * shares;
-        if (numeric(position.price) != null && shares) {
-          grouped[symbol].quotePriceValue += numeric(position.price) * shares;
-          grouped[symbol].quoteShares += shares;
-          grouped[symbol].priceSource = grouped[symbol].priceSource || position.priceSource || "quote";
+        if (price && shares) {
+          grouped[symbol].priceValue += price * shares;
+          grouped[symbol].priceShares += shares;
+        } else if (value && shares) {
+          grouped[symbol].impliedPriceValue += value;
+          grouped[symbol].impliedPriceShares += shares;
+          grouped[symbol].priceDerivedFromMarketValue = true;
         }
-        if (position.priceAsOf && (!grouped[symbol].priceAsOf || new Date(position.priceAsOf) > new Date(grouped[symbol].priceAsOf))) {
-          grouped[symbol].priceAsOf = position.priceAsOf;
+        var priceAsOf = position.priceAsOf;
+        if (priceAsOf && (!grouped[symbol].priceAsOf || timestampMs(priceAsOf) > timestampMs(grouped[symbol].priceAsOf))) {
+          grouped[symbol].priceAsOf = priceAsOf;
+        }
+        if (position.priceSource && grouped[symbol].priceSource.indexOf(position.priceSource) === -1) {
+          grouped[symbol].priceSource = grouped[symbol].priceSource ? grouped[symbol].priceSource + ", " + position.priceSource : position.priceSource;
         }
         var averageCost = numeric(position.averageCost);
         var costBasis = numeric(position.costBasis);
@@ -1172,11 +1152,8 @@
     });
     var holdings = Object.keys(grouped).map(function (symbol) {
       var row = grouped[symbol];
-      row.impliedPrice = row.shares && row.value ? row.value / row.shares : null;
-      row.price = row.quoteShares ? row.quotePriceValue / row.quoteShares : row.impliedPrice;
-      if (row.price != null && row.impliedPrice != null && row.impliedPrice > 0) {
-        row.priceDivergencePct = Math.abs(row.price - row.impliedPrice) / row.impliedPrice * 100;
-      }
+      row.price = row.priceShares ? row.priceValue / row.priceShares : (row.impliedPriceShares ? row.impliedPriceValue / row.impliedPriceShares : null);
+      row.priceDerivedFromMarketValue = !row.priceShares && row.impliedPriceShares > 0;
       row.avgPrice = row.price;
       row.averageCost = row.costBasis != null && row.costShares ? row.costBasis / row.costShares : null;
       return row;
@@ -1777,11 +1754,11 @@
     var sleeveCoverage = accountSleeveCoverage(account);
     var emptyAccountWarning = !holdings.length && !(numeric(account.equity) > 0) && /awaiting|configured|pending|sync/i.test(account.status || "");
     target.innerHTML = [
-      "<article class=\"panel-card\"><div class=\"card-head\"><div><span>Broker values</span><h2>Cash and margin</h2></div><span class=\"status-chip\">" + html(account.broker) + "</span></div><div class=\"stack-list\">"
-        + stackItem("Account value", money(account.equity), accountValueSourceCopy(account), null)
-        + stackItem("Data freshness", accountFreshnessLabel(account), account.sourceIsStale ? "Broker positions may be stale. Refresh the daemon/account analytics before trading from this view." : "Broker/account export is inside the freshness window.", account.sourceIsStale ? 25 : null, account.sourceIsStale ? "with-progress" : "")
-        + stackItem("Cash / margin", cashMarginMeta(account), marginPlainText(account), numeric(account.cash) < 0 ? 45 : 0, numeric(account.cash) < 0 ? "with-progress" : "")
-        + stackItem("Buying power", money(account.buyPower), "Buying power can be zero even when account value is positive.", null)
+      "<article class=\"panel-card compact-account-detail\"><div class=\"card-head\"><div><span>Broker values</span><h2>Cash and margin</h2></div><span class=\"status-chip\">" + html(account.broker) + "</span></div><div class=\"stack-list compact-stack-list\">"
+        + stackItem("Account value", money(account.equity), accountValueSourceCopy(account), null, "compact-stack")
+        + stackItem("Last sync", accountFreshnessLabel(account), account.sourceIsStale ? "Broker positions may be stale. Refresh the daemon/account analytics before trading from this view." : "Broker/account export is inside the expected sync window.", account.sourceIsStale ? 25 : null, account.sourceIsStale ? "with-progress compact-stack" : "compact-stack")
+        + stackItem("Cash / margin", cashMarginMeta(account), marginPlainText(account), numeric(account.cash) < 0 ? 45 : 0, numeric(account.cash) < 0 ? "with-progress compact-stack" : "compact-stack")
+        + stackItem("Buying power", money(account.buyPower), "Buying power can be zero even when account value is positive.", null, "compact-stack")
         + (emptyAccountWarning ? stackItem("Live holdings missing", "Awaiting broker export", "This configured account has no synced positions or equity in the current app feed, so do not treat it as a true zero-balance account.") : "")
       + "</div></article>",
       accountDetailValueChart(account),
@@ -1799,7 +1776,7 @@
             + cell("Ticker", "<b>" + html(position.symbol) + "</b><small>" + html(position.name || tickerNames[position.symbol] || "") + "</small>")
             + cell("Shares", numberText(position.shares, 6))
             + cell("Value", money(position.value))
-            + cell("Mark", holdingPriceCell(position))
+            + cell("Mark", priceMarkCell(position))
             + cell("Cost basis", position.costBasis == null ? "<span class=\"needs-sync\">Needs basis sync</span>" : money(position.costBasis))
             + cell("P/L", pnlCell(position.totalPnl, "Needs basis sync"))
             + "</tr>";
@@ -1867,7 +1844,7 @@
     var symbols = (sleeve.holdings || []).map(function (holding) {
       return String(holding.symbol || "").toUpperCase();
     }).filter(Boolean).slice(0, 8).join(", ");
-    return (symbols || "No current holdings") + (sleeve.lastReconciledAt ? " / reconciled " + compactDateTime(sleeve.lastReconciledAt) : "");
+    return (symbols || "No current holdings") + (sleeve.lastReconciledAt ? " / reconciled " + shortTimestamp(sleeve.lastReconciledAt) : "");
   }
 
   function accountDetailValueChart(account) {
@@ -1899,7 +1876,7 @@
       + (last ? "<div class=\"chart-readout\" data-chart-readout=\"" + html(chartId) + "\"><b>" + html(money(last.value)) + "</b><span class=\"" + html(trendClass) + "\">" + html(meta) + "</span></div>" : "")
       + (cleanPoints.length ? buildLineChart(cleanPoints, lineColor, "Account value", {interactive: true, compact: true, chartId: chartId, baseline: first ? first.value : null, range: range}) : emptyItem("No account history", "Private account history has not synced for this account yet."))
       + "<div class=\"time-tabs\" role=\"tablist\" aria-label=\"Account chart range\">" + tabs + "</div>"
-      + (last ? "<p class=\"chart-footnote\">Latest " + html(money(last.value)) + " / " + html(compactDateTime(last.at)) + "</p>" : "")
+      + (last ? "<p class=\"chart-footnote\">Latest " + html(money(last.value)) + " / " + html(shortTimestamp(last.at)) + "</p>" : "")
       + "</article>";
   }
 
@@ -1935,7 +1912,7 @@
   function accountFreshnessLabel(account) {
     if (account.sourceFreshnessLabel) return account.sourceFreshnessLabel;
     if (account.sourceAgeMinutes != null) return Math.round(account.sourceAgeMinutes) + " min old";
-    return account.generatedAt ? compactDateTime(account.generatedAt) : "needs sync";
+    return account.generatedAt ? shortTimestamp(account.generatedAt) : "needs sync";
   }
 
   function accountStatusLabel(account) {
@@ -1954,6 +1931,29 @@
       return "Estimated from E-Trade positions plus cash because broker value was zero.";
     }
     return "Broker-reported account value.";
+  }
+
+  function priceMarkCell(position) {
+    var source = priceSourceLabel(position.priceSource);
+    var asOf = shortTimestamp(position.priceAsOf);
+    var quote = position.quotePrice == null ? "" : " | quote " + money(position.quotePrice);
+    return "<b>" + html(money(position.price)) + "</b><small>" + html(source + (asOf ? " / " + asOf : "") + quote) + "</small>";
+  }
+
+  function priceSourceLabel(value) {
+    var source = String(value || "").toLowerCase();
+    if (source === "yfinance_1m") return "yfinance 1m";
+    if (source === "last_good_broker_export") return "last good broker mark";
+    if (source.indexOf("last_good") !== -1) return "last good + refreshed";
+    if (source) return source.replace(/_/g, " ");
+    return "broker mark";
+  }
+
+  function shortTimestamp(value) {
+    if (!value) return "";
+    var date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    return date.toLocaleString([], {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"});
   }
 
   function marginPlainText(account) {
@@ -2060,7 +2060,7 @@
     });
     target.innerHTML = sleeves.slice(0, 8).map(function (sleeve) {
       var value = sleeve.exactValue ? money(sleeve.exactValue) : "Ledger split pending";
-      return stackItem(sleeve.name, value, sleeve.accounts.join(", ") + " / " + (sleeve.holdings.slice(0, 7).join(", ") || "No current holdings"), sleeve.exactValue && total ? sleeve.exactValue / total * 100 : 20);
+      return stackItem(sleeve.name, value, sleeve.accounts.join(", ") + " / " + (sleeve.holdings.slice(0, 7).join(", ") || "No current holdings"));
     }).join("") || emptyItem("No active sleeve holdings", "No funded sleeve positions are visible for this account scope.");
   }
 
@@ -2327,36 +2327,47 @@
     }).join("") || "<tr>" + cell("Holdings", "No holdings synced") + "</tr>";
   }
 
-  function priceSourceLabel(source) {
-    var key = String(source || "").replace(/_/g, " ").trim();
-    if (!key || key === "value per share") return "Value / shares";
-    if (/current/i.test(key)) return "Current quote";
-    if (/mark/i.test(key)) return "Mark quote";
-    if (/last/i.test(key)) return "Last trade";
-    if (/market/i.test(key)) return "Market quote";
-    if (/price/i.test(key)) return "Quote";
-    return key;
-  }
-
-  function compactDateTime(value) {
-    var date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "";
-    return date.toLocaleString([], {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"});
-  }
-
   function holdingPriceCell(holding) {
-    if (numeric(holding.price) == null) {
+    var price = numeric(holding.price);
+    if (price == null) {
       return "<span class=\"needs-sync\">Needs quote sync</span>";
     }
-    var meta = priceSourceLabel(holding.priceSource);
-    var asOf = compactDateTime(holding.priceAsOf);
-    if (asOf) meta += " " + asOf;
-    if (holding.quotePrice != null) meta += " | quote " + money(holding.quotePrice);
-    var warning = "";
-    if (holding.priceDivergencePct != null && holding.priceDivergencePct > 1.5) {
-      warning = "<small class=\"price-warning\">Value implies " + html(money(holding.impliedPrice)) + " (" + holding.priceDivergencePct.toFixed(1) + "% diff)</small>";
+    var meta = priceFreshnessLabel(holding);
+    return html(money(price)) + (meta ? "<small>" + html(meta) + "</small>" : "");
+  }
+
+  function priceFreshnessLabel(holding) {
+    var parts = [];
+    var source = String(holding.priceSource || "").replace(/_/g, " ").trim();
+    if (holding.priceDerivedFromMarketValue) {
+      parts.push("value-implied mark");
+    } else if (source) {
+      parts.push(source);
+    } else {
+      parts.push("broker mark");
     }
-    return html(money(holding.price)) + "<small>" + html(meta) + "</small>" + warning;
+    var asOf = holding.priceAsOf;
+    var ageMs = Date.now() - timestampMs(asOf);
+    if (asOf && Number.isFinite(ageMs) && ageMs > 15 * 60 * 1000) {
+      parts.push("stale " + ageLabel(ageMs));
+    } else if (asOf) {
+      parts.push("as of " + shortTime(asOf));
+    }
+    return parts.join(" / ");
+  }
+
+  function ageLabel(ms) {
+    var minutes = Math.max(1, Math.round(ms / 60000));
+    if (minutes < 90) return minutes + "m";
+    var hours = Math.round(minutes / 60);
+    if (hours < 48) return hours + "h";
+    return Math.round(hours / 24) + "d";
+  }
+
+  function shortTime(value) {
+    var date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleString([], {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"});
   }
 
   function renderSleeves() {
@@ -3167,9 +3178,9 @@
     var sndk = state.holdings.find(function (item) { return item.symbol === "SNDK"; });
     var semiValue = (mu ? mu.value : 0) + (sndk ? sndk.value : 0);
     review.innerHTML = [
-      stackItem("Current value", money(total), "Tracked account equity in this app scope.", 80),
-      stackItem("Largest position", top ? top.symbol + " / " + pct(top.value, total) : "Needs holdings", top ? thesisStatus(top.symbol, top.value / total) : "Connect broker.", top ? top.value / total * 100 : 0),
-      stackItem("MU plus SNDK", money(semiValue) + " / " + pct(semiValue, total), "Semiconductor pair is the first concentration review target.", semiValue && total ? semiValue / total * 100 : 0),
+      stackItem("Current value", money(total), "Tracked account equity in this app scope."),
+      stackItem("Largest position", top ? top.symbol + " / " + pct(top.value, total) : "Needs holdings", top ? thesisStatus(top.symbol, top.value / total) : "Connect broker."),
+      stackItem("MU plus SNDK", money(semiValue) + " / " + pct(semiValue, total), "Semiconductor pair is the first concentration review target."),
       stackItem("Data gap", "Daily P/L and cost basis", "Enable broker P/L and basis sync before judging contributors, detractors, and total return.", 35)
     ].join("");
   }
@@ -3272,7 +3283,9 @@
   function stackItem(title, meta, body, progress, className) {
     var classes = String(className || "");
     var showProgress = classes.split(/\s+/).indexOf("with-progress") !== -1;
-    return "<article class=\"stack-item " + html(classes) + "\"><div class=\"stack-item-head\"><b>" + html(title) + "</b><span>" + html(meta) + "</span></div><p>" + html(body) + "</p>"
+    var compact = classes.split(/\s+/).indexOf("compact-stack") !== -1;
+    return "<article class=\"stack-item " + html(classes) + "\"" + (compact && body ? " title=\"" + html(body) + "\"" : "") + "><div class=\"stack-item-head\"><b>" + html(title) + "</b><span>" + html(meta) + "</span></div>"
+      + (compact ? "<p class=\"assistive-copy\">" + html(body) + "</p>" : "<p>" + html(body) + "</p>")
       + (showProgress ? "<div class=\"progress-bar\" style=\"--value:" + Math.max(0, Math.min(100, Number(progress) || 0)) + "%\"><i></i></div>" : "")
       + "</article>";
   }
@@ -4303,7 +4316,7 @@
     state.reports = ensureStockPickReports(scopedRowsForVisibleAccounts(payload.reports || [], visibleAccountIds));
     state.accountCoverage = payload.accountCoverage || null;
     state.feedWarning = null;
-    text("snapshot-source", appEdition === "developer" ? (payload.source || "Private API") : "");
+    text("snapshot-source", appEdition === "developer" ? (payload.source || "Private SmartSleeve API") : "");
     text("snapshot-time", latestDaemonLabel(payload));
     text("sync-pill", "Private API synced");
     addActivity("Cloud feed synced", "EXTERNAL_BROKER_SYNC", appEdition === "developer" ? "All accounts" : principalEmail, state.accounts.length + " account(s), " + state.serverTrades.length + " trades, " + state.brain.length + " brain rows.");

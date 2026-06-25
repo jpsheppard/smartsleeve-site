@@ -697,6 +697,10 @@ button.primary {
   gap: 5px;
 }
 
+.compact-stack-list {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .account-grid {
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
@@ -714,6 +718,52 @@ button.primary {
   border: 1px solid rgba(148, 163, 184, 0.14);
   border-radius: 8px;
   background: rgba(15, 23, 42, 0.62);
+}
+
+.compact-account-detail .card-head {
+  margin-bottom: 2px;
+}
+
+.stack-item.compact-stack {
+  min-height: 46px;
+  padding: 6px 7px;
+}
+
+.stack-item.compact-stack .stack-item-head {
+  display: grid;
+  gap: 3px;
+}
+
+.stack-item.compact-stack .stack-item-head b,
+.stack-item.compact-stack .stack-item-head span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stack-item.compact-stack .stack-item-head span {
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.12;
+}
+
+.assistive-copy {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.stack-item.compact-stack:hover .assistive-copy,
+.stack-item.compact-stack:focus-within .assistive-copy {
+  position: static;
+  width: auto;
+  height: auto;
+  clip: auto;
+  white-space: normal;
 }
 
 .compact-ledger-row {
@@ -914,11 +964,6 @@ td small {
   display: block;
   margin-top: 3px;
   color: var(--muted);
-}
-
-td small.price-warning {
-  color: var(--amber);
-  font-weight: 750;
 }
 
 .ticker-lockup,
@@ -1660,6 +1705,10 @@ textarea:focus {
     grid-template-columns: 1fr 1fr;
   }
 
+  .compact-stack-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .metric-card {
     min-height: 92px;
   }
@@ -1766,6 +1815,10 @@ textarea:focus {
   .dashboard-grid,
   .account-grid,
   .detail-grid-wide {
+    grid-template-columns: 1fr;
+  }
+
+  .compact-stack-list {
     grid-template-columns: 1fr;
   }
 
