@@ -477,6 +477,33 @@
     return "";
   }
 
+  function knownAccountOwnerEmail(row) {
+    var id = String(row && (row.id || row.accountId || row.account_id || row.account || "") || "").trim().toLowerCase();
+    var explicit = {
+      "criselda": "criseldasarenas@gmail.com",
+      "crissy": "criseldasarenas@gmail.com",
+      "crissy-rh": "criseldasarenas@gmail.com",
+      "john": "jpsheppard88@gmail.com",
+      "john-rh": "jpsheppard88@gmail.com",
+      "john-etrade": "jpsheppard88@gmail.com",
+      "etrade": "jpsheppard88@gmail.com",
+      "u25739525": "jpsheppard88@gmail.com",
+      "u25815215": "jpsheppard88@gmail.com",
+      "john-ibkr-margin": "jpsheppard88@gmail.com",
+      "john-ibkr-roth": "jpsheppard88@gmail.com"
+    };
+    return explicit[id] || knownUserEmailFromText([
+      row && row.account,
+      row && row.name,
+      row && row.nickname,
+      row && row.label,
+      row && row.displayName,
+      row && row.display_name,
+      row && row.owner,
+      row && row.user
+    ].map(function (item) { return displayLabel(item, ""); }).join(" "));
+  }
+
   function html(value) {
     return String(value == null ? "" : value)
       .replace(/&/g, "&amp;")
@@ -569,7 +596,7 @@
         var item = value[key];
         if (item && typeof item === "object") return "";
         return displayLabel(item, "");
-      }).filter(Boolean);
+      }).filter(function (item) { return item && !isOperationalNoiseLabel(item); });
       return shallow.join(" / ") || (fallback || "");
     }
     return fallback || "";
@@ -706,8 +733,7 @@
 
   function rowOwnerEmail(row) {
     if (!row) return "";
-    var inferred = canonicalEmail(inferAccountOwnerEmail(row));
-    var explicit = canonicalEmail(
+    return canonicalEmail(
       row.ownerEmail
         || row.owner_email
         || row.userEmail
@@ -715,12 +741,9 @@
         || row.principalEmail
         || row.principal_email
         || row.email
+        || knownAccountOwnerEmail(row)
+        || inferAccountOwnerEmail(row)
     );
-    var knownOwners = ["jpsheppard88@gmail.com", "criseldasarenas@gmail.com"];
-    if (inferred && explicit && inferred !== explicit && knownOwners.indexOf(inferred) !== -1 && knownOwners.indexOf(explicit) !== -1) {
-      return inferred;
-    }
-    return explicit || inferred;
   }
 
   function rowBelongsToAnotherKnownUser(row) {
@@ -822,6 +845,9 @@
       return [];
     }
     return rows.filter(function (row) {
+      if (rowHasConflictingOwner(row)) {
+        return false;
+      }
       return rowOwnerEmail(row) === canonicalEmail(principalEmail);
     });
   }
@@ -1063,6 +1089,13 @@
     });
     return Object.keys(bySleeve).map(function (name) {
       return bySleeve[name];
+    }).filter(function (sleeve) {
+      return !isOperationalNoiseLabel(sleeve.name)
+        && ((numeric(sleeve.exactValue) || 0) > 0
+          || (numeric(sleeve.cash) || 0) > 0
+          || (numeric(sleeve.positionValue) || 0) > 0
+          || (sleeve.holdings || []).length > 0
+          || sleeve.lastReconciledAt);
     }).sort(function (a, b) {
       return (b.exactValue || 0) - (a.exactValue || 0) || a.name.localeCompare(b.name);
     });
@@ -1618,7 +1651,7 @@
     target.innerHTML = state.sleeves.slice(0, 8).map(function (sleeve) {
       var value = sleeve.exactValue ? money(sleeve.exactValue) : "Ledger split pending";
       return stackItem(sleeve.name, value, sleeve.accounts.join(", ") + " / " + (sleeve.holdings.slice(0, 7).join(", ") || "No current holdings"), sleeve.exactValue && total ? sleeve.exactValue / total * 100 : 20);
-    }).join("");
+    }).join("") || emptyItem("No active sleeve holdings", "No funded sleeve positions are visible for this account scope.");
   }
 
   function renderReports() {
@@ -1835,33 +1868,22 @@
     var hedgeMarkup = hedges.length
       ? "<p class=\"stock-pick-hedges\">Hedges: " + html(hedges.join(", ")) + "</p>"
       : "";
-    var action = validReportUrl(url)
-      ? "<a class=\"text-button\" href=\"" + html(url) + "\" target=\"_blank\" rel=\"noopener\">Open archive</a>"
-      : "<span class=\"status-chip warning\">Archive pending</span>";
     return "<article class=\"stack-item stock-pick-description\">"
       + "<div class=\"stack-item-head\"><b>" + html(title) + "</b><span>" + html(date) + "</span></div>"
       + "<p>" + html(body) + "</p>"
       + symbolMarkup
       + hedgeMarkup
-      + "<div class=\"recommendation-actions\">" + action + "</div>"
+      + "<div class=\"recommendation-actions\"><a class=\"text-button\" href=\"" + html(url) + "\" target=\"_blank\" rel=\"noopener\">Open archive</a></div>"
       + "</article>";
   }
 
   function reportCard(report) {
     var url = report.type === "stock_pick" ? normalizeStockPickUrl(report) : (report.url || report.latestUrl || "#");
-    var action = validReportUrl(url)
-      ? "<a class=\"text-button\" href=\"" + html(url) + "\" target=\"_blank\" rel=\"noopener\">Open report</a>"
-      : "<span class=\"status-chip warning\">Archive pending</span>";
     return "<article class=\"stack-item\">"
       + "<div class=\"stack-item-head\"><b>" + html(report.title) + "</b><span>" + html(report.date || "latest") + "</span></div>"
       + "<p>" + html(report.type === "stock_pick" ? "Stock pick email/report archive" : "Daily performance report archive") + "</p>"
-      + "<div class=\"recommendation-actions\">" + action + "</div>"
+      + "<div class=\"recommendation-actions\"><a class=\"text-button\" href=\"" + html(url) + "\" target=\"_blank\" rel=\"noopener\">Open report</a></div>"
       + "</article>";
-  }
-
-  function validReportUrl(url) {
-    var value = String(url || "").trim();
-    return Boolean(value && value !== "#" && !/^javascript:/i.test(value));
   }
 
   function renderHoldingsTable() {
@@ -2768,7 +2790,6 @@
       var connected = state.accounts.map(function (account) {
         return stackItem(account.broker, account.status || "Connected", account.account + " last snapshot " + (account.generatedAt || "unknown"), 80);
       });
-      connected.unshift(stackItem("Daemon outage alerts", "Needs backend confirmation", "IBKR gateway, RH/E-Trade reauth, and abnormal daemon stops should share the same phone/email escalation schedule.", 55, "compat-warn"));
       connected.push(stackItem("Fidelity via Plaid", "Pending production access / read-only", "Sandbox keys cannot view John's live Fidelity accounts until production consent is approved.", 30));
       connected.push(stackItem("Schwab PCRA", "Pending official API onboarding", "Use read-only mode first; trading permission must be explicit.", 20));
       brokerConnections.innerHTML = connected.join("");
@@ -3692,7 +3713,7 @@
     state.reports = ensureStockPickReports(scopedRowsForVisibleAccounts(payload.reports || [], visibleAccountIds));
     state.accountCoverage = payload.accountCoverage || null;
     state.feedWarning = null;
-    text("snapshot-source", appEdition === "developer" ? (payload.source || "Private SmartSleeve API") : "Private portfolio feed");
+    text("snapshot-source", appEdition === "developer" ? (payload.source || "Private SmartSleeve API") : "");
     text("snapshot-time", latestDaemonLabel(payload));
     text("sync-pill", "Private API synced");
     addActivity("Cloud feed synced", "EXTERNAL_BROKER_SYNC", appEdition === "developer" ? "All accounts" : principalEmail, state.accounts.length + " account(s), " + state.serverTrades.length + " trades, " + state.brain.length + " brain rows.");
@@ -3786,14 +3807,12 @@
       })
       .catch(function (error) {
         if (state.payload && (options.refresh || options.silent || options.interactiveRefresh || error.authRequired)) {
-          text("sync-pill", options.interactiveRefresh || options.silent ? "Checked" : "Current view kept");
-          text("snapshot-time", "Last synced trader cycle at " + latestDaemonLabel());
-          state.feedWarning = options.interactiveRefresh || options.silent
-            ? null
-            : recommendation("feed-refresh-kept-current", "Current dashboard kept", "Retry sync", "SmartSleeve", "Data", 0, error.message, "Displayed holdings were preserved; verify freshness before making decisions.", "EXTERNAL_BROKER_SYNC");
+          text("sync-pill", "Current view kept");
+          text("snapshot-time", latestDaemonLabel(state.payload));
+          state.feedWarning = recommendation("feed-refresh-kept-current", "Current dashboard kept", "Retry sync", "SmartSleeve", "Data", 0, error.message, "Displayed holdings were preserved; verify freshness before making decisions.", "EXTERNAL_BROKER_SYNC");
           renderAll();
-          if (options.refresh && !options.interactiveRefresh) {
-            toast("Current view kept while SmartSleeve checks for newer data.");
+          if (options.refresh || options.interactiveRefresh) {
+            toast("Still showing latest available trader cycle.");
           }
         } else {
           text("snapshot-time", "Feed unavailable");
