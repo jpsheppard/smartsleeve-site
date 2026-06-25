@@ -894,6 +894,12 @@
       broker: brokerName,
       status: account.status || "synced",
       generatedAt: account.generatedAt || account.generated_at,
+      latestGeneratedAt: account.latestGeneratedAt || account.latest_generated_at,
+      portfolioSource: account.portfolioSource || account.portfolio_source,
+      sourceAgeMinutes: numeric(account.sourceAgeMinutes != null ? account.sourceAgeMinutes : account.source_age_minutes),
+      sourceIsStale: Boolean(account.sourceIsStale || account.source_is_stale),
+      sourceFreshness: account.sourceFreshness || account.source_freshness,
+      sourceFreshnessLabel: account.sourceFreshnessLabel || account.source_freshness_label,
       strategy: account.strategy,
       tradingSystem: account.tradingSystem || account.trading_system,
       operator: account.operator,
@@ -1587,7 +1593,7 @@
         + miniMetric("Buy power", money(account.buyPower))
         + miniMetric("Holdings", money(positionValue))
         + miniMetric("Positions", String((account.positions || []).length))
-        + miniMetric("Status", (account.status || "synced") + (account.equitySource === "positions_plus_cash_estimate" ? " est." : ""))
+        + miniMetric("Status", accountStatusLabel(account))
         + "</div>"
         + "</article>";
     }).join("") || emptyItem("No visible accounts", "Sign in with an email that has SmartSleeve account access.");
@@ -1621,7 +1627,7 @@
         + miniMetric("Buy power", money(account.buyPower))
         + miniMetric("Holdings", money(positionValue))
         + miniMetric("Positions", String((account.positions || []).length))
-        + miniMetric("Sleeves", splitSleeves(account.sleeves.length ? account.sleeves : account.sleevesText).slice(0, 2).join(", ") || accountDefaultSleeveName(account))
+        + miniMetric("Freshness", accountFreshnessLabel(account))
         + "</div>"
         + "<div class=\"recommendation-actions\"><button type=\"button\" class=\"text-button\" data-account-detail=\"" + html(account.id) + "\">Open details</button></div>"
         + "</article>";
@@ -1656,12 +1662,13 @@
     }
     state.selectedDetailAccountId = String(account.id);
     text("account-detail-title", account.account);
-    text("account-detail-subtitle", accountOwnerLabel(account.ownerEmail) + " / " + account.broker + " / " + (account.status || "synced"));
+    text("account-detail-subtitle", accountOwnerLabel(account.ownerEmail) + " / " + account.broker + " / " + accountStatusLabel(account));
     var holdings = (account.positions || []).slice().sort(function (a, b) { return (numeric(b.value) || 0) - (numeric(a.value) || 0); });
     var sleeveNames = splitSleeves(account.sleeves.length ? account.sleeves : account.sleevesText);
     target.innerHTML = [
       "<article class=\"panel-card\"><div class=\"card-head\"><div><span>Broker values</span><h2>Cash and margin</h2></div><span class=\"status-chip\">" + html(account.broker) + "</span></div><div class=\"stack-list\">"
         + stackItem("Account value", money(account.equity), account.equitySource === "positions_plus_cash_estimate" ? "Estimated from E-Trade positions plus cash because broker value was zero." : "Broker-reported account value.", null)
+        + stackItem("Data freshness", accountFreshnessLabel(account), account.sourceIsStale ? "Broker positions may be stale. Refresh the daemon/account analytics before trading from this view." : "Broker/account export is inside the freshness window.", account.sourceIsStale ? 25 : null, account.sourceIsStale ? "with-progress" : "")
         + stackItem("Cash / margin", cashMarginMeta(account), marginPlainText(account), numeric(account.cash) < 0 ? 45 : 0, numeric(account.cash) < 0 ? "with-progress" : "")
         + stackItem("Buying power", money(account.buyPower), "Buying power can be zero even when account value is positive.", null)
       + "</div></article>",
@@ -1688,6 +1695,20 @@
   function cashMarginMeta(account) {
     var cash = numeric(account.cash) || 0;
     return cash < 0 ? "Margin used " + money(Math.abs(cash)) : "Cash " + money(cash);
+  }
+
+  function accountFreshnessLabel(account) {
+    if (account.sourceFreshnessLabel) return account.sourceFreshnessLabel;
+    if (account.sourceAgeMinutes != null) return Math.round(account.sourceAgeMinutes) + " min old";
+    return account.generatedAt ? compactDateTime(account.generatedAt) : "needs sync";
+  }
+
+  function accountStatusLabel(account) {
+    var status = account.status || "synced";
+    if (account.sourceIsStale && status.indexOf("stale") === -1) {
+      status = "stale analytics export";
+    }
+    return status + (account.equitySource === "positions_plus_cash_estimate" ? " est." : "");
   }
 
   function marginPlainText(account) {
