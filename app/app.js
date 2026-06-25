@@ -470,12 +470,21 @@
     "crissy": "criseldasarenas@gmail.com",
     "crissy-rh": "criseldasarenas@gmail.com",
     "crissy rh": "criseldasarenas@gmail.com",
+    "crissy-robinhood": "criseldasarenas@gmail.com",
+    "crissy robinhood": "criseldasarenas@gmail.com",
+    "crissy-rh-account": "criseldasarenas@gmail.com",
+    "criselda-rh": "criseldasarenas@gmail.com",
+    "criseldasarenas": "criseldasarenas@gmail.com",
+    "john": "jpsheppard88@gmail.com",
     "john-rh": "jpsheppard88@gmail.com",
     "john rh": "jpsheppard88@gmail.com",
     "john-etrade": "jpsheppard88@gmail.com",
     "john etrade": "jpsheppard88@gmail.com",
+    "etrade": "jpsheppard88@gmail.com",
     "u25739525": "jpsheppard88@gmail.com",
-    "u25815215": "jpsheppard88@gmail.com"
+    "u25815215": "jpsheppard88@gmail.com",
+    "john-ibkr-margin": "jpsheppard88@gmail.com",
+    "john-ibkr-roth": "jpsheppard88@gmail.com"
   };
 
   function knownUserEmailFromText(value) {
@@ -520,6 +529,20 @@
     if (!raw) return "";
     var normalized = raw.replace(/[_\s]+/g, "-");
     return configuredAccountOwners[raw] || configuredAccountOwners[normalized] || "";
+  }
+
+  function accountOwnerEmailById(value) {
+    var id = String(value || "").trim();
+    if (!id) return "";
+    var account = (state.allAccounts || state.accounts || []).find(function (item) {
+      return [
+        item.id,
+        item.accountId,
+        item.account_id,
+        item.account
+      ].map(function (part) { return String(part || "").trim(); }).indexOf(id) !== -1;
+    });
+    return account ? rowOwnerEmail(account) : knownAccountOwnerEmail(id);
   }
 
   function html(value) {
@@ -774,6 +797,7 @@
         || row.principal_email
         || row.email
         || knownAccountOwnerEmail(row)
+        || accountOwnerEmailById(row.accountId || row.account_id || row.account)
         || inferAccountOwnerEmail(row)
     );
   }
@@ -3776,7 +3800,7 @@
     state.reports = ensureStockPickReports(scopedRowsForVisibleAccounts(payload.reports || [], visibleAccountIds));
     state.accountCoverage = payload.accountCoverage || null;
     state.feedWarning = null;
-    text("snapshot-source", appEdition === "developer" ? (payload.source || "Private SmartSleeve API") : "");
+    text("snapshot-source", appEdition === "developer" ? (payload.source || "Private API") : "");
     text("snapshot-time", latestDaemonLabel(payload));
     text("sync-pill", "Private API synced");
     addActivity("Cloud feed synced", "EXTERNAL_BROKER_SYNC", appEdition === "developer" ? "All accounts" : principalEmail, state.accounts.length + " account(s), " + state.serverTrades.length + " trades, " + state.brain.length + " brain rows.");
