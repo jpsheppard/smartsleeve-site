@@ -608,6 +608,18 @@ main {
   padding: 6px;
 }
 
+.compact-account-detail {
+  gap: 8px;
+}
+
+.detail-mini-grid {
+  margin: 8px 0;
+}
+
+.compact-stack {
+  gap: 5px;
+}
+
 .card-head {
   display: flex;
   justify-content: space-between;
