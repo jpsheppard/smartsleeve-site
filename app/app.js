@@ -864,6 +864,9 @@
         impliedPrice: impliedPrice,
         priceSource: explicitPriceSource || (priceField ? priceField.key : "value_per_share"),
         priceAsOf: firstTextField(position, ["priceAsOf", "price_as_of", "quoteAsOf", "quote_as_of", "marketDataAt", "market_data_at", "updatedAt", "updated_at", "timestamp"]),
+        quotePrice: numeric(position.quotePrice != null ? position.quotePrice : position.quote_price),
+        quoteAsOf: position.quoteAsOf || position.quote_as_of,
+        quoteSource: position.quoteSource || position.quote_source,
         value: value,
         averageCost: numeric(position.averageCost != null ? position.averageCost : position.average_cost),
         costBasis: numeric(position.costBasis != null ? position.costBasis : position.cost_basis),
@@ -2106,6 +2109,7 @@
     var meta = priceSourceLabel(holding.priceSource);
     var asOf = compactDateTime(holding.priceAsOf);
     if (asOf) meta += " " + asOf;
+    if (holding.quotePrice != null) meta += " | quote " + money(holding.quotePrice);
     var warning = "";
     if (holding.priceDivergencePct != null && holding.priceDivergencePct > 1.5) {
       warning = "<small class=\"price-warning\">Value implies " + html(money(holding.impliedPrice)) + " (" + holding.priceDivergencePct.toFixed(1) + "% diff)</small>";
