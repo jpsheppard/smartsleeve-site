@@ -701,7 +701,7 @@
         }
       }
     }
-    var label = displayLabel(value, fallback || "Unassigned");
+    var label = displayLabel(value, fallback || "Ledger coverage gap");
     if (isOperationalNoiseLabel(label)) {
       return fallback || "";
     }
@@ -743,7 +743,7 @@
       account.accountId,
       account.account_id
     ].map(function (item) { return displayLabel(item, ""); }).join(" ").toLowerCase();
-    return context.indexOf("sage") !== -1 ? "Sage by SmartSleeve" : "Unassigned";
+    return context.indexOf("sage") !== -1 ? "Sage by SmartSleeve" : "Ledger coverage gap";
   }
 
   function splitSleeves(value) {
@@ -1180,9 +1180,11 @@
           if (!name) return;
           foundLiveSleeve = true;
           ensureSleeve(bySleeve, name, account.account);
-          bySleeve[name].exactValue += numeric(sleeve.netLiquidationUsd != null ? sleeve.netLiquidationUsd : sleeve.net_liquidation_usd) || 0;
-          bySleeve[name].cash += numeric(sleeve.cashUsd != null ? sleeve.cashUsd : sleeve.cash_usd) || 0;
-          bySleeve[name].positionValue += numeric(sleeve.positionValueUsd != null ? sleeve.positionValueUsd : sleeve.position_value_usd) || 0;
+          var sleeveValues = resolvedSleeveValues(sleeve, account);
+          bySleeve[name].exactValue += sleeveValues.net;
+          bySleeve[name].cash += sleeveValues.cash;
+          bySleeve[name].positionValue += sleeveValues.positionValue;
+          if (sleeveValues.derived) bySleeve[name].ledgerPending = true;
           bySleeve[name].lastReconciledAt = sleeve.lastReconciledAt || sleeve.last_reconciled_at || bySleeve[name].lastReconciledAt;
           bySleeve[name].operatingMode = sleeve.operatingMode || sleeve.operating_mode || bySleeve[name].operatingMode;
           (sleeve.holdings || []).forEach(function (holding) {
@@ -1227,8 +1229,74 @@
     });
   }
 
+  function resolvedSleeveValues(sleeve, account) {
+    var cash = numeric(sleeve.cashUsd != null ? sleeve.cashUsd : sleeve.cash_usd);
+    var positionValue = numeric(sleeve.positionValueUsd != null ? sleeve.positionValueUsd : sleeve.position_value_usd);
+    var net = numeric(sleeve.netLiquidationUsd != null ? sleeve.netLiquidationUsd : sleeve.net_liquidation_usd);
+    var ledgerCash = numeric(sleeve.ledgerCashUsd != null ? sleeve.ledgerCashUsd : sleeve.ledger_cash_usd);
+    var ledgerPosition = numeric(sleeve.ledgerPositionValueUsd != null ? sleeve.ledgerPositionValueUsd : sleeve.ledger_position_value_usd);
+    var ledgerNet = numeric(sleeve.ledgerNetLiquidationUsd != null ? sleeve.ledgerNetLiquidationUsd : sleeve.ledger_net_liquidation_usd);
+    var derived = false;
+    if ((cash == null || Math.abs(cash) < 0.005) && ledgerCash != null && Math.abs(ledgerCash) >= 0.005) {
+      cash = ledgerCash;
+      derived = true;
+    }
+    if ((positionValue == null || Math.abs(positionValue) < 0.005) && ledgerPosition != null && Math.abs(ledgerPosition) >= 0.005) {
+      positionValue = ledgerPosition;
+      derived = true;
+    }
+    if ((net == null || Math.abs(net) < 0.005) && ledgerNet != null && Math.abs(ledgerNet) >= 0.005) {
+      net = ledgerNet;
+      derived = true;
+    }
+    var holdingEstimate = sleeveHoldingMarketValue(sleeve, account);
+    if ((positionValue == null || Math.abs(positionValue) < 0.005) && Math.abs(holdingEstimate.positionValue) >= 0.005) {
+      positionValue = holdingEstimate.positionValue;
+      derived = true;
+    }
+    if ((cash == null || Math.abs(cash) < 0.005) && Math.abs(holdingEstimate.cash) >= 0.005) {
+      cash = holdingEstimate.cash;
+      derived = true;
+    }
+    if ((net == null || Math.abs(net) < 0.005) && (Math.abs(positionValue || 0) >= 0.005 || Math.abs(cash || 0) >= 0.005)) {
+      net = (positionValue || 0) + (cash || 0);
+      derived = true;
+    }
+    return {
+      cash: cash || 0,
+      positionValue: positionValue || 0,
+      net: net || 0,
+      derived: derived
+    };
+  }
+
+  function sleeveHoldingMarketValue(sleeve, account) {
+    var bySymbol = {};
+    (account.positions || []).forEach(function (position) {
+      var symbol = String(position.symbol || "").toUpperCase();
+      var shares = numeric(position.shares);
+      var value = numeric(position.value);
+      if (symbol && shares && value != null) {
+        bySymbol[symbol] = value / shares;
+      }
+    });
+    var positionValue = 0;
+    var cash = 0;
+    (sleeve.holdings || []).forEach(function (holding) {
+      var symbol = String(holding.symbol || "").toUpperCase();
+      var shares = numeric(holding.shares);
+      if (!symbol || shares == null) return;
+      if (symbol === "CASH") {
+        cash += shares;
+      } else if (bySymbol[symbol] != null) {
+        positionValue += shares * bySymbol[symbol];
+      }
+    });
+    return {positionValue: positionValue, cash: cash};
+  }
+
   function ensureSleeve(map, name, accountName) {
-    name = sleeveLabel(name, "Unassigned");
+    name = sleeveLabel(name, "Ledger coverage gap");
     if (!map[name]) {
       map[name] = {
         name: name,
