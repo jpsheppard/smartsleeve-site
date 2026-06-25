@@ -36,11 +36,12 @@
     selectedDetailAccountId: "",
     selectedDetailSleeveName: "",
     selectedStockPickSleeve: "",
-    selectedAccountChartRange: "1W",
+    selectedAccountChartRange: "1D",
     sageMode: "recommend",
     selectedTradeId: null,
     orderNotificationSeen: {},
     orderNotificationPrimed: false,
+    activeScrubChart: null,
     feedRefreshTimer: null,
     pullRefresh: {
       startY: 0,
@@ -1065,6 +1066,13 @@
     return "neutral";
   }
 
+  function signedPercent(value) {
+    var number = numeric(value);
+    if (number == null) return "0.00%";
+    if (Math.abs(number) < 0.005) return "0.00%";
+    return (number > 0 ? "+" : "-") + Math.abs(number).toFixed(2) + "%";
+  }
+
   function setMetric(id, value, formatter, missingText) {
     var element = $(id);
     if (!element) return;
@@ -1823,7 +1831,7 @@
   }
 
   function accountDetailValueChart(account) {
-    var range = state.selectedAccountChartRange || "1W";
+    var range = state.selectedAccountChartRange || "1D";
     var allPoints = accountHistoryPoints(account);
     var points = filterHistoryRange(allPoints, range);
     if (!points.length && numeric(account.equity) != null) {
@@ -1837,16 +1845,19 @@
     var first = cleanPoints[0];
     var last = cleanPoints[cleanPoints.length - 1];
     var pnl = first && last ? last.value - first.value : null;
+    var pnlPct = first && first.value ? pnl / first.value * 100 : null;
     var trendClass = valueClass(pnl);
     var lineColor = trendClass === "negative" ? "var(--red)" : "var(--green)";
     var meta = cleanPoints.length > 1
-      ? signedMoney(pnl, "$0.00") + " P&L over " + range
+      ? signedMoney(pnl, "$0.00") + " (" + signedPercent(pnlPct) + ") " + range
       : "Needs more synced points for selected range P&L";
-    var tabs = ["1D", "1W", "1M", "ALL"].map(function (item) {
+    var chartId = "account-detail-chart-" + String(account.id || account.account || "account").replace(/[^a-zA-Z0-9_-]/g, "-") + "-" + range;
+    var tabs = ["1D", "1W", "1M", "3M", "YTD", "1Y", "ALL"].map(function (item) {
       return "<button type=\"button\" class=\"time-tab" + (item === range ? " active" : "") + "\" data-account-chart-range=\"" + html(item) + "\">" + html(item) + "</button>";
     }).join("");
     return "<article class=\"panel-card wide-card account-detail-chart-card\"><div class=\"card-head\"><div><span>Account chart</span><h2>Account Holdings Value ($)</h2></div><span class=\"status-chip " + html(trendClass) + "\">" + html(meta) + "</span></div>"
-      + (cleanPoints.length ? buildLineChart(cleanPoints, lineColor, "Account value") : emptyItem("No account history", "Private account history has not synced for this account yet."))
+      + (last ? "<div class=\"chart-readout\" data-chart-readout=\"" + html(chartId) + "\"><b>" + html(money(last.value)) + "</b><span class=\"" + html(trendClass) + "\">" + html(meta) + "</span></div>" : "")
+      + (cleanPoints.length ? buildLineChart(cleanPoints, lineColor, "Account value", {interactive: true, compact: true, chartId: chartId, baseline: first ? first.value : null, range: range}) : emptyItem("No account history", "Private account history has not synced for this account yet."))
       + "<div class=\"time-tabs\" role=\"tablist\" aria-label=\"Account chart range\">" + tabs + "</div>"
       + (last ? "<p class=\"chart-footnote\">Latest " + html(money(last.value)) + " / " + html(compactDateTime(last.at)) + "</p>" : "")
       + "</article>";
@@ -1866,7 +1877,12 @@
     });
     if (!rows.length || range === "ALL") return rows;
     var latest = new Date(rows[rows.length - 1].at).getTime();
-    var hours = range === "1D" ? 24 : range === "1W" ? 24 * 7 : 24 * 31;
+    if (range === "YTD") {
+      var latestDate = new Date(latest);
+      var startOfYear = new Date(latestDate.getFullYear(), 0, 1).getTime();
+      return rows.filter(function (row) { return new Date(row.at).getTime() >= startOfYear; });
+    }
+    var hours = range === "1D" ? 24 : range === "1W" ? 24 * 7 : range === "1M" ? 24 * 31 : range === "3M" ? 24 * 93 : 24 * 366;
     var cutoff = latest - hours * 60 * 60 * 1000;
     return rows.filter(function (row) { return new Date(row.at).getTime() >= cutoff; });
   }
@@ -3500,13 +3516,14 @@
       + "</article>";
   }
 
-  function buildLineChart(points, lineColor, yLabel) {
+  function buildLineChart(points, lineColor, yLabel, options) {
+    options = options || {};
     var width = 420;
     var height = 220;
-    var left = 58;
+    var left = options.compact ? 18 : 58;
     var right = 18;
     var top = 18;
-    var bottom = 46;
+    var bottom = options.compact ? 28 : 46;
     var values = points.map(function (point) { return point.value; });
     var minValue = Math.min.apply(Math, values);
     var maxValue = Math.max.apply(Math, values);
@@ -3531,22 +3548,126 @@
     var grid = yTicks.map(function (tick) {
       var yy = y(tick).toFixed(1);
       return "<line x1=\"" + left + "\" y1=\"" + yy + "\" x2=\"" + (width - right) + "\" y2=\"" + yy + "\" class=\"chart-grid-line\"/>"
-        + "<text x=\"" + (left - 8) + "\" y=\"" + (Number(yy) + 4) + "\" class=\"chart-tick\" text-anchor=\"end\">" + html(compactMoney(tick)) + "</text>";
+        + (options.compact ? "" : "<text x=\"" + (left - 8) + "\" y=\"" + (Number(yy) + 4) + "\" class=\"chart-tick\" text-anchor=\"end\">" + html(compactMoney(tick)) + "</text>");
     }).join("");
     var dots = points.length === 1
       ? "<circle cx=\"" + x(points[0]).toFixed(1) + "\" cy=\"" + y(points[0].value).toFixed(1) + "\" r=\"4\" fill=\"" + lineColor + "\"/>"
       : "";
-    return "<svg class=\"line-chart\" viewBox=\"0 0 " + width + " " + height + "\" role=\"img\" aria-label=\"" + html(yLabel) + " over time\">"
+    var chartPoints = points.map(function (point) {
+      return {
+        at: point.at,
+        value: point.value,
+        x: Number(x(point).toFixed(2)),
+        y: Number(y(point.value).toFixed(2))
+      };
+    });
+    var interactive = options.interactive
+      ? " interactive-line-chart\" data-chart-id=\"" + html(options.chartId || "") + "\" data-chart-range=\"" + html(options.range || "") + "\" data-chart-baseline=\"" + html(options.baseline == null ? "" : String(options.baseline)) + "\" data-chart-points=\"" + html(JSON.stringify(chartPoints)) + "\""
+      : "";
+    var scrub = options.interactive
+      ? "<line class=\"chart-scrub-line\" data-chart-scrub-line x1=\"0\" y1=\"" + top + "\" x2=\"0\" y2=\"" + (height - bottom) + "\" hidden/>"
+        + "<circle class=\"chart-scrub-dot\" data-chart-scrub-dot cx=\"0\" cy=\"0\" r=\"5\" hidden/>"
+        + "<rect class=\"chart-touch-target\" x=\"" + left + "\" y=\"" + top + "\" width=\"" + (width - left - right) + "\" height=\"" + (height - top - bottom) + "\"/>"
+      : "";
+    return "<svg class=\"line-chart" + (options.compact ? " robinhood-line-chart" : "") + interactive + "\" style=\"color:" + html(lineColor) + "\" viewBox=\"0 0 " + width + " " + height + "\" role=\"img\" aria-label=\"" + html(yLabel) + " over time\">"
       + grid
-      + "<line x1=\"" + left + "\" y1=\"" + top + "\" x2=\"" + left + "\" y2=\"" + (height - bottom) + "\" class=\"chart-axis\"/>"
+      + (options.compact ? "" : "<line x1=\"" + left + "\" y1=\"" + top + "\" x2=\"" + left + "\" y2=\"" + (height - bottom) + "\" class=\"chart-axis\"/>")
       + "<line x1=\"" + left + "\" y1=\"" + (height - bottom) + "\" x2=\"" + (width - right) + "\" y2=\"" + (height - bottom) + "\" class=\"chart-axis\"/>"
       + "<path d=\"" + path + "\" fill=\"none\" stroke=\"" + lineColor + "\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>"
       + dots
-      + "<text x=\"" + ((left + width - right) / 2) + "\" y=\"" + (height - 12) + "\" class=\"chart-label\" text-anchor=\"middle\">Time</text>"
-      + "<text x=\"16\" y=\"" + ((top + height - bottom) / 2) + "\" class=\"chart-label\" transform=\"rotate(-90 16 " + ((top + height - bottom) / 2) + ")\" text-anchor=\"middle\">" + html(yLabel) + "</text>"
+      + scrub
+      + (options.compact ? "" : "<text x=\"" + ((left + width - right) / 2) + "\" y=\"" + (height - 12) + "\" class=\"chart-label\" text-anchor=\"middle\">Time</text>"
+        + "<text x=\"16\" y=\"" + ((top + height - bottom) / 2) + "\" class=\"chart-label\" transform=\"rotate(-90 16 " + ((top + height - bottom) / 2) + ")\" text-anchor=\"middle\">" + html(yLabel) + "</text>")
       + "<text x=\"" + left + "\" y=\"" + (height - 28) + "\" class=\"chart-tick\" text-anchor=\"start\">" + html(shortDate(points[0].at)) + "</text>"
       + "<text x=\"" + (width - right) + "\" y=\"" + (height - 28) + "\" class=\"chart-tick\" text-anchor=\"end\">" + html(shortDate(points[points.length - 1].at)) + "</text>"
       + "</svg>";
+  }
+
+  function chartEventX(svg, event) {
+    var rect = svg.getBoundingClientRect();
+    if (!rect.width) return 0;
+    return (event.clientX - rect.left) / rect.width * 420;
+  }
+
+  function chartPoints(svg) {
+    try {
+      return JSON.parse(svg.getAttribute("data-chart-points") || "[]") || [];
+    } catch (error) {
+      return [];
+    }
+  }
+
+  function nearestChartPoint(svg, event) {
+    var points = chartPoints(svg);
+    if (!points.length) return null;
+    var x = chartEventX(svg, event);
+    var nearest = points[0];
+    var distance = Math.abs(points[0].x - x);
+    points.forEach(function (point) {
+      var nextDistance = Math.abs(point.x - x);
+      if (nextDistance < distance) {
+        nearest = point;
+        distance = nextDistance;
+      }
+    });
+    return nearest;
+  }
+
+  function updateChartScrub(svg, event) {
+    var point = nearestChartPoint(svg, event);
+    if (!point) return;
+    var line = svg.querySelector("[data-chart-scrub-line]");
+    var dot = svg.querySelector("[data-chart-scrub-dot]");
+    if (line) {
+      line.setAttribute("x1", point.x);
+      line.setAttribute("x2", point.x);
+      line.hidden = false;
+    }
+    if (dot) {
+      dot.setAttribute("cx", point.x);
+      dot.setAttribute("cy", point.y);
+      dot.hidden = false;
+    }
+    var chartId = svg.getAttribute("data-chart-id") || "";
+    var readout = chartId ? document.querySelector("[data-chart-readout=\"" + cssEscape(chartId) + "\"]") : null;
+    var baseline = numeric(svg.getAttribute("data-chart-baseline"));
+    var value = numeric(point.value);
+    var pnl = value != null && baseline != null ? value - baseline : null;
+    var pnlPct = baseline ? pnl / baseline * 100 : null;
+    if (readout && value != null) {
+      var trendClass = valueClass(pnl);
+      readout.innerHTML = "<b>" + html(money(value)) + "</b><span class=\"" + html(trendClass) + "\">" + html(signedMoney(pnl, "$0.00") + " (" + signedPercent(pnlPct) + ") " + scrubTimestamp(point.at)) + "</span>";
+    }
+  }
+
+  function resetChartScrub(svg) {
+    if (!svg) return;
+    var line = svg.querySelector("[data-chart-scrub-line]");
+    var dot = svg.querySelector("[data-chart-scrub-dot]");
+    if (line) line.hidden = true;
+    if (dot) dot.hidden = true;
+    var points = chartPoints(svg);
+    var last = points[points.length - 1];
+    var chartId = svg.getAttribute("data-chart-id") || "";
+    var readout = chartId ? document.querySelector("[data-chart-readout=\"" + cssEscape(chartId) + "\"]") : null;
+    var baseline = numeric(svg.getAttribute("data-chart-baseline"));
+    if (readout && last) {
+      var pnl = baseline != null ? last.value - baseline : null;
+      var pnlPct = baseline ? pnl / baseline * 100 : null;
+      var trendClass = valueClass(pnl);
+      readout.innerHTML = "<b>" + html(money(last.value)) + "</b><span class=\"" + html(trendClass) + "\">" + html(signedMoney(pnl, "$0.00") + " (" + signedPercent(pnlPct) + ") " + (svg.getAttribute("data-chart-range") || "")) + "</span>";
+    }
+  }
+
+  function scrubTimestamp(value) {
+    var date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value || "");
+    return date.toLocaleString("en-US", {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"});
+  }
+
+  function cssEscape(value) {
+    if (window.CSS && typeof window.CSS.escape === "function") return window.CSS.escape(value);
+    return String(value).replace(/["\\]/g, "\\$&");
   }
 
   function previewRow(label, value) {
@@ -3934,7 +4055,7 @@
       }
       var accountChartRange = event.target.closest("[data-account-chart-range]");
       if (accountChartRange) {
-        state.selectedAccountChartRange = accountChartRange.getAttribute("data-account-chart-range") || "1W";
+        state.selectedAccountChartRange = accountChartRange.getAttribute("data-account-chart-range") || "1D";
         renderAccountDetail();
       }
       var sleeveButton = event.target.closest("[data-sleeve-detail]");
@@ -3960,6 +4081,39 @@
         toast("Recommendation rejected.");
       }
     });
+    document.addEventListener("pointerdown", function (event) {
+      var chart = event.target.closest(".interactive-line-chart");
+      if (!chart) return;
+      state.activeScrubChart = chart;
+      updateChartScrub(chart, event);
+      if (chart.setPointerCapture && event.pointerId != null) {
+        try {
+          chart.setPointerCapture(event.pointerId);
+        } catch (error) {
+          // Embedded webviews can reject pointer capture; scrub still works.
+        }
+      }
+      event.preventDefault();
+    });
+    document.addEventListener("pointermove", function (event) {
+      var chart = state.activeScrubChart || event.target.closest(".interactive-line-chart");
+      if (!chart) return;
+      updateChartScrub(chart, event);
+    });
+    document.addEventListener("pointerup", function () {
+      if (!state.activeScrubChart) return;
+      resetChartScrub(state.activeScrubChart);
+      state.activeScrubChart = null;
+    });
+    document.addEventListener("pointercancel", function () {
+      if (!state.activeScrubChart) return;
+      resetChartScrub(state.activeScrubChart);
+      state.activeScrubChart = null;
+    });
+    document.addEventListener("pointerleave", function (event) {
+      var chart = event.target && event.target.closest ? event.target.closest(".interactive-line-chart") : null;
+      if (chart && !state.activeScrubChart) resetChartScrub(chart);
+    }, true);
     document.addEventListener("change", function (event) {
       if (event.target && event.target.id === "developer-user-filter") {
         state.selectedOwnerEmail = normalizeEmail(event.target.value || "all") || "all";

@@ -1473,31 +1473,32 @@ textarea:focus {
 }
 
 .account-detail-chart-card .line-chart {
-  min-height: 190px;
+  min-height: 210px;
 }
 
 .time-tabs {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 5px;
-  padding: 4px;
-  border: 1px solid rgba(148, 163, 184, 0.16);
-  border-radius: 8px;
-  background: rgba(2, 6, 23, 0.66);
+  display: flex;
+  justify-content: space-between;
+  gap: 2px;
+  padding: 2px 0 0;
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
 }
 
 .time-tab {
-  min-height: 32px;
-  border-radius: 6px;
+  min-width: 0;
+  min-height: 30px;
+  flex: 1;
+  border-radius: 999px;
   color: var(--muted);
   background: transparent;
+  font-size: 10px;
   font-weight: 900;
   cursor: pointer;
 }
 
 .time-tab.active {
-  color: #03110a;
-  background: linear-gradient(135deg, var(--green), var(--green-2));
+  color: var(--green);
+  background: rgba(57, 255, 20, 0.10);
 }
 
 .chart-footnote {
@@ -1505,6 +1506,23 @@ textarea:focus {
   color: var(--muted);
   font-size: 10.5px;
   font-weight: 800;
+}
+
+.chart-readout {
+  display: grid;
+  gap: 2px;
+  min-height: 44px;
+}
+
+.chart-readout b {
+  color: var(--text);
+  font-size: 24px;
+  line-height: 1;
+}
+
+.chart-readout span {
+  font-size: 11px;
+  font-weight: 900;
 }
 
 .coverage-subhead {
@@ -1527,15 +1545,40 @@ textarea:focus {
   overflow: visible;
 }
 
+.robinhood-line-chart {
+  touch-action: none;
+  user-select: none;
+}
+
 .chart-axis {
-  stroke: rgba(248, 250, 252, 0.92);
-  stroke-width: 1.4;
+  stroke: rgba(248, 250, 252, 0.18);
+  stroke-width: 1;
   vector-effect: non-scaling-stroke;
 }
 
 .chart-grid-line {
-  stroke: rgba(248, 250, 252, 0.16);
+  stroke: rgba(248, 250, 252, 0.09);
   stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.chart-touch-target {
+  fill: transparent;
+  cursor: crosshair;
+  pointer-events: all;
+}
+
+.chart-scrub-line {
+  stroke: rgba(248, 250, 252, 0.46);
+  stroke-width: 1.2;
+  stroke-dasharray: 2 4;
+  vector-effect: non-scaling-stroke;
+}
+
+.chart-scrub-dot {
+  fill: var(--surface);
+  stroke: currentColor;
+  stroke-width: 3;
   vector-effect: non-scaling-stroke;
 }
 
