@@ -465,6 +465,19 @@
     return email === "john@smartsleeve.ai" ? "jpsheppard88@gmail.com" : email;
   }
 
+  var configuredAccountOwners = {
+    "criselda": "criseldasarenas@gmail.com",
+    "crissy": "criseldasarenas@gmail.com",
+    "crissy-rh": "criseldasarenas@gmail.com",
+    "crissy rh": "criseldasarenas@gmail.com",
+    "john-rh": "jpsheppard88@gmail.com",
+    "john rh": "jpsheppard88@gmail.com",
+    "john-etrade": "jpsheppard88@gmail.com",
+    "john etrade": "jpsheppard88@gmail.com",
+    "u25739525": "jpsheppard88@gmail.com",
+    "u25815215": "jpsheppard88@gmail.com"
+  };
+
   function knownUserEmailFromText(value) {
     var context = displayLabel(value, "").toLowerCase();
     if (!context) return "";
@@ -483,31 +496,30 @@
     return "";
   }
 
-  function knownAccountOwnerEmail(row) {
-    var id = String(row && (row.id || row.accountId || row.account_id || row.account || "") || "").trim().toLowerCase();
-    var explicit = {
-      "criselda": "criseldasarenas@gmail.com",
-      "crissy": "criseldasarenas@gmail.com",
-      "crissy-rh": "criseldasarenas@gmail.com",
-      "john": "jpsheppard88@gmail.com",
-      "john-rh": "jpsheppard88@gmail.com",
-      "john-etrade": "jpsheppard88@gmail.com",
-      "etrade": "jpsheppard88@gmail.com",
-      "u25739525": "jpsheppard88@gmail.com",
-      "u25815215": "jpsheppard88@gmail.com",
-      "john-ibkr-margin": "jpsheppard88@gmail.com",
-      "john-ibkr-roth": "jpsheppard88@gmail.com"
-    };
-    return explicit[id] || knownUserEmailFromText([
-      row && row.account,
-      row && row.name,
-      row && row.nickname,
-      row && row.label,
-      row && row.displayName,
-      row && row.display_name,
-      row && row.owner,
-      row && row.user
-    ].map(function (item) { return displayLabel(item, ""); }).join(" "));
+  function knownAccountOwnerEmail(value) {
+    if (!value) return "";
+    if (typeof value === "object") {
+      return knownAccountOwnerEmail(value.id)
+        || knownAccountOwnerEmail(value.accountId)
+        || knownAccountOwnerEmail(value.account_id)
+        || knownAccountOwnerEmail(value.account)
+        || knownAccountOwnerEmail(value.name)
+        || knownAccountOwnerEmail(value.nickname)
+        || knownUserEmailFromText([
+          value.account,
+          value.name,
+          value.nickname,
+          value.label,
+          value.displayName,
+          value.display_name,
+          value.owner,
+          value.user
+        ].map(function (item) { return displayLabel(item, ""); }).join(" "));
+    }
+    var raw = displayLabel(value, "").trim().toLowerCase();
+    if (!raw) return "";
+    var normalized = raw.replace(/[_\s]+/g, "-");
+    return configuredAccountOwners[raw] || configuredAccountOwners[normalized] || "";
   }
 
   function html(value) {
@@ -707,6 +719,13 @@
   }
 
   function inferAccountOwnerEmail(account) {
+    var configuredOwner = knownAccountOwnerEmail(account.id)
+      || knownAccountOwnerEmail(account.accountId)
+      || knownAccountOwnerEmail(account.account_id)
+      || knownAccountOwnerEmail(account.account)
+      || knownAccountOwnerEmail(account.name)
+      || knownAccountOwnerEmail(account.nickname);
+    if (configuredOwner) return configuredOwner;
     var context = [
       account.ownerEmail,
       account.owner_email,
@@ -734,11 +753,18 @@
       account.nickname,
       account.label
     ].map(function (item) { return displayLabel(item, ""); }).join(" ");
-    return knownUserEmailFromText(context);
+    return knownAccountOwnerEmail(context) || knownUserEmailFromText(context);
   }
 
   function rowOwnerEmail(row) {
     if (!row) return "";
+    var configuredOwner = knownAccountOwnerEmail(row.id)
+      || knownAccountOwnerEmail(row.accountId)
+      || knownAccountOwnerEmail(row.account_id)
+      || knownAccountOwnerEmail(row.account)
+      || knownAccountOwnerEmail(row.name)
+      || knownAccountOwnerEmail(row.nickname);
+    if (configuredOwner) return canonicalEmail(configuredOwner);
     return canonicalEmail(
       row.ownerEmail
         || row.owner_email
@@ -2799,7 +2825,7 @@
       var connected = state.accounts.map(function (account) {
         return stackItem(account.broker, account.status || "Connected", account.account + " last snapshot " + (account.generatedAt || "unknown"), 80);
       });
-      connected.unshift(stackItem("Daemon outage alerts", "Escalation parity required", "IBKR gateway, RH/E-Trade reauth, daemon crashes, and abnormal stops should use the same phone/email cadence.", 55, "compat-warn"));
+      connected.unshift(stackItem("Daemon outage alerts", "Watchdog covered", "IBKR Gateway, RH/E*TRADE auth, daemon crashes, and abnormal stops use the shared phone/email alert path.", 80));
       connected.push(stackItem("Fidelity via Plaid", "Pending production access / read-only", "Sandbox keys cannot view John's live Fidelity accounts until production consent is approved.", 30));
       connected.push(stackItem("Schwab PCRA", "Pending official API onboarding", "Use read-only mode first; trading permission must be explicit.", 20));
       brokerConnections.innerHTML = connected.join("");
@@ -3259,7 +3285,7 @@
     }).then(function (result) {
       state.pullRefresh.refreshing = false;
       runRefreshBounce(result.ok);
-      updatePullRefreshIndicator(result.ok ? 72 : 48, false, result.ok ? (result.updated ? "Latest trader cycle synced." : "Already current") : "Kept current view");
+      updatePullRefreshIndicator(result.ok ? 72 : 48, false, result.ok ? (result.updated ? "Latest trader cycle synced." : "Already current") : "Still showing current view");
       if (result.ok && result.updated) {
         toast("Latest trader cycle synced.");
       } else if (!result.ok && !state.payload) {
@@ -3817,14 +3843,14 @@
       })
       .catch(function (error) {
         if (state.payload && (options.refresh || options.silent || options.interactiveRefresh || error.authRequired)) {
-          text("sync-pill", options.interactiveRefresh || options.silent ? "Checked" : "Current view kept");
-          text("snapshot-time", latestDaemonLabel(state.payload));
+          text("sync-pill", options.interactiveRefresh || options.silent ? "Checked" : "Showing latest loaded data");
+          text("snapshot-time", latestDaemonLabel(state.payload) || "Latest loaded trader cycle is still displayed.");
           state.feedWarning = options.interactiveRefresh || options.silent
             ? null
-            : recommendation("feed-refresh-kept-current", "Current dashboard kept", "Retry sync", "SmartSleeve", "Data", 0, error.message, "Displayed holdings were preserved; verify freshness before making decisions.", "EXTERNAL_BROKER_SYNC");
+            : recommendation("feed-refresh-kept-current", "Latest loaded data shown", "Retry sync", "SmartSleeve", "Data", 0, error.message, "Holdings already on screen remain visible; confirm the timestamp before acting.", "EXTERNAL_BROKER_SYNC");
           renderAll();
           if (options.refresh || options.interactiveRefresh) {
-            toast("Still showing latest available trader cycle.");
+            toast("Latest loaded data is still displayed.");
           }
         } else {
           text("snapshot-time", "Feed unavailable");
