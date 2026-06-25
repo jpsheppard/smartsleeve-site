@@ -1765,10 +1765,10 @@
       accountDetailValueChart(account),
       "<article class=\"panel-card\"><div class=\"card-head\"><div><span>Sleeves</span><h2>Active sleeve coverage</h2></div><button type=\"button\" class=\"text-button\" data-nav-button=\"sleeves\">All sleeves</button></div><div class=\"stack-list\">"
         + (sleeveCoverage.active.length ? sleeveCoverage.active.map(function (sleeve) {
-          return stackItem(sleeve.label, sleeveCoverageMeta(sleeve), sleeveCoverageBody(sleeve), 80);
+          return stackItem(sleeve.label, sleeveCoverageMeta(sleeve), sleeveCoverageBody(sleeve), null, "compact-stack");
         }).join("") : emptyItem("No funded active sleeve", "This account has no sleeve row with both live coverage and non-zero value/holdings."))
         + (sleeveCoverage.inactive.length ? "<div class=\"coverage-subhead\">Inactive or config-only</div>" + sleeveCoverage.inactive.slice(0, 8).map(function (sleeve) {
-          return stackItem(sleeve.label, sleeveCoverageMeta(sleeve), "Configured row only; not counted as active sleeve coverage until it has value, holdings, or live ownership.", 20, "muted-stack");
+          return stackItem(sleeve.label, sleeveCoverageMeta(sleeve), "Configured row only; not counted as active sleeve coverage until it has value, holdings, or live ownership.", null, "compact-stack muted-stack");
         }).join("") : "")
       + "</div></article>",
       "<article class=\"panel-card wide-card\"><div class=\"card-head\"><div><span>Holdings</span><h2>Account positions</h2></div><span class=\"status-chip\">" + holdings.length + " positions</span></div><div class=\"table-wrap\"><table><tbody>"
@@ -1877,7 +1877,7 @@
       + (last ? "<div class=\"chart-readout\" data-chart-readout=\"" + html(chartId) + "\"><b>" + html(money(last.value)) + "</b><span class=\"" + html(trendClass) + "\">" + html(meta) + "</span></div>" : "")
       + (cleanPoints.length ? buildLineChart(cleanPoints, lineColor, "Account value", {interactive: true, compact: true, chartId: chartId, baseline: first ? first.value : null, range: range}) : emptyItem("No account history", "Private account history has not synced for this account yet."))
       + "<div class=\"time-tabs\" role=\"tablist\" aria-label=\"Account chart range\">" + tabs + "</div>"
-      + (last ? "<p class=\"chart-footnote\">" + html(cleanPoints.length + " synced point" + (cleanPoints.length === 1 ? "" : "s")) + " / latest " + html(money(last.value)) + " / " + html(shortTimestamp(last.at)) + "</p>" : "")
+      + (last ? "<p class=\"chart-footnote\">Latest " + html(money(last.value)) + " / " + html(shortTimestamp(last.at)) + " / plotting all " + html(cleanPoints.length + " synced sample" + (cleanPoints.length === 1 ? "" : "s")) + "</p>" : "")
       + "</article>";
   }
 
@@ -3403,7 +3403,7 @@
         deadlineLabel: deadlineLabel,
         trendLabel: "Needs live quote/history",
         stance: minutesLeft != null && minutesLeft < 90 ? "Deadline close: prepare preview now" : "Collect live target tape before buying",
-        plan: "Sage does not have enough target-price history in the app feed to call momentum. Pull the latest daemon cycle, then use a broker preview or limit ladder rather than a blind market buy."
+        plan: "Sage does not have enough target-price history in the app feed to call momentum. Pull the latest account feed, then use a broker preview or limit ladder rather than a blind market buy."
       };
     }
     var room = minutesLeft == null ? "unknown time" : minutesLeft < 60 ? "less than 1 hour" : Math.round(minutesLeft / 60) + " hours";
@@ -3456,7 +3456,7 @@
         deadlineLabel: deadlineLabel,
         trendLabel: "Needs live quote/history",
         stance: minutesLeft != null && minutesLeft < 90 ? "Deadline close: prepare close preview now" : "Collect live source tape before selling",
-        plan: "Sage does not have enough source-price history in the app feed to call exit momentum. Pull the latest daemon cycle, then prefer broker preview and limit discipline rather than a blind market sell."
+        plan: "Sage does not have enough source-price history in the app feed to call exit momentum. Pull the latest account feed, then prefer broker preview and limit discipline rather than a blind market sell."
       };
     }
     var room = minutesLeft == null ? "unknown time" : minutesLeft < 60 ? "less than 1 hour" : Math.round(minutesLeft / 60) + " hours";
@@ -3524,7 +3524,7 @@
     if (holding && numeric(holding.price) != null) {
       rows.push({at: new Date(), price: numeric(holding.price)});
     }
-    return rows.slice(-12);
+    return rows;
   }
 
   function priceTrend(points) {
@@ -3576,13 +3576,21 @@
     if (trend == null && cleanPoints.length > 1) trend = last.value - first.value;
     var trendClass = valueClass(trend);
     var lineColor = trendClass === "negative" ? "var(--red)" : "var(--green)";
-    var chart = buildLineChart(cleanPoints, lineColor, yLabel);
+    var chartId = "chart-" + String(title + "-" + yLabel).replace(/[^a-zA-Z0-9_-]/g, "-") + "-" + cleanPoints.length;
+    var chart = buildLineChart(cleanPoints, lineColor, yLabel, {
+      interactive: true,
+      compact: true,
+      chartId: chartId,
+      baseline: first ? first.value : null,
+      range: "all samples"
+    });
     var sub = cleanPoints.length > 1
       ? shortDate(first.at) + " to " + shortDate(last.at) + " / " + signedMoney(last.value - first.value) + " / " + cleanPoints.length + " pts"
       : "One synced point / more history needed";
     return "<article class=\"chart-card\">"
       + "<div class=\"stack-item-head\"><b>" + html(title) + "</b><span class=\"" + trendClass + "\">" + html(sub) + "</span></div>"
-      + "<p>" + html(meta) + " / latest " + html(money(last.value)) + "</p>"
+      + "<div class=\"chart-readout compact-readout\" data-chart-readout=\"" + html(chartId) + "\"><b>" + html(money(last.value)) + "</b><span class=\"" + html(trendClass) + "\">" + html(signedMoney(last.value - first.value, "$0.00") + " (" + signedPercent(first.value ? (last.value - first.value) / first.value * 100 : null) + ")") + "</span></div>"
+      + "<p>" + html(meta) + " / latest " + html(money(last.value)) + " / plotting all " + html(cleanPoints.length + " synced sample" + (cleanPoints.length === 1 ? "" : "s")) + "</p>"
       + chart
       + "</article>";
   }
@@ -3797,7 +3805,7 @@
     indicator.classList.toggle("refreshing", Boolean(state.pullRefresh.refreshing));
     applyPullStretch(distance);
     if (textTarget) {
-      textTarget.textContent = label || (armed ? "Release to sync latest daemon cycle" : "Pull down to sync latest daemon cycle");
+      textTarget.textContent = label || (armed ? "Release to check latest account feed" : "Pull down to check latest account feed");
     }
   }
 
@@ -3814,7 +3822,7 @@
       state.pullRefresh.tracking = false;
       state.pullRefresh.armed = false;
       state.pullRefresh.distance = 0;
-      updatePullRefreshIndicator(0, false, "Pull down to sync latest daemon cycle");
+      updatePullRefreshIndicator(0, false, "Pull down to check latest account feed");
       applyPullStretch(0);
     }, delay || 0);
   }
@@ -3826,7 +3834,7 @@
     state.pullRefresh.tracking = false;
     state.pullRefresh.armed = false;
     updatePullRefreshIndicator(96, true, "Checking latest app feed...");
-    text("sync-pill", "Refreshing cache");
+    text("sync-pill", "Checking feed");
     var refreshStarted = requestServerFeedRefresh();
     Promise.all([
       loadFeed({silent: true, interactiveRefresh: true}),
@@ -3841,7 +3849,7 @@
     }).then(function (result) {
       state.pullRefresh.refreshing = false;
       runRefreshBounce(result.ok);
-      updatePullRefreshIndicator(result.ok ? 72 : 48, false, result.ok ? (result.updated ? "Latest app feed synced." : "Already current") : "Still showing current view");
+      updatePullRefreshIndicator(result.ok ? 72 : 48, false, result.ok ? (result.updated ? "Latest app feed synced." : "Latest available feed is showing") : "Still showing current view");
       if (result.ok && result.updated) {
         toast("Latest app feed synced; stale account exports are called out separately.");
       } else if (!result.ok && !state.payload) {
@@ -4354,12 +4362,31 @@
 
   function latestDaemonLabel(payload) {
     var source = payload || state.payload || {};
-    var timestamps = [];
-    collectDaemonTimestamps(source, timestamps);
+    var accountTimestamps = accountSyncTimestamps(state.accounts);
+    var timestamps = accountTimestamps.length ? accountTimestamps : [];
+    if (!timestamps.length) collectDaemonTimestamps(source, timestamps);
     var latest = timestamps.map(function (value) { return new Date(value); }).filter(function (date) {
       return !Number.isNaN(date.getTime());
     }).sort(function (a, b) { return b - a; })[0];
-    return latest ? "Last synced trader cycle at " + latest.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit", second: "2-digit"}) + " on " + latest.toLocaleDateString([], {month: "long", day: "numeric", year: "numeric"}) + "." : "Last synced trader cycle unavailable.";
+    if (!latest) return "Last account sync unavailable.";
+    var staleCount = state.accounts.filter(function (account) { return account.sourceIsStale; }).length;
+    var scope = accountTimestamps.length ? "account sync" : "app feed";
+    return "Last " + scope + " at " + latest.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit", second: "2-digit"}) + " on " + latest.toLocaleDateString([], {month: "long", day: "numeric", year: "numeric"}) + (staleCount ? " / " + staleCount + " stale account" + (staleCount === 1 ? "" : "s") + "." : ".");
+  }
+
+  function accountSyncTimestamps(accounts) {
+    var timestamps = [];
+    (accounts || []).forEach(function (account) {
+      ["generatedAt", "generated_at", "sourceAsOf", "source_as_of", "lastReconciledAt", "last_reconciled_at", "updatedAt", "updated_at"].forEach(function (key) {
+        if (account[key]) timestamps.push(account[key]);
+      });
+      (account.positions || []).slice(0, 80).forEach(function (position) {
+        ["priceAsOf", "price_as_of", "generatedAt", "generated_at", "updatedAt", "updated_at"].forEach(function (key) {
+          if (position[key]) timestamps.push(position[key]);
+        });
+      });
+    });
+    return timestamps;
   }
 
   function feedSyncLabel(payload) {

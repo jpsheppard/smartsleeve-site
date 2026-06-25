@@ -1680,6 +1680,14 @@ textarea:focus {
   font-weight: 900;
 }
 
+.chart-readout.compact-readout {
+  min-height: 34px;
+}
+
+.chart-readout.compact-readout b {
+  font-size: 18px;
+}
+
 .coverage-subhead {
   padding: 7px 2px 2px;
   color: var(--muted);
