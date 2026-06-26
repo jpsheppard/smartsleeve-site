@@ -109,6 +109,12 @@
 
   var brokerHealthChecks = [
     {
+      title: "Alert naming",
+      meta: "No combined ibkr_etrade labels",
+      body: "Health emails should name the failing connector directly: IBKR Gateway, E-Trade auth/export, Robinhood trader, or app-feed publisher.",
+      progress: 70
+    },
+    {
       title: "IBKR Gateway",
       meta: "API port 4001 / ibkr-gateway.service",
       body: "Alert subjects and bodies should say IBKR Gateway down when 127.0.0.1:4001 is closed or the gateway API cannot connect.",
@@ -772,10 +778,7 @@
         return String(holding.symbol || holding.ticker || holding || "").toUpperCase();
       }).filter(Boolean);
       var hasAccountHolding = sleeveHoldings.some(function (symbol) { return Boolean(accountSymbols[symbol]); });
-      var configuredActive = Boolean(sleeve.configuredActive || sleeve.configured_active)
-        || ((numeric(sleeve.effectiveLimitUsd != null ? sleeve.effectiveLimitUsd : sleeve.effective_limit_usd) || 0) > 0
-          && !/^(off|disabled|inactive|hibernate|hibernating|paused|sleep)$/i.test(String(sleeve.operatingMode || sleeve.operating_mode || "")));
-      var funded = sleeveDisplayValue(sleeve, account).value > 0 || sleeveHasCurrentOwnership(sleeve) || configuredActive;
+      var funded = sleeveDisplayValue(sleeve, account).value > 0 || sleeveHasCurrentOwnership(sleeve);
       if ((funded || hasAccountHolding) && names.indexOf(name) === -1) {
         names.push(name);
       }
@@ -925,6 +928,12 @@
       account.cash_balance,
       account.cashUsd,
       account.cash_usd,
+      account.availableCash,
+      account.available_cash,
+      account.availableCashUsd,
+      account.available_cash_usd,
+      account.cashAvailable,
+      account.cash_available,
       account.settledCash,
       account.settled_cash,
       account.uninvestedCash,
@@ -937,6 +946,10 @@
       account.buying_power,
       account.cash_available_for_buys,
       account.cashAvailableForBuys,
+      account.availableBuyingPower,
+      account.available_buying_power,
+      account.availableBuyingPowerUsd,
+      account.available_buying_power_usd,
       account.availableFunds,
       account.available_funds
     ]);
@@ -969,7 +982,9 @@
       && (cash == null || Math.abs(cash) < 0.005)
       && (equity == null || isNearAmount(equity, buyPower) || positionValue < 0.005)) {
       cash = buyPower;
-      cashSource = "buying_power_cash_equivalent";
+      cashSource = equity != null && equity > 0.005 && isNearAmount(equity, buyPower) && positionValue < 0.005
+        ? "etrade_equity_buying_power_cash_equivalent"
+        : "buying_power_cash_equivalent";
     }
     return {
       id: account.id || account.accountId || account.account_id || account.account,
@@ -1905,7 +1920,7 @@
       var buffer = buyPower == null ? "buffer needs sync" : "buffer " + money(buyPower);
       return "Margin used: <span class=\"negative\">" + money(Math.abs(cash)) + "</span> / " + buffer;
     }
-    var source = account.cashSource === "buying_power_cash_equivalent" ? " / inferred from buying power" : "";
+    var source = isEstimatedCashSource(account.cashSource) ? " / estimated cash" : "";
     return "Cash: <span class=\"positive\">" + money(cash) + "</span> / buying power " + money(buyPower) + source;
   }
 
@@ -1975,8 +1990,8 @@
       "<article class=\"panel-card\"><div class=\"card-head\"><div><span>Sleeves</span><h2>Active sleeve coverage</h2></div><button type=\"button\" class=\"text-button\" data-nav-button=\"sleeves\">All sleeves</button></div><div class=\"stack-list\">"
         + (sleeveCoverage.active.length ? sleeveCoverage.active.map(function (sleeve) {
           return stackItem(sleeve.label, sleeveCoverageMeta(sleeve), sleeveCoverageBody(sleeve), null, "compact-stack");
-        }).join("") : emptyItem("No active or configured sleeve", "This account has no funded sleeve row and no configured non-zero sleeve limit in the current app feed."))
-        + (sleeveCoverage.inactive.length ? "<div class=\"coverage-subhead\">Inactive or config-only</div>" + sleeveCoverage.inactive.slice(0, 8).map(function (sleeve) {
+        }).join("") : emptyItem("No live-funded sleeve", "Configured sleeve limits are shown below when present; broker lots or ledger ownership are still needed before counting them as funded."))
+        + (sleeveCoverage.inactive.length ? "<div class=\"coverage-subhead\">Configured or inactive</div>" + sleeveCoverage.inactive.slice(0, 8).map(function (sleeve) {
           return stackItem(sleeve.label, sleeveCoverageMeta(sleeve), "Configured row only; not counted as active sleeve coverage until it has value, holdings, or live ownership.", null, "compact-stack muted-stack");
         }).join("") : "")
       + "</div></article>",
@@ -2040,7 +2055,7 @@
         lastReconciledAt: sleeve.lastReconciledAt || sleeve.last_reconciled_at,
         initialized: Boolean(sleeve.initialized)
       };
-      if (!isOff && ((hasCurrentOwnership || values.allocationOnly || hasAccountHolding) && hasValue || configuredActive)) {
+      if (!isOff && ((hasCurrentOwnership || values.allocationOnly || hasAccountHolding) && hasValue)) {
         active.push(row);
       } else {
         inactive.push(row);
@@ -2137,7 +2152,7 @@
   }
 
   function isEstimatedCashSource(source) {
-    return source === "buying_power_cash_equivalent" || source === "equity_minus_positions_estimate";
+    return source === "buying_power_cash_equivalent" || source === "etrade_equity_buying_power_cash_equivalent" || source === "equity_minus_positions_estimate";
   }
 
   function accountFreshnessLabel(account) {
@@ -2197,6 +2212,9 @@
     }
     if (account.cashSource === "buying_power_cash_equivalent") {
       return "E-Trade exported zero cash while account value and buying power matched. SmartSleeve displays buying power as available cash until the broker cash field syncs.";
+    }
+    if (account.cashSource === "etrade_equity_buying_power_cash_equivalent") {
+      return "E-Trade exported zero cash with matching account value and buying power. SmartSleeve displays the matched value as estimated available cash until broker cash syncs.";
     }
     if (account.cashSource === "equity_minus_positions_estimate") {
       return "E-Trade exported zero cash while account value exceeded synced positions. SmartSleeve displays the equity-minus-positions estimate until the broker cash field syncs.";
@@ -3799,6 +3817,15 @@
     return date.toLocaleDateString("en-US", {month: "short", day: "numeric"});
   }
 
+  function chartTickLabel(value, compact) {
+    var date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value || "");
+    if (compact) {
+      return date.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"});
+    }
+    return date.toLocaleDateString("en-US", {month: "short", day: "numeric"});
+  }
+
   function compactMoney(value) {
     var number = numeric(value);
     if (number == null) return "$0";
@@ -3915,7 +3942,9 @@
 
   function chartTimeTicks(points, left, right, width, height) {
     if (!points.length) return "";
-    var maxTicks = points.length < 3 ? points.length : 5;
+    var maxTicks = points.length < 3 ? points.length : 6;
+    var firstDay = new Date(points[0].at).toDateString();
+    var sameDay = points.every(function (point) { return new Date(point.at).toDateString() === firstDay; });
     var seen = {};
     var ticks = [];
     for (var index = 0; index < maxTicks; index += 1) {
@@ -3927,7 +3956,7 @@
     return ticks.map(function (tick, index) {
       var anchor = index === 0 ? "start" : index === ticks.length - 1 ? "end" : "middle";
       var xPos = left + (new Date(tick.point.at).getTime() - new Date(points[0].at).getTime()) / Math.max(1, new Date(points[points.length - 1].at).getTime() - new Date(points[0].at).getTime()) * (width - left - right);
-      return "<text x=\"" + xPos.toFixed(1) + "\" y=\"" + (height - 28) + "\" class=\"chart-tick\" text-anchor=\"" + anchor + "\">" + html(shortDate(tick.point.at)) + "</text>";
+      return "<text x=\"" + xPos.toFixed(1) + "\" y=\"" + (height - 28) + "\" class=\"chart-tick\" text-anchor=\"" + anchor + "\">" + html(chartTickLabel(tick.point.at, sameDay)) + "</text>";
     }).join("");
   }
 
