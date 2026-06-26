@@ -541,8 +541,23 @@
   }
 
   function numeric(value) {
+    if (typeof value === "string") {
+      var cleaned = value.trim();
+      if (/^-?\$?\d[\d,]*(\.\d+)?$/.test(cleaned)) {
+        value = cleaned.replace(/\$/g, "").replace(/,/g, "");
+      }
+    }
     var number = Number(value);
     return Number.isFinite(number) ? number : null;
+  }
+
+  function firstNumeric(values) {
+    for (var i = 0; i < values.length; i += 1) {
+      if (values[i] === "" || values[i] == null) continue;
+      var number = numeric(values[i]);
+      if (number != null) return number;
+    }
+    return null;
   }
 
   function money(value) {
@@ -736,9 +751,7 @@
         return String(holding.symbol || holding.ticker || holding || "").toUpperCase();
       }).filter(Boolean);
       var hasAccountHolding = sleeveHoldings.some(function (symbol) { return Boolean(accountSymbols[symbol]); });
-      var funded = (numeric(sleeve.netLiquidationUsd != null ? sleeve.netLiquidationUsd : sleeve.net_liquidation_usd) || 0) > 0
-        || (numeric(sleeve.positionValueUsd != null ? sleeve.positionValueUsd : sleeve.position_value_usd) || 0) > 0
-        || (numeric(sleeve.cashUsd != null ? sleeve.cashUsd : sleeve.cash_usd) || 0) > 0;
+      var funded = sleeveDisplayValue(sleeve, account).value > 0 || sleeveHasCurrentOwnership(sleeve);
       if ((funded || hasAccountHolding) && names.indexOf(name) === -1) {
         names.push(name);
       }
@@ -854,10 +867,55 @@
       };
     });
     var brokerName = account.broker || "Broker";
-    var brokerEquity = numeric(account.brokerEquity != null ? account.brokerEquity : account.broker_equity);
-    var equity = numeric(account.equity != null ? account.equity : account.account_equity);
-    var cash = numeric(account.cash);
-    var buyPower = numeric(account.buyPower != null ? account.buyPower : account.cash_available_for_buys);
+    var brokerEquity = firstNumeric([
+      account.brokerEquity,
+      account.broker_equity,
+      account.netLiquidation,
+      account.net_liquidation,
+      account.netLiquidationUsd,
+      account.net_liquidation_usd,
+      account.netLiquidationValue,
+      account.net_liquidation_value
+    ]);
+    var equity = firstNumeric([
+      account.equity,
+      account.account_equity,
+      account.accountEquity,
+      account.accountValue,
+      account.account_value,
+      account.portfolioValue,
+      account.portfolio_value,
+      account.totalValue,
+      account.total_value,
+      account.currentValue,
+      account.current_value,
+      account.marketValue,
+      account.market_value,
+      account.balance,
+      account.totalBalance,
+      account.total_balance
+    ]);
+    var cash = firstNumeric([
+      account.cash,
+      account.cashBalance,
+      account.cash_balance,
+      account.cashUsd,
+      account.cash_usd,
+      account.settledCash,
+      account.settled_cash,
+      account.uninvestedCash,
+      account.uninvested_cash
+    ]);
+    var buyPower = firstNumeric([
+      account.buyPower,
+      account.buy_power,
+      account.buyingPower,
+      account.buying_power,
+      account.cash_available_for_buys,
+      account.cashAvailableForBuys,
+      account.availableFunds,
+      account.available_funds
+    ]);
     var positionValue = positions.reduce(function (sum, position) {
       return sum + (numeric(position.value) || 0);
     }, 0);
@@ -869,6 +927,10 @@
     if ((equity == null || equity === 0) && positionValue > 0 && /e[-*\s]?trade/i.test(brokerName)) {
       equity = positionValue + (cash || 0);
       equitySource = "positions_plus_cash_estimate";
+    }
+    if ((equity == null || Math.abs(equity) < 0.005) && /e[-*\s]?trade/i.test(brokerName) && buyPower != null && Math.abs(buyPower) >= 0.005) {
+      equity = buyPower;
+      equitySource = "buying_power_fallback";
     }
     return {
       id: account.id || account.accountId || account.account_id || account.account,
@@ -1176,7 +1238,9 @@
           bySleeve[name].exactValue += sleeveValues.net;
           bySleeve[name].cash += sleeveValues.cash;
           bySleeve[name].positionValue += sleeveValues.positionValue;
+          bySleeve[name].allocationValue += sleeveValues.allocationValue;
           if (sleeveValues.derived) bySleeve[name].ledgerPending = true;
+          if (sleeveValues.allocationOnly) bySleeve[name].allocationOnly = true;
           bySleeve[name].lastReconciledAt = sleeve.lastReconciledAt || sleeve.last_reconciled_at || bySleeve[name].lastReconciledAt;
           bySleeve[name].operatingMode = sleeve.operatingMode || sleeve.operating_mode || bySleeve[name].operatingMode;
           (sleeve.holdings || []).forEach(function (holding) {
@@ -1214,6 +1278,7 @@
         && ((numeric(sleeve.exactValue) || 0) > 0
           || (numeric(sleeve.cash) || 0) > 0
           || (numeric(sleeve.positionValue) || 0) > 0
+          || (numeric(sleeve.allocationValue) || 0) > 0
           || (sleeve.holdings || []).length > 0
           || sleeve.lastReconciledAt);
     }).sort(function (a, b) {
@@ -1254,12 +1319,53 @@
       net = (positionValue || 0) + (cash || 0);
       derived = true;
     }
+    var allocationValue = firstNumeric([
+      sleeve.allocationUsd,
+      sleeve.allocation_usd,
+      sleeve.allocatedUsd,
+      sleeve.allocated_usd,
+      sleeve.allocatedValueUsd,
+      sleeve.allocated_value_usd,
+      sleeve.sleeveLimitUsd,
+      sleeve.sleeve_limit_usd,
+      sleeve.limitUsd,
+      sleeve.limit_usd,
+      sleeve.capitalLimitUsd,
+      sleeve.capital_limit_usd,
+      sleeve.maxNotionalUsd,
+      sleeve.max_notional_usd,
+      sleeve.buyingPowerUsd,
+      sleeve.buying_power_usd,
+      sleeve.marginLimitUsd,
+      sleeve.margin_limit_usd,
+      sleeve.targetValueUsd,
+      sleeve.target_value_usd
+    ]);
+    if ((net == null || Math.abs(net) < 0.005) && allocationValue != null && Math.abs(allocationValue) >= 0.005) {
+      net = allocationValue;
+      derived = true;
+    }
     return {
       cash: cash || 0,
       positionValue: positionValue || 0,
       net: net || 0,
+      allocationValue: allocationValue || 0,
+      allocationOnly: Math.abs(net || 0) >= 0.005 && Math.abs((positionValue || 0) + (cash || 0)) < 0.005 && Math.abs(allocationValue || 0) >= 0.005,
       derived: derived
     };
+  }
+
+  function sleeveDisplayValue(sleeve, account) {
+    var values = resolvedSleeveValues(sleeve, account || {positions: []});
+    var value = numeric(values.net) || 0;
+    if (Math.abs(value) >= 0.005) {
+      return {
+        value: value,
+        label: money(value),
+        source: values.allocationOnly ? "allocation limit" : (values.derived ? "derived ledger" : "live ledger")
+      };
+    }
+    return {value: 0, label: "No funded value", source: "no current value"};
   }
 
   function sleeveHoldingMarketValue(sleeve, account) {
@@ -1320,7 +1426,9 @@
         exactValue: 0,
         cash: 0,
         positionValue: 0,
+        allocationValue: 0,
         ledgerPending: false,
+        allocationOnly: false,
         holdings: [],
         target: sleeveTargets[name] || 0,
         operatingMode: "unknown",
@@ -1792,7 +1900,7 @@
       return {
         active: [],
         inactive: splitSleeves(account.sleevesText).map(function (name) {
-          return {label: name, operatingMode: "reported", net: 0, cash: 0, positionValue: 0, holdings: []};
+          return {label: name, operatingMode: "reported", net: 0, cash: 0, positionValue: 0, allocationValue: 0, allocationOnly: false, holdings: []};
         })
       };
     }
@@ -1812,7 +1920,7 @@
         return Boolean(accountSymbols[String(holding.symbol || holding.ticker || holding || "").toUpperCase()]);
       });
       var mode = String(sleeve.operatingMode || sleeve.operating_mode || "unknown").toLowerCase();
-      var hasValue = Math.abs(values.net) >= 0.005 || Math.abs(values.cash) >= 0.005 || Math.abs(values.positionValue) >= 0.005;
+      var hasValue = Math.abs(values.net) >= 0.005 || Math.abs(values.cash) >= 0.005 || Math.abs(values.positionValue) >= 0.005 || Math.abs(values.allocationValue) >= 0.005;
       var hasCurrentOwnership = sleeveHasCurrentOwnership(sleeve);
       var isOff = /^(off|disabled|inactive|hibernate|hibernating|paused|sleep)$/i.test(mode);
       var row = {
@@ -1821,11 +1929,13 @@
         net: values.net,
         cash: values.cash,
         positionValue: values.positionValue,
+        allocationValue: values.allocationValue,
+        allocationOnly: values.allocationOnly,
         holdings: holdings,
         lastReconciledAt: sleeve.lastReconciledAt || sleeve.last_reconciled_at,
         initialized: Boolean(sleeve.initialized)
       };
-      if (!isOff && hasCurrentOwnership && (hasValue || hasAccountHolding)) {
+      if (!isOff && (hasCurrentOwnership || values.allocationOnly || hasAccountHolding) && hasValue) {
         active.push(row);
       } else {
         inactive.push(row);
@@ -1838,7 +1948,8 @@
 
   function sleeveCoverageMeta(sleeve) {
     var value = Math.abs(numeric(sleeve.net) || 0) >= 0.005 ? money(sleeve.net) : "No funded value";
-    return value + " / " + (sleeve.operatingMode || "mode unknown");
+    var source = sleeve.allocationOnly ? "allocation limit" : "live/derived value";
+    return value + " / " + source + " / " + (sleeve.operatingMode || "mode unknown");
   }
 
   function sleeveCoverageBody(sleeve) {
@@ -1921,7 +2032,7 @@
     if (account.sourceIsStale && status.indexOf("stale") === -1) {
       status = "stale analytics export";
     }
-    return status + (account.equitySource === "positions_plus_cash_estimate" ? " est." : "");
+    return status + (account.equitySource === "positions_plus_cash_estimate" || account.equitySource === "buying_power_fallback" ? " est." : "");
   }
 
   function accountValueSourceCopy(account) {
@@ -1930,6 +2041,9 @@
     }
     if (account.equitySource === "positions_plus_cash_estimate") {
       return "Positions plus cash estimate.";
+    }
+    if (account.equitySource === "buying_power_fallback") {
+      return "Broker buying-power fallback because E-Trade account value exported as zero.";
     }
     return "Broker value.";
   }
@@ -2376,12 +2490,15 @@
     var cards = $("sleeve-cards");
     if (cards) {
       cards.innerHTML = state.sleeves.map(function (sleeve) {
-        var actual = sleeve.exactValue && total ? sleeve.exactValue / total * 100 : null;
+        var displayValue = numeric(sleeve.exactValue) || 0;
+        var actual = Math.abs(displayValue) >= 0.005 && total ? displayValue / total * 100 : null;
         var drift = actual == null || !sleeve.target ? "Needs target/ledger" : (actual - sleeve.target).toFixed(1) + " pts";
+        var valueLabel = Math.abs(displayValue) >= 0.005 ? money(displayValue) : "Ledger split pending";
+        var valueSource = sleeve.allocationOnly ? "allocation limit" : (sleeve.ledgerPending ? "derived ledger" : "live ledger");
         return "<article class=\"sleeve-card interactive-card\" data-sleeve-detail=\"" + html(sleeve.name) + "\" tabindex=\"0\">"
           + "<span>" + html(sleeve.operatingMode || "mode unknown") + "</span>"
           + "<h3>" + html(sleeve.name) + "</h3>"
-          + "<p>Value: <b>" + (sleeve.exactValue ? money(sleeve.exactValue) : "Ledger split pending") + "</b></p>"
+          + "<p>Value: <b>" + html(valueLabel) + "</b> <small>" + html(valueSource) + "</small></p>"
           + "<p>Cash: " + money(sleeve.cash) + " / holdings " + money(sleeve.positionValue) + "</p>"
           + "<p>Target: " + sleeve.target + "% / Actual: " + (actual == null ? "needs ledger" : actual.toFixed(1) + "%") + "</p>"
           + "<p>Drift: " + html(drift) + "</p>"
@@ -2401,11 +2518,15 @@
     var table = $("sleeve-table");
     if (table) {
       table.innerHTML = state.sleeves.map(function (sleeve) {
+        var knownValue = Math.abs(numeric(sleeve.exactValue) || 0) >= 0.005 ? money(sleeve.exactValue) : "Needs sleeve ledger";
+        if (sleeve.allocationOnly && Math.abs(numeric(sleeve.exactValue) || 0) >= 0.005) {
+          knownValue += " allocation";
+        }
         return "<tr>"
           + cell("Sleeve", "<b>" + html(sleeve.name) + "</b>")
           + cell("Account", html(sleeve.accounts.join(", ")))
           + cell("Holdings", html(sleeve.holdings.slice(0, 10).join(", ") || "No current positions"))
-          + cell("Known value", sleeve.exactValue ? money(sleeve.exactValue) : "Needs sleeve ledger")
+          + cell("Known value", knownValue)
           + cell("Next action", sleeve.ledgerPending ? "Assign lots to sleeve" : "Review drift")
           + "</tr>";
       }).join("");
@@ -2435,7 +2556,7 @@
     }).slice(0, 8);
     target.innerHTML = [
       "<article class=\"panel-card\"><div class=\"card-head\"><div><span>Behavior</span><h2>Current sleeve state</h2></div><span class=\"status-chip\">" + html(sleeve.operatingMode || "Unknown") + "</span></div><div class=\"stack-list\">"
-        + stackItem("Known value", sleeve.exactValue ? money(sleeve.exactValue) : "Ledger split pending", "Ledger quality controls whether drift and P/L are exact.", sleeve.exactValue ? 80 : 30)
+        + stackItem("Known value", sleeve.exactValue ? money(sleeve.exactValue) : "Ledger split pending", sleeve.allocationOnly ? "Allocation limit is visible; exact cash/position split still needs ledger ownership." : "Ledger quality controls whether drift and P/L are exact.", sleeve.exactValue ? 80 : 30)
         + stackItem("Cash / holdings", money(sleeve.cash) + " / " + money(sleeve.positionValue), "Sleeve-level cash and position value where the analytics feed provides it.", 70)
         + stackItem("Target", sleeve.target ? sleeve.target + "%" : "Needs target", "Drift can be reviewed once target and exact ledger value are present.", sleeve.target || 25)
       + "</div></article>",
