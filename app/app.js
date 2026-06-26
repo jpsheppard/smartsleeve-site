@@ -107,6 +107,27 @@
     autoguard: "AutoGuard supervised"
   };
 
+  var brokerHealthChecks = [
+    {
+      title: "IBKR Gateway",
+      meta: "API port 4001 / ibkr-gateway.service",
+      body: "Alert subjects and bodies should say IBKR Gateway down when 127.0.0.1:4001 is closed or the gateway API cannot connect.",
+      progress: 80
+    },
+    {
+      title: "E-Trade connector",
+      meta: "OAuth/session/account export",
+      body: "Report E-Trade auth, cash, buying-power, and account-value export failures separately from IBKR so alerts are actionable.",
+      progress: 65
+    },
+    {
+      title: "Robinhood trader",
+      meta: "robinhood-agentic-trader.service",
+      body: "Report Robinhood service inactivity with the account owner or sleeve context instead of a combined broker label.",
+      progress: 60
+    }
+  ];
+
   var sleeveTargets = {
     "Sage by SmartSleeve": 35,
     "Grand Sage": 30,
@@ -1422,11 +1443,25 @@
   function sleeveDisplayValue(sleeve, account) {
     var values = resolvedSleeveValues(sleeve, account || {positions: []});
     var value = numeric(values.net) || 0;
+    var configuredLimit = firstNumeric([
+      sleeve.configuredLimit,
+      sleeve.effectiveLimitUsd,
+      sleeve.effective_limit_usd,
+      sleeve.initialCapitalUsd,
+      sleeve.initial_capital_usd
+    ]);
     if (Math.abs(value) >= 0.005) {
       return {
         value: value,
         label: money(value),
         source: values.allocationOnly ? "allocation limit" : (values.derived ? "derived ledger" : "live ledger")
+      };
+    }
+    if (configuredLimit != null && Math.abs(configuredLimit) >= 0.005) {
+      return {
+        value: configuredLimit,
+        label: "Limit " + money(configuredLimit),
+        source: "configured limit; broker lots pending"
       };
     }
     return {value: 0, label: "No funded value", source: "no current value"};
@@ -1940,7 +1975,7 @@
       "<article class=\"panel-card\"><div class=\"card-head\"><div><span>Sleeves</span><h2>Active sleeve coverage</h2></div><button type=\"button\" class=\"text-button\" data-nav-button=\"sleeves\">All sleeves</button></div><div class=\"stack-list\">"
         + (sleeveCoverage.active.length ? sleeveCoverage.active.map(function (sleeve) {
           return stackItem(sleeve.label, sleeveCoverageMeta(sleeve), sleeveCoverageBody(sleeve), null, "compact-stack");
-        }).join("") : emptyItem("No funded active sleeve", "This account has no sleeve row with both live coverage and non-zero value/holdings."))
+        }).join("") : emptyItem("No active or configured sleeve", "This account has no funded sleeve row and no configured non-zero sleeve limit in the current app feed."))
         + (sleeveCoverage.inactive.length ? "<div class=\"coverage-subhead\">Inactive or config-only</div>" + sleeveCoverage.inactive.slice(0, 8).map(function (sleeve) {
           return stackItem(sleeve.label, sleeveCoverageMeta(sleeve), "Configured row only; not counted as active sleeve coverage until it has value, holdings, or live ownership.", null, "compact-stack muted-stack");
         }).join("") : "")
@@ -3457,7 +3492,9 @@
       var connected = state.accounts.map(function (account) {
         return stackItem(account.broker, account.status || "Connected", account.account + " last snapshot " + (account.generatedAt || "unknown"), 80);
       });
-      connected.unshift(stackItem("Daemon outage alerts", "Watchdog covered", "IBKR Gateway, RH/E*TRADE auth, daemon crashes, and abnormal stops use the shared phone/email alert path.", 80));
+      brokerHealthChecks.slice().reverse().forEach(function (check) {
+        connected.unshift(stackItem(check.title, check.meta, check.body, check.progress));
+      });
       connected.push(stackItem("Fidelity via Plaid", "Pending production access / read-only", "Sandbox keys cannot view John's live Fidelity accounts until production consent is approved.", 30));
       connected.push(stackItem("Schwab PCRA", "Pending official API onboarding", "Use read-only mode first; trading permission must be explicit.", 20));
       brokerConnections.innerHTML = connected.join("");
