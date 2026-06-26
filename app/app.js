@@ -919,30 +919,34 @@
       account.availableFunds,
       account.available_funds
     ]);
-    var positionValue = positions.reduce(function (sum, position) {
-      return sum + (numeric(position.value) || 0);
-    }, 0);
+    var positionValue = accountPositionValue({positions: positions});
     var equitySource = "broker";
     if (brokerEquity != null && Math.abs(brokerEquity) >= 0.005 && (equity == null || Math.abs(brokerEquity - equity) > Math.max(100, Math.abs(brokerEquity) * 0.01))) {
       equity = brokerEquity;
       equitySource = "broker_equity";
     }
-    if ((equity == null || equity === 0) && positionValue > 0 && /e[-*\s]?trade/i.test(brokerName)) {
+    if ((equity == null || equity === 0) && positionValue > 0 && isEtradeBroker(brokerName)) {
       equity = positionValue + (cash || 0);
       equitySource = "positions_plus_cash_estimate";
     }
-    if ((equity == null || Math.abs(equity) < 0.005) && /e[-*\s]?trade/i.test(brokerName) && buyPower != null && Math.abs(buyPower) >= 0.005) {
+    if ((equity == null || Math.abs(equity) < 0.005) && isEtradeBroker(brokerName) && buyPower != null && Math.abs(buyPower) >= 0.005) {
       equity = buyPower;
       equitySource = "buying_power_fallback";
     }
     var cashSource = account.cashSource || account.cash_source || "broker_cash";
-    if (/e[-*\s]?trade/i.test(brokerName)
-      && positionValue < 0.005
+    if (isEtradeBroker(brokerName)
+      && equity != null
+      && (cash == null || Math.abs(cash) < 0.005)
+      && positionValue > 0.005
+      && equity - positionValue > 0.005) {
+      cash = equity - positionValue;
+      cashSource = "equity_minus_positions_estimate";
+    }
+    if (isEtradeBroker(brokerName)
       && buyPower != null
       && buyPower > 0.005
       && (cash == null || Math.abs(cash) < 0.005)
-      && equity != null
-      && Math.abs(equity - buyPower) <= Math.max(5, Math.abs(buyPower) * 0.01)) {
+      && (equity == null || isNearAmount(equity, buyPower) || positionValue < 0.005)) {
       cash = buyPower;
       cashSource = "buying_power_cash_equivalent";
     }
@@ -1091,6 +1095,23 @@
     return state.accounts.reduce(function (sum, account) {
       return sum + (numeric(account[key]) || 0);
     }, 0);
+  }
+
+  function accountPositionValue(account) {
+    return (account.positions || []).reduce(function (sum, position) {
+      return sum + (numeric(position.value) || 0);
+    }, 0);
+  }
+
+  function isEtradeBroker(value) {
+    return /e[-*\s]?trade/i.test(String(value || ""));
+  }
+
+  function isNearAmount(left, right, tolerance) {
+    var a = numeric(left);
+    var b = numeric(right);
+    if (a == null || b == null) return false;
+    return Math.abs(a - b) <= (tolerance == null ? Math.max(5, Math.abs(b) * 0.01) : tolerance);
   }
 
   function nullableSum(rows, key) {
@@ -1822,13 +1843,13 @@
     var target = $("account-cards");
     if (!target) return;
     target.innerHTML = state.accounts.map(function (account) {
-      var positionValue = (account.positions || []).reduce(function (sum, position) { return sum + (numeric(position.value) || 0); }, 0);
+      var positionValue = accountPositionValue(account);
       return "<article class=\"account-card interactive-card\" data-account-detail=\"" + html(account.id) + "\" tabindex=\"0\">"
         + "<div class=\"stack-item-head\"><b>" + html(account.account) + "</b><span>" + html(account.broker) + "</span></div>"
         + accountPositionsStrip(account)
         + "<div class=\"account-mini-grid\">"
         + miniMetric("Equity", money(account.equity))
-        + miniMetric("Cash", money(account.cash))
+        + miniMetric("Cash", cashMetricLabel(account))
         + miniMetric("Buy power", money(account.buyPower))
         + miniMetric("Holdings", money(positionValue))
         + miniMetric("Positions", String((account.positions || []).length))
@@ -1857,13 +1878,13 @@
     var target = $("accounts-directory");
     if (!target) return;
     target.innerHTML = state.accounts.map(function (account) {
-      var positionValue = (account.positions || []).reduce(function (sum, position) { return sum + (numeric(position.value) || 0); }, 0);
+      var positionValue = accountPositionValue(account);
       return "<article class=\"account-card interactive-card\" data-account-detail=\"" + html(account.id) + "\" tabindex=\"0\">"
         + "<div class=\"stack-item-head\"><b>" + html(account.account) + "</b><span>" + html(accountOwnerLabel(account.ownerEmail)) + " / " + html(account.broker) + "</span></div>"
         + accountPositionsStrip(account)
         + "<div class=\"account-mini-grid\">"
         + miniMetric("Value", money(account.equity))
-        + miniMetric("Cash", money(account.cash))
+        + miniMetric("Cash", cashMetricLabel(account))
         + miniMetric("Buy power", money(account.buyPower))
         + miniMetric("Holdings", money(positionValue))
         + miniMetric("Positions", String((account.positions || []).length))
@@ -2073,7 +2094,15 @@
   function cashMarginMeta(account) {
     var cash = numeric(account.cash) || 0;
     if (cash < 0) return "Margin used " + money(Math.abs(cash));
-    return account.cashSource === "buying_power_cash_equivalent" ? "Cash " + money(cash) + " est." : "Cash " + money(cash);
+    return isEstimatedCashSource(account.cashSource) ? "Cash " + money(cash) + " est." : "Cash " + money(cash);
+  }
+
+  function cashMetricLabel(account) {
+    return money(account.cash) + (isEstimatedCashSource(account.cashSource) ? " est." : "");
+  }
+
+  function isEstimatedCashSource(source) {
+    return source === "buying_power_cash_equivalent" || source === "equity_minus_positions_estimate";
   }
 
   function accountFreshnessLabel(account) {
@@ -2133,6 +2162,9 @@
     }
     if (account.cashSource === "buying_power_cash_equivalent") {
       return "E-Trade exported zero cash while account value and buying power matched. SmartSleeve displays buying power as available cash until the broker cash field syncs.";
+    }
+    if (account.cashSource === "equity_minus_positions_estimate") {
+      return "E-Trade exported zero cash while account value exceeded synced positions. SmartSleeve displays the equity-minus-positions estimate until the broker cash field syncs.";
     }
     return "Cash is non-negative in this account.";
   }
