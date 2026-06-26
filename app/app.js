@@ -935,7 +935,7 @@
       equity = buyPower;
       equitySource = "buying_power_fallback";
     }
-    var cashSource = "broker_cash";
+    var cashSource = account.cashSource || account.cash_source || "broker_cash";
     if (/e[-*\s]?trade/i.test(brokerName)
       && positionValue < 0.005
       && buyPower != null
@@ -944,7 +944,7 @@
       && equity != null
       && Math.abs(equity - buyPower) <= Math.max(5, Math.abs(buyPower) * 0.01)) {
       cash = buyPower;
-      cashSource = "buying_power_cash_fallback";
+      cashSource = "buying_power_cash_equivalent";
     }
     return {
       id: account.id || account.accountId || account.account_id || account.account,
@@ -1849,7 +1849,7 @@
       var buffer = buyPower == null ? "buffer needs sync" : "buffer " + money(buyPower);
       return "Margin used: <span class=\"negative\">" + money(Math.abs(cash)) + "</span> / " + buffer;
     }
-    var source = account.cashSource === "buying_power_cash_fallback" ? " / inferred from buying power" : "";
+    var source = account.cashSource === "buying_power_cash_equivalent" ? " / inferred from buying power" : "";
     return "Cash: <span class=\"positive\">" + money(cash) + "</span> / buying power " + money(buyPower) + source;
   }
 
@@ -2073,7 +2073,7 @@
   function cashMarginMeta(account) {
     var cash = numeric(account.cash) || 0;
     if (cash < 0) return "Margin used " + money(Math.abs(cash));
-    return account.cashSource === "buying_power_cash_fallback" ? "Cash " + money(cash) + " est." : "Cash " + money(cash);
+    return account.cashSource === "buying_power_cash_equivalent" ? "Cash " + money(cash) + " est." : "Cash " + money(cash);
   }
 
   function accountFreshnessLabel(account) {
@@ -2131,7 +2131,7 @@
     if (cash < 0) {
       return "This is margin usage and buffer context, not a generic negative-cash error. Review broker maintenance and buying-power buffer before adding risk.";
     }
-    if (account.cashSource === "buying_power_cash_fallback") {
+    if (account.cashSource === "buying_power_cash_equivalent") {
       return "E-Trade exported zero cash while account value and buying power matched. SmartSleeve displays buying power as available cash until the broker cash field syncs.";
     }
     return "Cash is non-negative in this account.";
