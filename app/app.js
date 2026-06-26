@@ -1311,7 +1311,7 @@
           bySleeve[name].cash += sleeveValues.cash;
           bySleeve[name].positionValue += sleeveValues.positionValue;
           bySleeve[name].allocationValue += sleeveValues.allocationValue;
-          bySleeve[name].configuredLimit += numeric(sleeve.effectiveLimitUsd != null ? sleeve.effectiveLimitUsd : sleeve.effective_limit_usd) || numeric(sleeve.initialCapitalUsd != null ? sleeve.initialCapitalUsd : sleeve.initial_capital_usd) || 0;
+          bySleeve[name].configuredLimit += numeric(sleeveConfiguredLimit(sleeve)) || 0;
           if (sleeveValues.derived || sleeve.configuredActive || sleeve.configured_active) bySleeve[name].ledgerPending = true;
           if (sleeveValues.allocationOnly) bySleeve[name].allocationOnly = true;
           bySleeve[name].lastReconciledAt = sleeve.lastReconciledAt || sleeve.last_reconciled_at || bySleeve[name].lastReconciledAt;
@@ -1402,6 +1402,25 @@
       derived = true;
     }
     var allocationValue = firstNumeric([
+      sleeve.configuredAllocationUsd,
+      sleeve.configured_allocation_usd,
+      sleeve.configuredAllocation,
+      sleeve.configured_allocation,
+      sleeve.configuredCapitalUsd,
+      sleeve.configured_capital_usd,
+      sleeve.configuredCapital,
+      sleeve.configured_capital,
+      sleeve.assignedCashUsd,
+      sleeve.assigned_cash_usd,
+      sleeve.assignedCash,
+      sleeve.assigned_cash,
+      sleeve.assignedBuyingPowerUsd,
+      sleeve.assigned_buying_power_usd,
+      sleeve.assignedBuyingPower,
+      sleeve.assigned_buying_power,
+      sleeve.budgetUsd,
+      sleeve.budget_usd,
+      sleeve.budget,
       sleeve.allocationUsd,
       sleeve.allocation_usd,
       sleeve.allocatedUsd,
@@ -1458,13 +1477,7 @@
   function sleeveDisplayValue(sleeve, account) {
     var values = resolvedSleeveValues(sleeve, account || {positions: []});
     var value = numeric(values.net) || 0;
-    var configuredLimit = firstNumeric([
-      sleeve.configuredLimit,
-      sleeve.effectiveLimitUsd,
-      sleeve.effective_limit_usd,
-      sleeve.initialCapitalUsd,
-      sleeve.initial_capital_usd
-    ]);
+    var configuredLimit = sleeveConfiguredLimit(sleeve);
     if (Math.abs(value) >= 0.005) {
       return {
         value: value,
@@ -1480,6 +1493,37 @@
       };
     }
     return {value: 0, label: "No funded value", source: "no current value"};
+  }
+
+  function sleeveConfiguredLimit(sleeve) {
+    return firstNumeric([
+      sleeve.configuredLimit,
+      sleeve.configured_limit,
+      sleeve.configuredLimitUsd,
+      sleeve.configured_limit_usd,
+      sleeve.effectiveLimitUsd,
+      sleeve.effective_limit_usd,
+      sleeve.initialCapitalUsd,
+      sleeve.initial_capital_usd,
+      sleeve.allocationUsd,
+      sleeve.allocation_usd,
+      sleeve.allocatedUsd,
+      sleeve.allocated_usd,
+      sleeve.sleeveLimitUsd,
+      sleeve.sleeve_limit_usd,
+      sleeve.limitUsd,
+      sleeve.limit_usd,
+      sleeve.cashLimitUsd,
+      sleeve.cash_limit_usd,
+      sleeve.marginLimitUsd,
+      sleeve.margin_limit_usd,
+      sleeve.targetValueUsd,
+      sleeve.target_value_usd,
+      sleeve.fundedValueUsd,
+      sleeve.funded_value_usd,
+      sleeve.budgetUsd,
+      sleeve.budget_usd
+    ]);
   }
 
   function sleeveHoldingMarketValue(sleeve, account) {
@@ -1990,9 +2034,9 @@
       "<article class=\"panel-card\"><div class=\"card-head\"><div><span>Sleeves</span><h2>Active sleeve coverage</h2></div><button type=\"button\" class=\"text-button\" data-nav-button=\"sleeves\">All sleeves</button></div><div class=\"stack-list\">"
         + (sleeveCoverage.active.length ? sleeveCoverage.active.map(function (sleeve) {
           return stackItem(sleeve.label, sleeveCoverageMeta(sleeve), sleeveCoverageBody(sleeve), null, "compact-stack");
-        }).join("") : emptyItem("No live-funded sleeve", "Configured sleeve limits are shown below when present; broker lots or ledger ownership are still needed before counting them as funded."))
+        }).join("") : emptyItem("No currently valued sleeve", "Configured sleeve allocations are shown below when present; broker lots or ledger ownership are still needed before treating them as live-funded."))
         + (sleeveCoverage.inactive.length ? "<div class=\"coverage-subhead\">Configured or inactive</div>" + sleeveCoverage.inactive.slice(0, 8).map(function (sleeve) {
-          return stackItem(sleeve.label, sleeveCoverageMeta(sleeve), "Configured row only; not counted as active sleeve coverage until it has value, holdings, or live ownership.", null, "compact-stack muted-stack");
+          return stackItem(sleeve.label, sleeveCoverageMeta(sleeve), "Configured allocation; not counted as live-funded until broker lots, cash ledger, or ownership sync is present.", null, "compact-stack muted-stack");
         }).join("") : "")
       + "</div></article>",
       "<article class=\"panel-card wide-card\"><div class=\"card-head\"><div><span>Holdings</span><h2>Account positions</h2></div><span class=\"status-chip\">" + holdings.length + " positions</span></div><div class=\"table-wrap\"><table><tbody>"
@@ -2038,7 +2082,7 @@
       var mode = String(sleeve.operatingMode || sleeve.operating_mode || "unknown").toLowerCase();
       var hasValue = Math.abs(values.net) >= 0.005 || Math.abs(values.cash) >= 0.005 || Math.abs(values.positionValue) >= 0.005 || Math.abs(values.allocationValue) >= 0.005;
       var hasCurrentOwnership = sleeveHasCurrentOwnership(sleeve);
-      var configuredLimit = numeric(sleeve.effectiveLimitUsd != null ? sleeve.effectiveLimitUsd : sleeve.effective_limit_usd) || numeric(sleeve.initialCapitalUsd != null ? sleeve.initialCapitalUsd : sleeve.initial_capital_usd) || 0;
+      var configuredLimit = numeric(sleeveConfiguredLimit(sleeve)) || 0;
       var configuredActive = Boolean(sleeve.configuredActive || sleeve.configured_active) || configuredLimit > 0;
       var isOff = /^(off|disabled|inactive|hibernate|hibernating|paused|sleep)$/i.test(mode);
       var row = {
