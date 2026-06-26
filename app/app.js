@@ -935,6 +935,17 @@
       equity = buyPower;
       equitySource = "buying_power_fallback";
     }
+    var cashSource = "broker_cash";
+    if (/e[-*\s]?trade/i.test(brokerName)
+      && positionValue < 0.005
+      && buyPower != null
+      && buyPower > 0.005
+      && (cash == null || Math.abs(cash) < 0.005)
+      && equity != null
+      && Math.abs(equity - buyPower) <= Math.max(5, Math.abs(buyPower) * 0.01)) {
+      cash = buyPower;
+      cashSource = "buying_power_cash_fallback";
+    }
     return {
       id: account.id || account.accountId || account.account_id || account.account,
       account: displayLabel(account.account || account.name || account.id, "Account"),
@@ -957,6 +968,7 @@
       equity: equity,
       equitySource: equitySource,
       cash: cash,
+      cashSource: cashSource,
       buyPower: buyPower,
       positions: positions,
       sleeves: account.sleeves || [],
@@ -1262,8 +1274,16 @@
       }
       names.forEach(function (name) {
         ensureSleeve(bySleeve, name, account.account);
+        var estimatedAllocation = names.length > 1 && Math.abs(numeric(account.equity) || 0) >= 0.005
+          ? (numeric(account.equity) || 0) / names.length
+          : 0;
         if (names.length === 1) {
           bySleeve[name].exactValue += numeric(account.equity) || 0;
+        } else if (estimatedAllocation) {
+          bySleeve[name].exactValue += estimatedAllocation;
+          bySleeve[name].allocationValue += estimatedAllocation;
+          bySleeve[name].allocationOnly = true;
+          bySleeve[name].ledgerPending = true;
         } else {
           bySleeve[name].ledgerPending = true;
         }
@@ -1341,14 +1361,28 @@
       sleeve.max_notional_usd,
       sleeve.buyingPowerUsd,
       sleeve.buying_power_usd,
+      sleeve.buyingPower,
+      sleeve.buying_power,
+      sleeve.cashLimitUsd,
+      sleeve.cash_limit_usd,
+      sleeve.cashLimit,
+      sleeve.cash_limit,
       sleeve.marginLimitUsd,
       sleeve.margin_limit_usd,
+      sleeve.marginLimit,
+      sleeve.margin_limit,
       sleeve.targetValueUsd,
       sleeve.target_value_usd,
       sleeve.effectiveLimitUsd,
       sleeve.effective_limit_usd,
       sleeve.initialCapitalUsd,
-      sleeve.initial_capital_usd
+      sleeve.initial_capital_usd,
+      sleeve.targetValue,
+      sleeve.target_value,
+      sleeve.fundedValueUsd,
+      sleeve.funded_value_usd,
+      sleeve.fundedValue,
+      sleeve.funded_value
     ]);
     if ((net == null || Math.abs(net) < 0.005) && allocationValue != null && Math.abs(allocationValue) >= 0.005) {
       net = allocationValue;
@@ -1815,7 +1849,8 @@
       var buffer = buyPower == null ? "buffer needs sync" : "buffer " + money(buyPower);
       return "Margin used: <span class=\"negative\">" + money(Math.abs(cash)) + "</span> / " + buffer;
     }
-    return "Cash: <span class=\"positive\">" + money(cash) + "</span> / buying power " + money(buyPower);
+    var source = account.cashSource === "buying_power_cash_fallback" ? " / inferred from buying power" : "";
+    return "Cash: <span class=\"positive\">" + money(cash) + "</span> / buying power " + money(buyPower) + source;
   }
 
   function renderAccountDirectory() {
@@ -2037,7 +2072,8 @@
 
   function cashMarginMeta(account) {
     var cash = numeric(account.cash) || 0;
-    return cash < 0 ? "Margin used " + money(Math.abs(cash)) : "Cash " + money(cash);
+    if (cash < 0) return "Margin used " + money(Math.abs(cash));
+    return account.cashSource === "buying_power_cash_fallback" ? "Cash " + money(cash) + " est." : "Cash " + money(cash);
   }
 
   function accountFreshnessLabel(account) {
@@ -2094,6 +2130,9 @@
     var cash = numeric(account.cash) || 0;
     if (cash < 0) {
       return "This is margin usage and buffer context, not a generic negative-cash error. Review broker maintenance and buying-power buffer before adding risk.";
+    }
+    if (account.cashSource === "buying_power_cash_fallback") {
+      return "E-Trade exported zero cash while account value and buying power matched. SmartSleeve displays buying power as available cash until the broker cash field syncs.";
     }
     return "Cash is non-negative in this account.";
   }
