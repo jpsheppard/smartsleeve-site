@@ -1759,6 +1759,9 @@
 
   function accountAlertStrip(account) {
     var notes = [];
+    if (accountNeedsBrokerReconciliation(account)) {
+      notes.push(brokerReconciliationLabel(account));
+    }
     if (account.sourceIsStale) {
       notes.push("Stale: " + accountFreshnessLabel(account));
     }
@@ -1798,6 +1801,8 @@
         + detailMetric("Account value", money(account.equity), compactAccountValueSource(account))
         + detailMetric("Last sync", accountFreshnessLabel(account), account.sourceIsStale ? "Stale broker export." : "Current broker export.", account.sourceIsStale ? "warning" : "")
         + detailMetric("Chart history", accountHistoryRangeLabel(account), accountHistoryCoverage(account), accountHistoryIsThin(account) ? "warning" : "")
+        + detailMetric("Holdings total", money(accountPositionValue(account)), "Sum of visible synced positions in this app feed.", accountNeedsBrokerReconciliation(account) ? "warning" : "")
+        + detailMetric("Broker app match", brokerReconciliationLabel(account), brokerReconciliationBody(account), accountNeedsBrokerReconciliation(account) ? "warning" : "")
         + detailMetric("Cash / margin", cashMarginMeta(account), marginPlainText(account), numeric(account.cash) < 0 ? "warning" : "")
         + detailMetric("Available to buy", money(deployableFunds(account)), deployableFundsBody(account), cashHasSeparateDeployableFunds(account) ? "warning" : "")
         + (emptyAccountWarning ? stackItem("Live holdings missing", "Awaiting broker export", "This configured account has no synced positions or equity in the current app feed, so do not treat it as a true zero-balance account.") : "")
@@ -1993,10 +1998,14 @@
   }
 
   function accountSourceNotice(account) {
-    if (!account.sourceIsStale && !cashHasSeparateDeployableFunds(account)) return "";
+    var needsBrokerReconciliation = accountNeedsBrokerReconciliation(account);
+    if (!account.sourceIsStale && !cashHasSeparateDeployableFunds(account) && !needsBrokerReconciliation) return "";
     var items = [];
     if (account.sourceIsStale) {
       items.push("<b>Stale broker analytics.</b> Latest verified account snapshot is " + html(accountFreshnessLabel(account)) + ". Charts and ledgers stop at the last verified broker export until the daemon publishes a fresh one.");
+    }
+    if (needsBrokerReconciliation) {
+      items.push("<b>Broker-app reconciliation needed.</b> This account is not being treated as broker-confirmed in the app right now. If the Robinhood phone app shows a different account value, trust the broker app until a fresh, account-scoped export replaces this feed row.");
     }
     if (cashHasSeparateDeployableFunds(account)) {
       items.push("<b>Cash versus available funds.</b> This broker reports " + html(money(account.cash)) + " cash ledger and " + html(money(deployableFunds(account))) + " available to buy; SmartSleeve now displays both so E*TRADE does not look falsely unfunded.");
@@ -2005,6 +2014,50 @@
       + items.map(function (item) { return "<p>" + item + "</p>"; }).join("")
       + "<small>" + html(accountHistoryCoverage(account)) + "</small>"
       + "</article>";
+  }
+
+  function accountPositionValue(account) {
+    return (account.positions || []).reduce(function (sum, position) {
+      return sum + (numeric(position.value) || 0);
+    }, 0);
+  }
+
+  function accountNeedsBrokerReconciliation(account) {
+    var broker = String(account.broker || "").toLowerCase();
+    var source = String(account.portfolioSource || account.portfolio_source || "").toLowerCase();
+    var status = String(account.status || "").toLowerCase();
+    if (broker.indexOf("robinhood") === -1) return false;
+    return Boolean(
+      account.sourceIsStale
+      || source.indexOf("reconstructed") !== -1
+      || source.indexOf("rejected") !== -1
+      || status.indexOf("rejected") !== -1
+      || status.indexOf("stale") !== -1
+      || status.indexOf("cross-account") !== -1
+      || status.indexOf("refresh needed") !== -1
+    );
+  }
+
+  function brokerReconciliationLabel(account) {
+    if (!accountNeedsBrokerReconciliation(account)) return "Broker-confirmed";
+    var source = String(account.portfolioSource || account.portfolio_source || "").toLowerCase();
+    if (source.indexOf("reconstructed") !== -1) return "Estimated from shares";
+    if (account.sourceIsStale) return "Needs RH refresh";
+    return "Needs broker check";
+  }
+
+  function brokerReconciliationBody(account) {
+    if (!accountNeedsBrokerReconciliation(account)) {
+      return "Current app row is using a broker-confirmed account export.";
+    }
+    var source = String(account.portfolioSource || account.portfolio_source || "").toLowerCase();
+    if (source.indexOf("reconstructed") !== -1) {
+      return "Displayed value is reconstructed from last sane shares plus market marks because the latest Robinhood export looked cross-account contaminated.";
+    }
+    if (account.sourceIsStale) {
+      return "Displayed value comes from an older Robinhood export and may differ from the live phone app until the daemon syncs a fresh account-scoped export.";
+    }
+    return "Displayed value needs a fresh account-scoped broker export before treating it as exact.";
   }
 
   function accountHistoryCoverage(account) {
