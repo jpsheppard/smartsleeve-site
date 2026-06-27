@@ -1874,6 +1874,12 @@
     if (state.accounts.some(function (account) { return account.equitySource === "positions_plus_cash_estimate"; })) {
       recs.push(recommendation("etrade-value-sync", "Verify E-Trade account value export", "Broker sync", "E-Trade", "Value", 0, "E-Trade reported zero account value while positions or cash implied a positive balance.", "Buying power can be zero even when account equity is positive; UI is using a positions-plus-cash estimate until the broker export is corrected.", "EXTERNAL_BROKER_SYNC"));
     }
+    state.accounts.forEach(function (account) {
+      var problem = accountDiagnosticProblem(account);
+      if (problem) {
+        recs.push(recommendation("broker-diagnostics-" + account.id, "Fix " + account.account + " broker diagnostics", "Broker sync", account.account, account.broker, 0, problem.reason, problem.risk, "EXTERNAL_BROKER_SYNC"));
+      }
+    });
     recs.push(recommendation("broker-pl", "Enable intraday P/L and cost basis sync", "Broker sync", "All connected brokers", "P/L", 0, "Holdings are visible; daily P/L, total P/L, and return need broker basis/history.", "Without live P/L, contributors and detractors remain unavailable.", "SQTS_AUTO"));
     return recs;
   }
@@ -2312,10 +2318,42 @@
 
   function accountStatusLabel(account) {
     var status = account.status || "synced";
+    var problem = accountDiagnosticProblem(account);
+    if (problem) {
+      return problem.short;
+    }
     if (account.sourceIsStale && status.indexOf("stale") === -1) {
       status = "stale analytics export";
     }
     return status + (account.equitySource === "positions_plus_cash_estimate" || account.equitySource === "buying_power_fallback" ? " est." : "");
+  }
+
+  function accountDiagnosticProblem(account) {
+    var diagnostics = account && account.diagnostics;
+    if (!diagnostics || Array.isArray(diagnostics) || typeof diagnostics !== "object") return null;
+    var daemonErrors = Number(diagnostics.operational_daemon_error_count || diagnostics.daemon_error_count || 0);
+    var orderErrors = Number(diagnostics.order_error_count || 0);
+    var count = daemonErrors + orderErrors;
+    var topDaemonErrors = diagnostics.top_daemon_errors && typeof diagnostics.top_daemon_errors === "object" ? diagnostics.top_daemon_errors : {};
+    var topOrderErrors = diagnostics.top_order_errors && typeof diagnostics.top_order_errors === "object" ? diagnostics.top_order_errors : {};
+    var top = Object.keys(topDaemonErrors)[0] || Object.keys(topOrderErrors)[0] || "";
+    if (!count && !top) return null;
+    var lower = top.toLowerCase();
+    var label = lower.indexOf("oauth") !== -1 || lower.indexOf("token") !== -1 || lower.indexOf("401") !== -1
+      ? "Auth/token failure"
+      : lower.indexOf("connection refused") !== -1 || lower.indexOf("not listening") !== -1
+        ? "Gateway/API offline"
+        : "Daemon error";
+    var sourceWindow = diagnostics.since_hours ? "last " + diagnostics.since_hours + "h" : "latest diagnostics";
+    var reason = label + " on " + account.account + " (" + count + " event" + (count === 1 ? "" : "s") + " in " + sourceWindow + ").";
+    var risk = top ? simplifyDiagnosticError(top) : "Broker sync failed before portfolio/order diagnostics could refresh.";
+    return {count: count, label: label, short: label + " / " + count + " events", reason: reason, risk: risk};
+  }
+
+  function simplifyDiagnosticError(value) {
+    var textValue = String(value || "").replace(/\s+/g, " ").trim();
+    if (textValue.length <= 150) return textValue;
+    return textValue.slice(0, 147) + "...";
   }
 
   function accountValueSourceCopy(account) {
@@ -3657,7 +3695,14 @@
     var brokerConnections = $("broker-connections");
     if (brokerConnections) {
       var connected = state.accounts.map(function (account) {
-        return stackItem(account.broker, account.status || "Connected", account.account + " last snapshot " + (account.generatedAt || "unknown"), 80);
+        var problem = accountDiagnosticProblem(account);
+        return stackItem(
+          account.broker,
+          problem ? problem.short : account.status || "Connected",
+          problem ? problem.risk : account.account + " last snapshot " + (account.generatedAt || "unknown"),
+          problem ? 20 : 80,
+          problem ? "compat-warn" : ""
+        );
       });
       brokerHealthChecks.slice().reverse().forEach(function (check) {
         connected.unshift(stackItem(check.title, check.meta, check.body, check.progress));
@@ -3676,7 +3721,7 @@
           + cell("Equity", money(account.equity))
           + cell("Cash", "<span class=\"" + (cash < 0 ? "negative" : "positive") + "\">" + money(cash) + "</span>")
           + cell("Buying power", money(account.buyPower))
-          + cell("Risk note", cash < 0 ? "Margin balance, review buffer" : "Cash non-negative")
+          + cell("Risk note", accountDiagnosticProblem(account) ? html(accountDiagnosticProblem(account).short) : cash < 0 ? "Margin balance, review buffer" : "Cash non-negative")
           + "</tr>";
       }).join("");
     }
