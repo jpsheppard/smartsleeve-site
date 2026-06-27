@@ -37,6 +37,9 @@
     selectedDetailSleeveName: "",
     selectedStockPickSleeve: "",
     selectedAccountChartRange: "1D",
+    selectedHoldingSymbol: "",
+    selectedHoldingAccountId: "",
+    selectedHoldingChartRange: "1W",
     sageMode: "recommend",
     selectedTradeId: null,
     orderNotificationSeen: {},
@@ -106,39 +109,6 @@
     assisted_place: "Preview then request placement",
     autoguard: "AutoGuard supervised"
   };
-
-  var brokerHealthChecks = [
-    {
-      title: "Connector alert routing",
-      meta: "Split IBKR, E-Trade, Robinhood, app feed",
-      body: "Operational alerts should name exactly one failing connector, account owner, and recovery path so IBKR Gateway outages are not grouped with E-Trade OAuth/export failures.",
-      progress: 70
-    },
-    {
-      title: "IBKR Gateway",
-      meta: "API port 4001 / ibkr-gateway.service",
-      body: "Alert subjects and bodies should say IBKR Gateway down when 127.0.0.1:4001 is closed or the gateway API cannot connect.",
-      progress: 80
-    },
-    {
-      title: "E-Trade connector",
-      meta: "OAuth/session/account export",
-      body: "Report E-Trade auth, cash, buying-power, and account-value export failures separately from IBKR so alerts are actionable.",
-      progress: 65
-    },
-    {
-      title: "App-feed publisher",
-      meta: "GitHub Action / private feed API",
-      body: "Report failed private app-feed publishes separately from broker outages so the app can distinguish stale account exports from a stale aggregate feed.",
-      progress: 72
-    },
-    {
-      title: "Robinhood trader",
-      meta: "robinhood-agentic-trader.service",
-      body: "Report Robinhood service inactivity with the account owner or sleeve context instead of a combined broker label.",
-      progress: 60
-    }
-  ];
 
   var sleeveTargets = {
     "Sage by SmartSleeve": 35,
@@ -500,76 +470,6 @@
     return email === "john@smartsleeve.ai" ? "jpsheppard88@gmail.com" : email;
   }
 
-  function isQuoteDerivedSource(value) {
-    var source = String(value || "").toLowerCase();
-    return source.indexOf("yfinance") !== -1 || source.indexOf("quote") !== -1 || source.indexOf("market_data") !== -1;
-  }
-
-  function defensibleQuoteTimestamp(value, source) {
-    if (!value) return value;
-    if (!isQuoteDerivedSource(source)) return value;
-    var parsed = new Date(value);
-    if (Number.isNaN(parsed.getTime())) return value;
-    return latestRegularMarketPrint(parsed).toISOString();
-  }
-
-  function easternDateParts(date) {
-    var parts = new Intl.DateTimeFormat("en-US", {
-      timeZone: "America/New_York",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      weekday: "short",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false
-    }).formatToParts(date).reduce(function (out, part) {
-      out[part.type] = part.value;
-      return out;
-    }, {});
-    return {
-      year: Number(parts.year),
-      month: Number(parts.month),
-      day: Number(parts.day),
-      weekday: parts.weekday,
-      hour: Number(parts.hour),
-      minute: Number(parts.minute)
-    };
-  }
-
-  function easternBusinessCloseUtc(year, month, day) {
-    var noonUtc = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
-    var easternNoonHour = easternDateParts(noonUtc).hour;
-    var offsetHours = easternNoonHour - 12;
-    return new Date(Date.UTC(year, month - 1, day, 16 - offsetHours, 0, 0));
-  }
-
-  function latestRegularMarketPrint(date) {
-    var parts = easternDateParts(date);
-    var close = easternBusinessCloseUtc(parts.year, parts.month, parts.day);
-    var day = new Date(Date.UTC(parts.year, parts.month - 1, parts.day, 12, 0, 0));
-    var weekday = parts.weekday;
-    if (weekday === "Sat") {
-      day.setUTCDate(day.getUTCDate() - 1);
-      var friday = easternDateParts(day);
-      return easternBusinessCloseUtc(friday.year, friday.month, friday.day);
-    }
-    if (weekday === "Sun") {
-      day.setUTCDate(day.getUTCDate() - 2);
-      var priorFriday = easternDateParts(day);
-      return easternBusinessCloseUtc(priorFriday.year, priorFriday.month, priorFriday.day);
-    }
-    if (parts.hour < 9 || (parts.hour === 9 && parts.minute < 30)) {
-      do {
-        day.setUTCDate(day.getUTCDate() - 1);
-        parts = easternDateParts(day);
-      } while (parts.weekday === "Sat" || parts.weekday === "Sun");
-      return easternBusinessCloseUtc(parts.year, parts.month, parts.day);
-    }
-    if (date > close) return close;
-    return date;
-  }
-
   var configuredAccountOwners = {
     "criselda": "criseldasarenas@gmail.com",
     "crissy": "criseldasarenas@gmail.com",
@@ -644,23 +544,8 @@
   }
 
   function numeric(value) {
-    if (typeof value === "string") {
-      var cleaned = value.trim();
-      if (/^-?\$?\d[\d,]*(\.\d+)?$/.test(cleaned)) {
-        value = cleaned.replace(/\$/g, "").replace(/,/g, "");
-      }
-    }
     var number = Number(value);
     return Number.isFinite(number) ? number : null;
-  }
-
-  function firstNumeric(values) {
-    for (var i = 0; i < values.length; i += 1) {
-      if (values[i] === "" || values[i] == null) continue;
-      var number = numeric(values[i]);
-      if (number != null) return number;
-    }
-    return null;
   }
 
   function money(value) {
@@ -854,7 +739,9 @@
         return String(holding.symbol || holding.ticker || holding || "").toUpperCase();
       }).filter(Boolean);
       var hasAccountHolding = sleeveHoldings.some(function (symbol) { return Boolean(accountSymbols[symbol]); });
-      var funded = sleeveDisplayValue(sleeve, account).value > 0 || sleeveHasCurrentOwnership(sleeve);
+      var funded = (numeric(sleeve.netLiquidationUsd != null ? sleeve.netLiquidationUsd : sleeve.net_liquidation_usd) || 0) > 0
+        || (numeric(sleeve.positionValueUsd != null ? sleeve.positionValueUsd : sleeve.position_value_usd) || 0) > 0
+        || (numeric(sleeve.cashUsd != null ? sleeve.cashUsd : sleeve.cash_usd) || 0) > 0;
       if ((funded || hasAccountHolding) && names.indexOf(name) === -1) {
         names.push(name);
       }
@@ -944,22 +831,19 @@
 
   function normalizeAccount(account) {
     var positions = (account.positions || []).map(function (position) {
-      var rawPriceSource = position.priceSource || position.price_source || position.quoteSource || position.quote_source || position.marketDataSource || position.market_data_source;
-      var rawPriceAsOf = position.priceAsOf || position.price_as_of || position.quoteAsOf || position.quote_as_of || position.marketDataAsOf || position.market_data_as_of;
       return {
         symbol: String(position.symbol || "").toUpperCase(),
         name: position.name || tickerNames[String(position.symbol || "").toUpperCase()],
         shares: numeric(position.shares != null ? position.shares : position.quantity),
         price: numeric(position.price != null ? position.price : position.current_price),
         brokerPrice: numeric(position.brokerPrice != null ? position.brokerPrice : position.broker_price),
-        priceAsOf: defensibleQuoteTimestamp(rawPriceAsOf, rawPriceSource),
-        priceSource: rawPriceSource,
-        rawPriceAsOf: rawPriceAsOf,
+        priceAsOf: position.priceAsOf || position.price_as_of || position.quoteAsOf || position.quote_as_of || position.marketDataAsOf || position.market_data_as_of,
+        priceSource: position.priceSource || position.price_source || position.quoteSource || position.quote_source || position.marketDataSource || position.market_data_source,
         priceDerivedFromMarketValue: Boolean(position.priceDerivedFromMarketValue || position.price_derived_from_market_value),
         value: numeric(position.value != null ? position.value : position.market_value_usd),
         brokerValue: numeric(position.brokerValue != null ? position.brokerValue : position.broker_value),
         quotePrice: numeric(position.quotePrice != null ? position.quotePrice : position.quote_price),
-        quoteAsOf: defensibleQuoteTimestamp(position.quoteAsOf || position.quote_as_of, position.quoteSource || position.quote_source),
+        quoteAsOf: position.quoteAsOf || position.quote_as_of,
         quoteSource: position.quoteSource || position.quote_source,
         averageCost: numeric(position.averageCost != null ? position.averageCost : position.average_cost),
         costBasis: numeric(position.costBasis != null ? position.costBasis : position.cost_basis),
@@ -967,101 +851,42 @@
         unrealizedPnl: numeric(position.unrealizedPnl != null ? position.unrealizedPnl : position.unrealized_pnl),
         realizedPnl: numeric(position.realizedPnl != null ? position.realizedPnl : position.realized_pnl),
         totalPnl: numeric(position.totalPnl != null ? position.totalPnl : position.total_pnl),
+        priceAsOf: position.priceAsOf || position.price_as_of,
+        priceSource: position.priceSource || position.price_source,
         currency: position.currency || "USD"
       };
     });
     var brokerName = account.broker || "Broker";
-    var brokerEquity = firstNumeric([
-      account.brokerEquity,
-      account.broker_equity,
-      account.netLiquidation,
-      account.net_liquidation,
-      account.netLiquidationUsd,
-      account.net_liquidation_usd,
-      account.netLiquidationValue,
-      account.net_liquidation_value
-    ]);
-    var equity = firstNumeric([
-      account.equity,
-      account.account_equity,
-      account.accountEquity,
-      account.accountValue,
-      account.account_value,
-      account.portfolioValue,
-      account.portfolio_value,
-      account.totalValue,
-      account.total_value,
-      account.currentValue,
-      account.current_value,
-      account.marketValue,
-      account.market_value,
-      account.balance,
-      account.totalBalance,
-      account.total_balance
-    ]);
-    var cash = firstNumeric([
-      account.cash,
-      account.cashBalance,
-      account.cash_balance,
-      account.cashUsd,
-      account.cash_usd,
-      account.availableCash,
-      account.available_cash,
-      account.availableCashUsd,
-      account.available_cash_usd,
-      account.cashAvailable,
-      account.cash_available,
-      account.settledCash,
-      account.settled_cash,
-      account.uninvestedCash,
-      account.uninvested_cash
-    ]);
-    var buyPower = firstNumeric([
-      account.buyPower,
-      account.buy_power,
-      account.buyingPower,
-      account.buying_power,
-      account.cash_available_for_buys,
-      account.cashAvailableForBuys,
-      account.availableBuyingPower,
-      account.available_buying_power,
-      account.availableBuyingPowerUsd,
-      account.available_buying_power_usd,
-      account.availableFunds,
-      account.available_funds
-    ]);
-    var positionValue = accountPositionValue({positions: positions});
+    var canonicalAccount = account.canonical && account.canonical.accounts && account.canonical.accounts[0]
+      ? account.canonical.accounts[0]
+      : {};
+    var brokerEquity = numeric(account.brokerEquity != null ? account.brokerEquity : account.broker_equity);
+    var equity = numeric(account.equity != null ? account.equity : account.account_equity);
+    var cash = numeric(account.cash);
+    var cashAvailableForBuys = numeric(
+      account.cashAvailableForBuys != null ? account.cashAvailableForBuys
+        : account.cash_available_for_buys != null ? account.cash_available_for_buys
+          : canonicalAccount.cash_available_for_buys
+    );
+    var buyPower = numeric(
+      account.buyPower != null ? account.buyPower
+        : account.buyingPower != null ? account.buyingPower
+          : account.buying_power != null ? account.buying_power
+            : account.cash_available_for_buys != null ? account.cash_available_for_buys
+              : canonicalAccount.buying_power != null ? canonicalAccount.buying_power
+                : cashAvailableForBuys
+    );
+    var positionValue = positions.reduce(function (sum, position) {
+      return sum + (numeric(position.value) || 0);
+    }, 0);
     var equitySource = "broker";
     if (brokerEquity != null && Math.abs(brokerEquity) >= 0.005 && (equity == null || Math.abs(brokerEquity - equity) > Math.max(100, Math.abs(brokerEquity) * 0.01))) {
       equity = brokerEquity;
       equitySource = "broker_equity";
     }
-    if ((equity == null || equity === 0) && positionValue > 0 && isEtradeBroker(brokerName)) {
+    if ((equity == null || equity === 0) && positionValue > 0 && /e[-*\s]?trade/i.test(brokerName)) {
       equity = positionValue + (cash || 0);
       equitySource = "positions_plus_cash_estimate";
-    }
-    if ((equity == null || Math.abs(equity) < 0.005) && isEtradeBroker(brokerName) && buyPower != null && Math.abs(buyPower) >= 0.005) {
-      equity = buyPower;
-      equitySource = "buying_power_fallback";
-    }
-    var cashSource = account.cashSource || account.cash_source || "broker_cash";
-    if (isEtradeBroker(brokerName)
-      && equity != null
-      && (cash == null || Math.abs(cash) < 0.005)
-      && positionValue > 0.005
-      && equity - positionValue > 0.005) {
-      cash = equity - positionValue;
-      cashSource = "equity_minus_positions_estimate";
-    }
-    if (isEtradeBroker(brokerName)
-      && buyPower != null
-      && buyPower > 0.005
-      && (cash == null || Math.abs(cash) < 0.005)
-      && (equity == null || isNearAmount(equity, buyPower) || positionValue < 0.005)) {
-      cash = buyPower;
-      cashSource = equity != null && equity > 0.005 && isNearAmount(equity, buyPower) && positionValue < 0.005
-        ? "etrade_equity_buying_power_cash_equivalent"
-        : "buying_power_cash_equivalent";
     }
     return {
       id: account.id || account.accountId || account.account_id || account.account,
@@ -1073,11 +898,13 @@
       generatedAt: account.generatedAt || account.generated_at,
       latestGeneratedAt: account.latestGeneratedAt || account.latest_generated_at,
       portfolioSource: account.portfolioSource || account.portfolio_source,
-      feedPublishedAt: account.feedPublishedAt || account.feed_published_at || account.appFeedPublishedAt || account.app_feed_published_at,
       sourceAgeMinutes: numeric(account.sourceAgeMinutes != null ? account.sourceAgeMinutes : account.source_age_minutes),
-      sourceIsStale: Boolean(account.sourceIsStale || account.source_is_stale),
+      sourceIsStale: Boolean(account.sourceIsStale || account.source_is_stale || String(account.sourceFreshness || account.source_freshness || "").toLowerCase() === "stale"),
       sourceFreshness: account.sourceFreshness || account.source_freshness,
       sourceFreshnessLabel: account.sourceFreshnessLabel || account.source_freshness_label,
+      quoteAsOf: account.quoteAsOf || account.quote_as_of,
+      quoteSource: account.quoteSource || account.quote_source,
+      diagnostics: account.diagnostics || [],
       brokerEquity: brokerEquity,
       strategy: account.strategy,
       tradingSystem: account.tradingSystem || account.trading_system,
@@ -1086,7 +913,7 @@
       equity: equity,
       equitySource: equitySource,
       cash: cash,
-      cashSource: cashSource,
+      cashAvailableForBuys: cashAvailableForBuys,
       buyPower: buyPower,
       positions: positions,
       sleeves: account.sleeves || [],
@@ -1181,40 +1008,8 @@
     return ids;
   }
 
-  function visibleAccountOwnerMap(accounts) {
-    var owners = {};
-    (accounts || []).forEach(function (account) {
-      var owner = rowOwnerEmail(account);
-      [
-        account.id,
-        account.accountId,
-        account.account_id,
-        account.account
-      ].forEach(function (value) {
-        var key = String(value || "").trim();
-        if (!key) return;
-        if (!owners[key]) owners[key] = {};
-        if (owner) owners[key][owner] = true;
-      });
-    });
-    return owners;
-  }
-
   function rowAccountId(row) {
     return String(row && (row.accountId || row.account_id || row.id || row.account || "") || "").trim();
-  }
-
-  function accountKeyMatches(row, account) {
-    var rowKey = rowAccountId(row);
-    if (!rowKey || !account) return false;
-    return [
-      account.id,
-      account.accountId,
-      account.account_id,
-      account.account
-    ].some(function (value) {
-      return String(value || "").trim() === rowKey;
-    });
   }
 
   function scopedRowsForVisibleAccounts(rows, visibleIds) {
@@ -1230,20 +1025,6 @@
     });
   }
 
-  function scopedHistoryRowsForVisibleAccounts(rows, visibleIds, ownerMap) {
-    return developerVisibleRows(visibleRows(rows || [])).filter(function (row) {
-      if (rowHasConflictingOwner(row)) return false;
-      var accountId = rowAccountId(row);
-      if (!accountId || !visibleIds[accountId]) return false;
-      var explicitOwner = rowOwnerEmail(row);
-      var ownersForKey = ownerMap[accountId] || {};
-      var owners = Object.keys(ownersForKey);
-      if (!owners.length) return true;
-      if (explicitOwner) return Boolean(ownersForKey[explicitOwner]);
-      return owners.length === 1;
-    });
-  }
-
   function accountOwnerLabel(email) {
     var normalized = normalizeEmail(email);
     if (normalized === "jpsheppard88@gmail.com" || normalized === "john@smartsleeve.ai") return "John";
@@ -1255,23 +1036,6 @@
     return state.accounts.reduce(function (sum, account) {
       return sum + (numeric(account[key]) || 0);
     }, 0);
-  }
-
-  function accountPositionValue(account) {
-    return (account.positions || []).reduce(function (sum, position) {
-      return sum + (numeric(position.value) || 0);
-    }, 0);
-  }
-
-  function isEtradeBroker(value) {
-    return /e[-*\s]?trade/i.test(String(value || ""));
-  }
-
-  function isNearAmount(left, right, tolerance) {
-    var a = numeric(left);
-    var b = numeric(right);
-    if (a == null || b == null) return false;
-    return Math.abs(a - b) <= (tolerance == null ? Math.max(5, Math.abs(b) * 0.01) : tolerance);
   }
 
   function nullableSum(rows, key) {
@@ -1325,48 +1089,6 @@
       var cash = numeric(account.cash) || 0;
       return sum + (cash < 0 ? Math.abs(cash) : 0);
     }, 0);
-  }
-
-  function accountingSummary() {
-    var estimatedCash = state.accounts.filter(function (account) {
-      return isEstimatedCashSource(account.cashSource);
-    }).length;
-    var estimatedValue = state.accounts.filter(function (account) {
-      return account.equitySource === "positions_plus_cash_estimate" || account.equitySource === "buying_power_fallback";
-    }).length;
-    var stale = state.accounts.filter(function (account) {
-      return Boolean(account.sourceIsStale);
-    }).length;
-    return {
-      estimatedCash: estimatedCash,
-      estimatedValue: estimatedValue,
-      stale: stale,
-      count: state.accounts.length
-    };
-  }
-
-  function renderAccountingMetricCopy() {
-    var summary = accountingSummary();
-    text(
-      "cash-metric-copy",
-      summary.estimatedCash
-        ? summary.estimatedCash + " account" + (summary.estimatedCash === 1 ? " uses" : "s use") + " a labeled cash estimate from broker value or buying power."
-        : "Broker-reported cash across visible accounts."
-    );
-    text(
-      "buying-power-metric-copy",
-      summary.stale
-        ? "Available buying power where brokers report it; " + summary.stale + " account export" + (summary.stale === 1 ? " is" : "s are") + " stale."
-        : "Available buying power where brokers report it."
-    );
-    text(
-      "margin-metric-copy",
-      marginUsed()
-        ? "Negative cash is shown as margin used; review broker maintenance and " + money(accountTotal("buyPower")) + " buying-power buffer before adding risk."
-        : summary.estimatedValue
-          ? summary.estimatedValue + " account value" + (summary.estimatedValue === 1 ? " is" : "s are") + " labeled as estimated until broker export confirms."
-          : "No negative-cash margin detected; buying power is " + money(accountTotal("buyPower")) + " across visible accounts."
-    );
   }
 
   function aggregateHoldings(accounts) {
@@ -1476,10 +1198,7 @@
           bySleeve[name].exactValue += sleeveValues.net;
           bySleeve[name].cash += sleeveValues.cash;
           bySleeve[name].positionValue += sleeveValues.positionValue;
-          bySleeve[name].allocationValue += sleeveValues.allocationValue;
-          bySleeve[name].configuredLimit += numeric(sleeveConfiguredLimit(sleeve)) || 0;
-          if (sleeveValues.derived || sleeve.configuredActive || sleeve.configured_active) bySleeve[name].ledgerPending = true;
-          if (sleeveValues.allocationOnly) bySleeve[name].allocationOnly = true;
+          if (sleeveValues.derived) bySleeve[name].ledgerPending = true;
           bySleeve[name].lastReconciledAt = sleeve.lastReconciledAt || sleeve.last_reconciled_at || bySleeve[name].lastReconciledAt;
           bySleeve[name].operatingMode = sleeve.operatingMode || sleeve.operating_mode || bySleeve[name].operatingMode;
           (sleeve.holdings || []).forEach(function (holding) {
@@ -1497,16 +1216,8 @@
       }
       names.forEach(function (name) {
         ensureSleeve(bySleeve, name, account.account);
-        var estimatedAllocation = names.length > 1 && Math.abs(numeric(account.equity) || 0) >= 0.005
-          ? (numeric(account.equity) || 0) / names.length
-          : 0;
         if (names.length === 1) {
           bySleeve[name].exactValue += numeric(account.equity) || 0;
-        } else if (estimatedAllocation) {
-          bySleeve[name].exactValue += estimatedAllocation;
-          bySleeve[name].allocationValue += estimatedAllocation;
-          bySleeve[name].allocationOnly = true;
-          bySleeve[name].ledgerPending = true;
         } else {
           bySleeve[name].ledgerPending = true;
         }
@@ -1525,8 +1236,6 @@
         && ((numeric(sleeve.exactValue) || 0) > 0
           || (numeric(sleeve.cash) || 0) > 0
           || (numeric(sleeve.positionValue) || 0) > 0
-          || (numeric(sleeve.allocationValue) || 0) > 0
-          || (numeric(sleeve.configuredLimit) || 0) > 0
           || (sleeve.holdings || []).length > 0
           || sleeve.lastReconciledAt);
     }).sort(function (a, b) {
@@ -1567,129 +1276,12 @@
       net = (positionValue || 0) + (cash || 0);
       derived = true;
     }
-    var allocationValue = firstNumeric([
-      sleeve.configuredAllocationUsd,
-      sleeve.configured_allocation_usd,
-      sleeve.configuredAllocation,
-      sleeve.configured_allocation,
-      sleeve.configuredCapitalUsd,
-      sleeve.configured_capital_usd,
-      sleeve.configuredCapital,
-      sleeve.configured_capital,
-      sleeve.assignedCashUsd,
-      sleeve.assigned_cash_usd,
-      sleeve.assignedCash,
-      sleeve.assigned_cash,
-      sleeve.assignedBuyingPowerUsd,
-      sleeve.assigned_buying_power_usd,
-      sleeve.assignedBuyingPower,
-      sleeve.assigned_buying_power,
-      sleeve.budgetUsd,
-      sleeve.budget_usd,
-      sleeve.budget,
-      sleeve.allocationUsd,
-      sleeve.allocation_usd,
-      sleeve.allocatedUsd,
-      sleeve.allocated_usd,
-      sleeve.allocatedValueUsd,
-      sleeve.allocated_value_usd,
-      sleeve.sleeveLimitUsd,
-      sleeve.sleeve_limit_usd,
-      sleeve.limitUsd,
-      sleeve.limit_usd,
-      sleeve.capitalLimitUsd,
-      sleeve.capital_limit_usd,
-      sleeve.maxNotionalUsd,
-      sleeve.max_notional_usd,
-      sleeve.buyingPowerUsd,
-      sleeve.buying_power_usd,
-      sleeve.buyingPower,
-      sleeve.buying_power,
-      sleeve.cashLimitUsd,
-      sleeve.cash_limit_usd,
-      sleeve.cashLimit,
-      sleeve.cash_limit,
-      sleeve.marginLimitUsd,
-      sleeve.margin_limit_usd,
-      sleeve.marginLimit,
-      sleeve.margin_limit,
-      sleeve.targetValueUsd,
-      sleeve.target_value_usd,
-      sleeve.effectiveLimitUsd,
-      sleeve.effective_limit_usd,
-      sleeve.initialCapitalUsd,
-      sleeve.initial_capital_usd,
-      sleeve.targetValue,
-      sleeve.target_value,
-      sleeve.fundedValueUsd,
-      sleeve.funded_value_usd,
-      sleeve.fundedValue,
-      sleeve.funded_value
-    ]);
-    if ((net == null || Math.abs(net) < 0.005) && allocationValue != null && Math.abs(allocationValue) >= 0.005) {
-      net = allocationValue;
-      derived = true;
-    }
     return {
       cash: cash || 0,
       positionValue: positionValue || 0,
       net: net || 0,
-      allocationValue: allocationValue || 0,
-      allocationOnly: Math.abs(net || 0) >= 0.005 && Math.abs((positionValue || 0) + (cash || 0)) < 0.005 && Math.abs(allocationValue || 0) >= 0.005,
       derived: derived
     };
-  }
-
-  function sleeveDisplayValue(sleeve, account) {
-    var values = resolvedSleeveValues(sleeve, account || {positions: []});
-    var value = numeric(values.net) || 0;
-    var configuredLimit = sleeveConfiguredLimit(sleeve);
-    if (Math.abs(value) >= 0.005) {
-      return {
-        value: value,
-        label: money(value),
-        source: values.allocationOnly ? "allocation limit" : (values.derived ? "derived ledger" : "live ledger")
-      };
-    }
-    if (configuredLimit != null && Math.abs(configuredLimit) >= 0.005) {
-      return {
-        value: configuredLimit,
-        label: "Limit " + money(configuredLimit),
-        source: "configured limit; broker lots pending"
-      };
-    }
-    return {value: 0, label: "No funded value", source: "no current value"};
-  }
-
-  function sleeveConfiguredLimit(sleeve) {
-    return firstNumeric([
-      sleeve.configuredLimit,
-      sleeve.configured_limit,
-      sleeve.configuredLimitUsd,
-      sleeve.configured_limit_usd,
-      sleeve.effectiveLimitUsd,
-      sleeve.effective_limit_usd,
-      sleeve.initialCapitalUsd,
-      sleeve.initial_capital_usd,
-      sleeve.allocationUsd,
-      sleeve.allocation_usd,
-      sleeve.allocatedUsd,
-      sleeve.allocated_usd,
-      sleeve.sleeveLimitUsd,
-      sleeve.sleeve_limit_usd,
-      sleeve.limitUsd,
-      sleeve.limit_usd,
-      sleeve.cashLimitUsd,
-      sleeve.cash_limit_usd,
-      sleeve.marginLimitUsd,
-      sleeve.margin_limit_usd,
-      sleeve.targetValueUsd,
-      sleeve.target_value_usd,
-      sleeve.fundedValueUsd,
-      sleeve.funded_value_usd,
-      sleeve.budgetUsd,
-      sleeve.budget_usd
-    ]);
   }
 
   function sleeveHoldingMarketValue(sleeve, account) {
@@ -1750,10 +1342,7 @@
         exactValue: 0,
         cash: 0,
         positionValue: 0,
-        allocationValue: 0,
-        configuredLimit: 0,
         ledgerPending: false,
-        allocationOnly: false,
         holdings: [],
         target: sleeveTargets[name] || 0,
         operatingMode: "unknown",
@@ -1998,12 +1587,6 @@
     if (state.accounts.some(function (account) { return account.equitySource === "positions_plus_cash_estimate"; })) {
       recs.push(recommendation("etrade-value-sync", "Verify E-Trade account value export", "Broker sync", "E-Trade", "Value", 0, "E-Trade reported zero account value while positions or cash implied a positive balance.", "Buying power can be zero even when account equity is positive; UI is using a positions-plus-cash estimate until the broker export is corrected.", "EXTERNAL_BROKER_SYNC"));
     }
-    state.accounts.forEach(function (account) {
-      var problem = accountDiagnosticProblem(account);
-      if (problem) {
-        recs.push(recommendation("broker-diagnostics-" + account.id, "Fix " + account.account + " broker diagnostics", "Broker sync", account.account, account.broker, 0, problem.reason, problem.risk, "EXTERNAL_BROKER_SYNC"));
-      }
-    });
     recs.push(recommendation("broker-pl", "Enable intraday P/L and cost basis sync", "Broker sync", "All connected brokers", "P/L", 0, "Holdings are visible; daily P/L, total P/L, and return need broker basis/history.", "Without live P/L, contributors and detractors remain unavailable.", "SQTS_AUTO"));
     return recs;
   }
@@ -2034,7 +1617,6 @@
     text("cash-value", money(accountTotal("cash")));
     text("buying-power", money(accountTotal("buyPower")));
     text("margin-usage", marginUsed() ? money(marginUsed()) : "$0");
-    renderAccountingMetricCopy();
     setMetric("daily-pl", dailyPnl, function (value) { return signedMoney(value); }, "Needs daily P/L sync");
     setMetric("total-pl", totalPnl, function (value) { return signedMoney(value); }, "Needs basis sync");
     setMetric("portfolio-return", totalPnl != null && totalCostBasis ? totalPnl / totalCostBasis * 100 : null, function (value) { return (value >= 0 ? "+" : "") + value.toFixed(2) + "%"; }, "Needs basis sync");
@@ -2110,19 +1692,19 @@
     var target = $("account-cards");
     if (!target) return;
     target.innerHTML = state.accounts.map(function (account) {
-      var positionValue = accountPositionValue(account);
+      var positionValue = (account.positions || []).reduce(function (sum, position) { return sum + (numeric(position.value) || 0); }, 0);
       return "<article class=\"account-card interactive-card\" data-account-detail=\"" + html(account.id) + "\" tabindex=\"0\">"
         + "<div class=\"stack-item-head\"><b>" + html(account.account) + "</b><span>" + html(account.broker) + "</span></div>"
+        + accountAlertStrip(account)
         + accountPositionsStrip(account)
         + "<div class=\"account-mini-grid\">"
         + miniMetric("Equity", money(account.equity))
-        + miniMetric("Cash", cashMetricLabel(account))
-        + miniMetric("Buy power", money(account.buyPower))
+        + miniMetric(brokerCashLabel(account), money(account.cash))
+        + miniMetric("Avail", money(deployableFunds(account)))
         + miniMetric("Holdings", money(positionValue))
         + miniMetric("Positions", String((account.positions || []).length))
-        + miniMetric("Status", accountStatusLabel(account))
+        + miniMetric("Sync", accountFreshnessLabel(account))
         + "</div>"
-        + accountAccountingStrip(account)
         + "</article>";
     }).join("") || emptyItem("No visible accounts", "Sign in with an email that has SmartSleeve account access.");
   }
@@ -2138,94 +1720,26 @@
       var buffer = buyPower == null ? "buffer needs sync" : "buffer " + money(buyPower);
       return "Margin used: <span class=\"negative\">" + money(Math.abs(cash)) + "</span> / " + buffer;
     }
-    var source = isEstimatedCashSource(account.cashSource) ? " / estimated cash" : "";
-    return "Cash: <span class=\"positive\">" + money(cash) + "</span> / buying power " + money(buyPower) + source;
-  }
-
-  function accountAccountingStrip(account) {
-    var rows = accountAccountingNotes(account);
-    if (!rows.length) return "";
-    return "<div class=\"account-audit-strip\" aria-label=\"Accounting provenance\">"
-      + rows.slice(0, 3).map(function (row) {
-        return "<span class=\"" + html(row.className || "") + "\"><b>" + html(row.label) + "</b> " + html(row.body) + "</span>";
-      }).join("")
-      + "</div>";
-  }
-
-  function accountAccountingNotes(account) {
-    var rows = [];
-    if (account.equitySource === "buying_power_fallback") {
-      rows.push({
-        label: "Value estimate",
-        body: "E-Trade value exported as zero; showing buying power until broker value syncs.",
-        className: "warning"
-      });
-    } else if (account.equitySource === "positions_plus_cash_estimate") {
-      rows.push({
-        label: "Value estimate",
-        body: "Using synced positions plus cash because broker value exported as zero.",
-        className: "warning"
-      });
-    } else if (account.equitySource === "broker_equity") {
-      rows.push({
-        label: "Broker equity",
-        body: "Net liquidation value was preferred over a stale or conflicting account value.",
-        className: ""
-      });
-    }
-    if (account.cashSource === "etrade_equity_buying_power_cash_equivalent") {
-      rows.push({
-        label: "Cash estimate",
-        body: "Cash is matched to E-Trade buying power because value and buying power agree.",
-        className: "warning"
-      });
-    } else if (account.cashSource === "buying_power_cash_equivalent") {
-      rows.push({
-        label: "Cash estimate",
-        body: "Broker cash is zero; available buying power is shown as estimated cash.",
-        className: "warning"
-      });
-    } else if (account.cashSource === "equity_minus_positions_estimate") {
-      rows.push({
-        label: "Cash estimate",
-        body: "Cash is estimated as account value minus synced positions.",
-        className: "warning"
-      });
-    }
-    if (account.sourceIsStale) {
-      rows.push({
-        label: "Stale sync",
-        body: accountFreshnessLabel(account) + "; refresh account export before trading from this view.",
-        className: "warning"
-      });
-    }
-    if (account.feedPublishedAt && account.generatedAt && account.feedPublishedAt !== account.generatedAt) {
-      rows.push({
-        label: "Feed provenance",
-        body: "Account export and app-feed publish timestamps differ; verify freshness before acting.",
-        className: ""
-      });
-    }
-    return rows;
+    return "Cash: <span class=\"positive\">" + money(cash) + "</span> / buying power " + money(buyPower);
   }
 
   function renderAccountDirectory() {
     var target = $("accounts-directory");
     if (!target) return;
     target.innerHTML = state.accounts.map(function (account) {
-      var positionValue = accountPositionValue(account);
+      var positionValue = (account.positions || []).reduce(function (sum, position) { return sum + (numeric(position.value) || 0); }, 0);
       return "<article class=\"account-card interactive-card\" data-account-detail=\"" + html(account.id) + "\" tabindex=\"0\">"
         + "<div class=\"stack-item-head\"><b>" + html(account.account) + "</b><span>" + html(accountOwnerLabel(account.ownerEmail)) + " / " + html(account.broker) + "</span></div>"
+        + accountAlertStrip(account)
         + accountPositionsStrip(account)
         + "<div class=\"account-mini-grid\">"
         + miniMetric("Value", money(account.equity))
-        + miniMetric("Cash", cashMetricLabel(account))
-        + miniMetric("Buy power", money(account.buyPower))
+        + miniMetric(brokerCashLabel(account), money(account.cash))
+        + miniMetric("Avail", money(deployableFunds(account)))
         + miniMetric("Holdings", money(positionValue))
         + miniMetric("Positions", String((account.positions || []).length))
         + miniMetric("Last sync", accountFreshnessLabel(account))
         + "</div>"
-        + accountAccountingStrip(account)
         + "<div class=\"recommendation-actions\"><button type=\"button\" class=\"text-button\" data-account-detail=\"" + html(account.id) + "\">Open details</button></div>"
         + "</article>";
     }).join("") || emptyItem("No visible accounts", "Sign in with an email that has SmartSleeve account access.");
@@ -2240,6 +1754,20 @@
     }
     return "<div class=\"account-position-strip\">" + rows.map(function (position) {
       return "<span><b>" + html(position.symbol) + "</b> " + html(numberText(position.shares, 4)) + " / " + html(money(position.value)) + "</span>";
+    }).join("") + "</div>";
+  }
+
+  function accountAlertStrip(account) {
+    var notes = [];
+    if (account.sourceIsStale) {
+      notes.push("Stale: " + accountFreshnessLabel(account));
+    }
+    if (cashHasSeparateDeployableFunds(account)) {
+      notes.push("Cash ledger differs from available-to-buy");
+    }
+    if (!notes.length) return "";
+    return "<div class=\"account-alert-strip\">" + notes.map(function (note) {
+      return "<span>" + html(note) + "</span>";
     }).join("") + "</div>";
   }
 
@@ -2265,25 +1793,26 @@
     var emptyAccountWarning = !holdings.length && !(numeric(account.equity) > 0) && /awaiting|configured|pending|sync/i.test(account.status || "");
     var brokerStatusClass = account.sourceIsStale ? "status-chip warning" : "status-chip";
     target.innerHTML = [
+      accountSourceNotice(account),
       "<article class=\"panel-card account-detail-summary\"><div class=\"card-head\"><div><span>Broker values</span><h2>Cash and margin</h2></div><span class=\"" + brokerStatusClass + "\">" + html(account.broker) + "</span></div><div class=\"account-detail-metrics\">"
-        + detailMetric("Account value", money(account.equity), accountValueSourceCopy(account))
-        + detailMetric("Last sync", accountFreshnessLabel(account), account.sourceIsStale ? "Broker export is stale; refresh the daemon/account analytics before trading from this view." : "Broker/account export is inside the expected sync window.", account.sourceIsStale ? "warning" : "")
+        + detailMetric("Account value", money(account.equity), compactAccountValueSource(account))
+        + detailMetric("Last sync", accountFreshnessLabel(account), account.sourceIsStale ? "Stale broker export." : "Current broker export.", account.sourceIsStale ? "warning" : "")
         + detailMetric("Cash / margin", cashMarginMeta(account), marginPlainText(account), numeric(account.cash) < 0 ? "warning" : "")
-        + detailMetric("Buying power", money(account.buyPower), "Buying power can be zero even when account value is positive.")
+        + detailMetric("Available to buy", money(deployableFunds(account)), deployableFundsBody(account), cashHasSeparateDeployableFunds(account) ? "warning" : "")
         + (emptyAccountWarning ? stackItem("Live holdings missing", "Awaiting broker export", "This configured account has no synced positions or equity in the current app feed, so do not treat it as a true zero-balance account.") : "")
       + "</div></article>",
       accountDetailValueChart(account),
       "<article class=\"panel-card\"><div class=\"card-head\"><div><span>Sleeves</span><h2>Active sleeve coverage</h2></div><button type=\"button\" class=\"text-button\" data-nav-button=\"sleeves\">All sleeves</button></div><div class=\"stack-list\">"
         + (sleeveCoverage.active.length ? sleeveCoverage.active.map(function (sleeve) {
-          return stackItem(sleeve.label, sleeveCoverageMeta(sleeve), sleeveCoverageBody(sleeve), null, "compact-stack");
-        }).join("") : emptyItem("No currently valued sleeve", "Configured sleeve allocations are shown below when present; broker lots or ledger ownership are still needed before treating them as live-funded."))
-        + (sleeveCoverage.inactive.length ? "<div class=\"coverage-subhead\">Configured or inactive</div>" + sleeveCoverage.inactive.slice(0, 8).map(function (sleeve) {
-          return stackItem(sleeve.label, sleeveCoverageMeta(sleeve), "Configured allocation; not counted as live-funded until broker lots, cash ledger, or ownership sync is present.", null, "compact-stack muted-stack");
+          return stackItem(sleeve.label, sleeveCoverageMeta(sleeve), sleeveCoverageBody(sleeve), 80);
+        }).join("") : emptyItem("No funded active sleeve", "This account has no sleeve row with both live coverage and non-zero value/holdings."))
+        + (sleeveCoverage.inactive.length ? "<div class=\"coverage-subhead\">Inactive or config-only</div>" + sleeveCoverage.inactive.slice(0, 8).map(function (sleeve) {
+          return stackItem(sleeve.label, sleeveCoverageMeta(sleeve), "Configured row only; not counted as active sleeve coverage until it has value, holdings, or live ownership.", 20, "muted-stack");
         }).join("") : "")
       + "</div></article>",
       "<article class=\"panel-card wide-card\"><div class=\"card-head\"><div><span>Holdings</span><h2>Account positions</h2></div><span class=\"status-chip\">" + holdings.length + " positions</span></div><div class=\"table-wrap\"><table><tbody>"
         + (holdings.map(function (position) {
-          return "<tr>"
+          return "<tr class=\"clickable-row\" data-holding-detail=\"" + html(position.symbol) + "\" data-holding-account=\"" + html(account.id) + "\">"
             + cell("Ticker", "<b>" + html(position.symbol) + "</b><small>" + html(position.name || tickerNames[position.symbol] || "") + "</small>")
             + cell("Shares", numberText(position.shares, 6))
             + cell("Value", money(position.value))
@@ -2292,7 +1821,8 @@
             + cell("P/L", pnlCell(position.totalPnl, "Needs basis sync"))
             + "</tr>";
         }).join("") || "<tr>" + cell("Holdings", "No positions synced") + "</tr>")
-      + "</tbody></table></div></article>"
+      + "</tbody></table></div><p class=\"chart-footnote\">Tap a holding row for an interactive price chart.</p></article>",
+      state.selectedHoldingSymbol ? holdingDetailChart(state.selectedHoldingSymbol, account.id) : ""
     ].join("");
   }
 
@@ -2302,7 +1832,7 @@
       return {
         active: [],
         inactive: splitSleeves(account.sleevesText).map(function (name) {
-          return {label: name, operatingMode: "reported", net: 0, cash: 0, positionValue: 0, allocationValue: 0, allocationOnly: false, holdings: []};
+          return {label: name, operatingMode: "reported", net: 0, cash: 0, positionValue: 0, holdings: []};
         })
       };
     }
@@ -2322,10 +1852,8 @@
         return Boolean(accountSymbols[String(holding.symbol || holding.ticker || holding || "").toUpperCase()]);
       });
       var mode = String(sleeve.operatingMode || sleeve.operating_mode || "unknown").toLowerCase();
-      var hasValue = Math.abs(values.net) >= 0.005 || Math.abs(values.cash) >= 0.005 || Math.abs(values.positionValue) >= 0.005 || Math.abs(values.allocationValue) >= 0.005;
+      var hasValue = Math.abs(values.net) >= 0.005 || Math.abs(values.cash) >= 0.005 || Math.abs(values.positionValue) >= 0.005;
       var hasCurrentOwnership = sleeveHasCurrentOwnership(sleeve);
-      var configuredLimit = numeric(sleeveConfiguredLimit(sleeve)) || 0;
-      var configuredActive = Boolean(sleeve.configuredActive || sleeve.configured_active) || configuredLimit > 0;
       var isOff = /^(off|disabled|inactive|hibernate|hibernating|paused|sleep)$/i.test(mode);
       var row = {
         label: sleeveLabel(sleeve, "Sleeve"),
@@ -2333,15 +1861,11 @@
         net: values.net,
         cash: values.cash,
         positionValue: values.positionValue,
-        allocationValue: values.allocationValue,
-        allocationOnly: values.allocationOnly,
-        configuredLimit: configuredLimit,
-        configuredActive: configuredActive,
         holdings: holdings,
         lastReconciledAt: sleeve.lastReconciledAt || sleeve.last_reconciled_at,
         initialized: Boolean(sleeve.initialized)
       };
-      if (!isOff && ((hasCurrentOwnership || values.allocationOnly || hasAccountHolding) && hasValue)) {
+      if (!isOff && hasCurrentOwnership && (hasValue || hasAccountHolding)) {
         active.push(row);
       } else {
         inactive.push(row);
@@ -2353,29 +1877,26 @@
   }
 
   function sleeveCoverageMeta(sleeve) {
-    var value = Math.abs(numeric(sleeve.net) || 0) >= 0.005
-      ? money(sleeve.net)
-      : (numeric(sleeve.configuredLimit) || 0) > 0
-        ? "Limit " + money(sleeve.configuredLimit) + " / ledger pending"
-        : "Ledger pending";
-    var source = sleeve.allocationOnly ? "allocation limit" : ((numeric(sleeve.configuredLimit) || 0) > 0 ? "configured limit" : "live/derived value");
-    return value + " / " + source + " / " + (sleeve.operatingMode || "mode unknown");
+    var value = Math.abs(numeric(sleeve.net) || 0) >= 0.005 ? money(sleeve.net) : "No funded value";
+    return value + " / " + (sleeve.operatingMode || "mode unknown");
   }
 
   function sleeveCoverageBody(sleeve) {
     var symbols = (sleeve.holdings || []).map(function (holding) {
       return String(holding.symbol || "").toUpperCase();
     }).filter(Boolean).slice(0, 8).join(", ");
-    var fallback = (numeric(sleeve.configuredLimit) || 0) > 0 ? "Configured active sleeve; broker lots pending" : "No current holdings";
-    return (symbols || fallback) + (sleeve.lastReconciledAt ? " / reconciled " + shortTimestamp(sleeve.lastReconciledAt) : "");
+    return (symbols || "No current holdings") + (sleeve.lastReconciledAt ? " / reconciled " + shortTimestamp(sleeve.lastReconciledAt) : "");
   }
 
   function accountDetailValueChart(account) {
     var range = state.selectedAccountChartRange || "1D";
-    var allPoints = accountChartPoints(account);
+    var allPoints = accountHistoryPoints(account);
     var points = filterHistoryRange(allPoints, range);
+    if (!points.length && numeric(account.equity) != null) {
+      points = [{at: account.generatedAt || new Date().toISOString(), value: account.equity}];
+    }
     var cleanPoints = points.map(function (point) {
-      return {at: point.at, value: numeric(point.value), synthetic: Boolean(point.synthetic)};
+      return {at: point.at, value: numeric(point.value)};
     }).filter(function (point) { return point.at && point.value != null; }).sort(function (a, b) {
       return new Date(a.at).getTime() - new Date(b.at).getTime();
     });
@@ -2388,6 +1909,11 @@
     var meta = cleanPoints.length > 1
       ? signedMoney(pnl, "$0.00") + " (" + signedPercent(pnlPct) + ") " + range
       : "Needs more synced points for selected range P&L";
+    if (account.sourceIsStale && last) {
+      meta = "Stale after " + shortTimestamp(last.at);
+      trendClass = "warning";
+      lineColor = "var(--amber)";
+    }
     var chartId = "account-detail-chart-" + String(account.id || account.account || "account").replace(/[^a-zA-Z0-9_-]/g, "-") + "-" + range;
     var tabs = ["1D", "1W", "1M", "3M", "YTD", "1Y", "ALL"].map(function (item) {
       return "<button type=\"button\" class=\"time-tab" + (item === range ? " active" : "") + "\" data-account-chart-range=\"" + html(item) + "\">" + html(item) + "</button>";
@@ -2396,42 +1922,16 @@
       + (last ? "<div class=\"chart-readout\" data-chart-readout=\"" + html(chartId) + "\"><b>" + html(money(last.value)) + "</b><span class=\"" + html(trendClass) + "\">" + html(meta) + "</span></div>" : "")
       + (cleanPoints.length ? buildLineChart(cleanPoints, lineColor, "Account value", {interactive: true, compact: true, chartId: chartId, baseline: first ? first.value : null, range: range}) : emptyItem("No account history", "Private account history has not synced for this account yet."))
       + "<div class=\"time-tabs\" role=\"tablist\" aria-label=\"Account chart range\">" + tabs + "</div>"
-      + (last ? "<p class=\"chart-footnote\">Latest " + html(money(last.value)) + " / " + html(shortTimestamp(last.at)) + " / plotting all " + html(cleanPoints.length + " point" + (cleanPoints.length === 1 ? "" : "s")) + (cleanPoints.some(function (point) { return point.synthetic; }) ? " / latest point is quote or broker-value derived, not a new broker ledger export" : "") + "</p>" : "")
+      + (last ? "<p class=\"chart-footnote\">" + html(cleanPoints.length + " synced point" + (cleanPoints.length === 1 ? "" : "s")) + " / latest visible " + html(money(last.value)) + " / " + html(shortTimestamp(last.at)) + (account.sourceIsStale ? " / stale broker export; awaiting fresh daemon sync" : "") + "</p>" : "")
       + "</article>";
   }
 
   function accountHistoryPoints(account) {
     return (state.history.accounts || []).filter(function (row) {
-      return accountKeyMatches(row, account);
+      return rowAccountId(row) === account.id;
     }).map(function (row) {
-      return {at: row.at || row.generatedAt || row.generated_at, value: numeric(row.equity != null ? row.equity : row.value), synthetic: false};
+      return {at: row.at || row.generatedAt || row.generated_at, value: numeric(row.equity != null ? row.equity : row.value)};
     }).filter(function (row) { return row.at && row.value != null; });
-  }
-
-  function latestAccountValueTimestamp(account) {
-    var candidates = [];
-    (account.positions || []).forEach(function (position) {
-      var stamp = latestHoldingValueTimestamp(account, position);
-      if (stamp) candidates.push(stamp);
-    });
-    [account.latestGeneratedAt, account.generatedAt, account.feedPublishedAt].forEach(function (value) {
-      if (value) candidates.push(value);
-    });
-    return latestTimestamp(candidates);
-  }
-
-  function latestHoldingValueTimestamp(account, position) {
-    var candidates = [];
-    [position.priceAsOf, position.quoteAsOf, account.latestGeneratedAt, account.generatedAt].forEach(function (value) {
-      if (value) candidates.push(value);
-    });
-    return latestTimestamp(candidates);
-  }
-
-  function latestTimestamp(values) {
-    return (values || []).filter(Boolean).sort(function (a, b) {
-      return timestampMs(b) - timestampMs(a);
-    })[0] || "";
   }
 
   function filterHistoryRange(points, range) {
@@ -2450,18 +1950,31 @@
     return rows.filter(function (row) { return new Date(row.at).getTime() >= cutoff; });
   }
 
+  function brokerCashLabel(account) {
+    return cashHasSeparateDeployableFunds(account) ? "Cash ledger" : "Cash";
+  }
+
+  function deployableFunds(account) {
+    var cashAvailable = numeric(account.cashAvailableForBuys);
+    if (cashAvailable != null) return cashAvailable;
+    var buyPower = numeric(account.buyPower);
+    if (buyPower != null) return buyPower;
+    return numeric(account.cash) || 0;
+  }
+
+  function cashHasSeparateDeployableFunds(account) {
+    var cash = numeric(account.cash);
+    var deployable = deployableFunds(account);
+    return cash != null && deployable != null && Math.abs(deployable - cash) >= 0.01;
+  }
+
   function cashMarginMeta(account) {
     var cash = numeric(account.cash) || 0;
     if (cash < 0) return "Margin used " + money(Math.abs(cash));
-    return isEstimatedCashSource(account.cashSource) ? "Cash " + money(cash) + " est." : "Cash " + money(cash);
-  }
-
-  function cashMetricLabel(account) {
-    return money(account.cash) + (isEstimatedCashSource(account.cashSource) ? " est." : "");
-  }
-
-  function isEstimatedCashSource(source) {
-    return source === "buying_power_cash_equivalent" || source === "etrade_equity_buying_power_cash_equivalent" || source === "equity_minus_positions_estimate";
+    if (cashHasSeparateDeployableFunds(account)) {
+      return "Cash " + money(cash) + " / avail " + money(deployableFunds(account));
+    }
+    return "Cash " + money(cash);
   }
 
   function accountFreshnessLabel(account) {
@@ -2472,42 +1985,35 @@
 
   function accountStatusLabel(account) {
     var status = account.status || "synced";
-    var problem = accountDiagnosticProblem(account);
-    if (problem) {
-      return problem.short;
-    }
     if (account.sourceIsStale && status.indexOf("stale") === -1) {
       status = "stale analytics export";
     }
-    return status + (account.equitySource === "positions_plus_cash_estimate" || account.equitySource === "buying_power_fallback" ? " est." : "");
+    return status + (account.equitySource === "positions_plus_cash_estimate" ? " est." : "");
   }
 
-  function accountDiagnosticProblem(account) {
-    var diagnostics = account && account.diagnostics;
-    if (!diagnostics || Array.isArray(diagnostics) || typeof diagnostics !== "object") return null;
-    var daemonErrors = Number(diagnostics.operational_daemon_error_count || diagnostics.daemon_error_count || 0);
-    var orderErrors = Number(diagnostics.order_error_count || 0);
-    var count = daemonErrors + orderErrors;
-    var topDaemonErrors = diagnostics.top_daemon_errors && typeof diagnostics.top_daemon_errors === "object" ? diagnostics.top_daemon_errors : {};
-    var topOrderErrors = diagnostics.top_order_errors && typeof diagnostics.top_order_errors === "object" ? diagnostics.top_order_errors : {};
-    var top = Object.keys(topDaemonErrors)[0] || Object.keys(topOrderErrors)[0] || "";
-    if (!count && !top) return null;
-    var lower = top.toLowerCase();
-    var label = lower.indexOf("oauth") !== -1 || lower.indexOf("token") !== -1 || lower.indexOf("401") !== -1
-      ? "Auth/token failure"
-      : lower.indexOf("connection refused") !== -1 || lower.indexOf("not listening") !== -1
-        ? "Gateway/API offline"
-        : "Daemon error";
-    var sourceWindow = diagnostics.since_hours ? "last " + diagnostics.since_hours + "h" : "latest diagnostics";
-    var reason = label + " on " + account.account + " (" + count + " event" + (count === 1 ? "" : "s") + " in " + sourceWindow + ").";
-    var risk = top ? simplifyDiagnosticError(top) : "Broker sync failed before portfolio/order diagnostics could refresh.";
-    return {count: count, label: label, short: label + " / " + count + " events", reason: reason, risk: risk};
+  function accountSourceNotice(account) {
+    if (!account.sourceIsStale && !cashHasSeparateDeployableFunds(account)) return "";
+    var items = [];
+    if (account.sourceIsStale) {
+      items.push("<b>Stale broker analytics.</b> Latest verified account snapshot is " + html(accountFreshnessLabel(account)) + ". Charts and ledgers stop at the last verified broker export until the daemon publishes a fresh one.");
+    }
+    if (cashHasSeparateDeployableFunds(account)) {
+      items.push("<b>Cash versus available funds.</b> This broker reports " + html(money(account.cash)) + " cash ledger and " + html(money(deployableFunds(account))) + " available to buy; SmartSleeve now displays both so E*TRADE does not look falsely unfunded.");
+    }
+    return "<article class=\"account-source-notice" + (account.sourceIsStale ? " warning" : "") + "\">"
+      + items.map(function (item) { return "<p>" + item + "</p>"; }).join("")
+      + "<small>" + html(accountHistoryCoverage(account)) + "</small>"
+      + "</article>";
   }
 
-  function simplifyDiagnosticError(value) {
-    var textValue = String(value || "").replace(/\s+/g, " ").trim();
-    if (textValue.length <= 150) return textValue;
-    return textValue.slice(0, 147) + "...";
+  function accountHistoryCoverage(account) {
+    var points = accountHistoryPoints(account).sort(function (a, b) {
+      return new Date(a.at).getTime() - new Date(b.at).getTime();
+    });
+    if (!points.length) return "No private account-history points synced yet.";
+    var first = points[0];
+    var last = points[points.length - 1];
+    return points.length + " history point" + (points.length === 1 ? "" : "s") + " from " + shortTimestamp(first.at) + " to " + shortTimestamp(last.at) + ".";
   }
 
   function accountValueSourceCopy(account) {
@@ -2517,10 +2023,13 @@
     if (account.equitySource === "positions_plus_cash_estimate") {
       return "Positions plus cash estimate.";
     }
-    if (account.equitySource === "buying_power_fallback") {
-      return "Broker buying-power fallback because E-Trade account value exported as zero.";
-    }
     return "Broker value.";
+  }
+
+  function compactAccountValueSource(account) {
+    if (account.equitySource === "broker_equity") return "Fresh broker equity was preferred.";
+    if (account.equitySource === "positions_plus_cash_estimate") return "Estimated from positions plus cash.";
+    return "Broker reported.";
   }
 
   function priceMarkCell(position) {
@@ -2551,16 +2060,17 @@
     if (cash < 0) {
       return "This is margin usage and buffer context, not a generic negative-cash error. Review broker maintenance and buying-power buffer before adding risk.";
     }
-    if (account.cashSource === "buying_power_cash_equivalent") {
-      return "E-Trade exported zero cash while account value and buying power matched. SmartSleeve displays buying power as available cash until the broker cash field syncs.";
-    }
-    if (account.cashSource === "etrade_equity_buying_power_cash_equivalent") {
-      return "E-Trade exported zero cash with matching account value and buying power. SmartSleeve displays the matched value as estimated available cash until broker cash syncs.";
-    }
-    if (account.cashSource === "equity_minus_positions_estimate") {
-      return "E-Trade exported zero cash while account value exceeded synced positions. SmartSleeve displays the equity-minus-positions estimate until the broker cash field syncs.";
+    if (cashHasSeparateDeployableFunds(account)) {
+      return "Broker cash is not the same as available-to-buy funds for this account. Use the available amount for trading capacity and cash for ledger/accounting context.";
     }
     return "Cash is non-negative in this account.";
+  }
+
+  function deployableFundsBody(account) {
+    if (cashHasSeparateDeployableFunds(account)) {
+      return "Broker-reported funds available for buys. This can differ from cash because of broker settlement, sweep, or buying-power accounting.";
+    }
+    return "Broker deployable capital.";
   }
 
   function renderAccountCoverage() {
@@ -2583,7 +2093,6 @@
     }
     var visible = appEdition === "developer" ? Number(coverage.visible_count || state.accounts.length || 0) : state.accounts.length;
     var total = appEdition === "developer" ? Number(coverage.expected_count || expected.length || 0) : expected.length;
-    var publisherRows = appFeedPublisherRows(coverage);
     var rows = [
       stackItem(
         "Expected account coverage",
@@ -2592,7 +2101,6 @@
         total ? visible / total * 100 : 0
       )
     ];
-    rows = rows.concat(publisherRows);
     missing.slice(0, 6).forEach(function (row) {
       rows.push(stackItem("Missing: " + (row.account || row.id), row.broker || "Broker unknown", row.expectedUse || row.status || "Expected account has no current app-feed row.", 12));
     });
@@ -2602,41 +2110,16 @@
     target.innerHTML = rows.join("");
   }
 
-  function appFeedPublisherRows(coverage) {
-    var rows = [];
-    var source = coverage || {};
-    var status = source.publisher_status || source.publisherStatus || source.feed_status || source.feedStatus || "";
-    var workflow = source.workflow_status || source.workflowStatus || source.github_workflow_status || source.githubWorkflowStatus || "";
-    var publishedAt = source.published_at || source.publishedAt || source.feed_published_at || source.feedPublishedAt || feedStamp(state.payload || {});
-    var sourceName = source.publisher || source.feed_source || source.feedSource || "Private app-feed publisher";
-    if (status || workflow || publishedAt) {
-      var meta = [status || workflow || "published", publishedAt ? "last publish " + shortDateTime(publishedAt) : ""].filter(Boolean).join(" / ");
-      var body = workflow && /fail|error|cancel/i.test(workflow)
-        ? "Latest publish workflow reported a failure; balances on screen may reflect the previous successful feed."
-        : "This is aggregate feed freshness, separate from broker connector freshness and account-level stale export flags.";
-      rows.push(stackItem(sourceName, meta, body, /fail|error|cancel/i.test(String(workflow || status)) ? 35 : 74, /fail|error|cancel/i.test(String(workflow || status)) ? "compat-warn" : "compact-stack"));
-    }
-    if ((coverage && coverage.missing && coverage.missing.length) || (coverage && coverage.configured_without_live && coverage.configured_without_live.length)) {
-      rows.push(stackItem("Publisher vs connector split", "Do not collapse missing rows into broker health", "Missing account rows indicate app-feed coverage gaps; stale account rows indicate broker/export gaps. Treat each separately before trusting totals.", 64, "compact-stack"));
-    }
-    return rows;
-  }
-
-  function shortDateTime(value) {
-    var date = new Date(value);
-    if (Number.isNaN(date.getTime())) return String(value || "unknown");
-    return date.toLocaleDateString([], {month: "short", day: "numeric"}) + " " + date.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"});
-  }
-
   function renderPerformanceCharts() {
     var accountTarget = $("account-value-charts");
     var holdingTarget = $("holding-value-charts");
     if (accountTarget) {
       accountTarget.innerHTML = state.accounts.map(function (account) {
-        var points = accountChartPoints(account).map(function (point) {
-          return {at: point.at, equity: point.value, synthetic: point.synthetic};
-        });
-        return lineChartCard(account.account, "Account value", points, "equity", "Account value");
+        var points = state.history.accounts.filter(function (row) { return row.accountId === account.id; });
+        if (!points.length && numeric(account.equity) != null) {
+          points = [{at: account.generatedAt || new Date().toISOString(), equity: account.equity}];
+        }
+        return lineChartCard(account.account, account.sourceIsStale ? "Stale broker export / " + accountHistoryCoverage(account) : "Account value", points, "equity", "Account value", null, account.sourceIsStale);
       }).join("") || emptyItem("No account history", "Account value charts appear after private feed history syncs.");
     }
     if (holdingTarget) {
@@ -2648,55 +2131,20 @@
         });
       });
       var rows = Object.keys(latestByKey).map(function (key) { return latestByKey[key]; }).sort(function (a, b) { return b.value - a.value; }).slice(0, 8);
-      holdingTarget.innerHTML = rows.map(function (row) {
+      var selectedDetail = state.selectedHoldingSymbol ? holdingDetailChart(state.selectedHoldingSymbol, state.selectedHoldingAccountId) : "";
+      holdingTarget.innerHTML = selectedDetail + rows.map(function (row) {
         var points = state.history.positions.filter(function (point) {
-          return accountKeyMatches(point, row.account) && point.symbol === row.position.symbol;
+          return point.accountId === row.account.id && point.symbol === row.position.symbol;
         });
         points = deglitchHoldingHistory(points, row.position.value);
-        points = points.map(function (point) {
-          return {at: point.at || point.timestamp || point.generatedAt || point.generated_at, value: numeric(point.value), synthetic: false};
-        }).filter(function (point) {
-          return point.at && point.value != null;
-        });
-        points = withLatestHoldingPoint(points, row.account, row.position);
         if (!points.length && numeric(row.position.value) != null) {
-          var fallbackAt = latestHoldingValueTimestamp(row.account, row.position);
-          if (fallbackAt) points = [{at: fallbackAt, value: row.position.value, synthetic: true}];
+          points = [{at: row.account.generatedAt || new Date().toISOString(), value: row.position.value}];
         }
         var title = row.position.symbol + " / " + row.account.account;
-        var meta = (row.position.name || tickerNames[row.position.symbol] || row.position.symbol) + " holding value" + (points.some(function (point) { return point.synthetic; }) ? " / latest point is quote-derived" : "");
+        var meta = (row.position.name || tickerNames[row.position.symbol] || row.position.symbol) + " holding value";
         return lineChartCard(title, meta, points, "value", "Stock value", row.position.totalPnl);
       }).join("") || emptyItem("No holding history", "Stock holding charts appear after private feed history syncs.");
     }
-  }
-
-  function accountChartPoints(account) {
-    var points = accountHistoryPoints(account);
-    var currentValue = numeric(account.equity);
-    var latestAt = latestAccountValueTimestamp(account);
-    if (currentValue != null && latestAt) {
-      var last = points.slice().sort(function (a, b) {
-        return new Date(a.at).getTime() - new Date(b.at).getTime();
-      }).pop();
-      if (!last || timestampMs(latestAt) > timestampMs(last.at) || !isNearAmount(last.value, currentValue)) {
-        points.push({at: latestAt, value: currentValue, synthetic: true});
-      }
-    }
-    return points;
-  }
-
-  function withLatestHoldingPoint(points, account, position) {
-    var currentValue = numeric(position.value);
-    var latestAt = latestHoldingValueTimestamp(account, position);
-    if (currentValue == null || !latestAt) return points || [];
-    var rows = (points || []).slice();
-    var last = rows.slice().sort(function (a, b) {
-      return new Date(a.at).getTime() - new Date(b.at).getTime();
-    }).pop();
-    if (!last || timestampMs(latestAt) > timestampMs(last.at) || !isNearAmount(last.value, currentValue)) {
-      rows.push({at: latestAt, value: currentValue, synthetic: true});
-    }
-    return rows;
   }
 
   function deglitchHoldingHistory(points, currentValue) {
@@ -2971,7 +2419,7 @@
     target.innerHTML = rows.map(function (holding) {
       var weightNum = total ? holding.value / total : 0;
       var holdingBadge = holdingHasSage(holding) ? sageBadge() : "";
-      return "<tr>"
+      return "<tr class=\"clickable-row\" data-holding-detail=\"" + html(holding.symbol) + "\">"
         + cell("Ticker", "<span class=\"ticker-lockup\">" + holdingBadge + "<span><b>" + html(holding.symbol) + "</b><small>" + html(holding.name) + "</small></span></span>")
         + cell("Company", html(holding.name))
         + cell("Shares", numberText(holding.shares, 6))
@@ -2987,6 +2435,138 @@
         + cell("Weight", pct(holding.value, total) + "<small>" + html(thesisStatus(holding.symbol, weightNum)) + "</small>")
         + "</tr>";
     }).join("") || "<tr>" + cell("Holdings", "No holdings synced") + "</tr>";
+  }
+
+  function holdingDetailChart(symbol, accountId) {
+    symbol = String(symbol || "").toUpperCase();
+    if (!symbol) return "";
+    var range = state.selectedHoldingChartRange || "1W";
+    var account = accountId ? findAccountById(accountId) : null;
+    var points = holdingHistoryPoints(symbol, accountId);
+    var filtered = filterHistoryRange(points, range);
+    if (!filtered.length) filtered = points.slice(-1);
+    var candles = buildPriceCandles(filtered, range);
+    var latestHolding = currentHoldingForSymbol(symbol, accountId);
+    var name = latestHolding && latestHolding.name ? latestHolding.name : tickerNames[symbol] || symbol;
+    var first = candles[0];
+    var last = candles[candles.length - 1];
+    var pnl = first && last ? last.close - first.open : null;
+    var pnlPct = first && first.open ? pnl / first.open * 100 : null;
+    var trendClass = valueClass(pnl);
+    var lineColor = trendClass === "negative" ? "var(--red)" : "var(--green)";
+    var chartId = "holding-candle-" + symbol + "-" + (accountId || "all") + "-" + range;
+    var tabs = ["1D", "1W", "1M", "3M", "YTD", "1Y", "ALL"].map(function (item) {
+      return "<button type=\"button\" class=\"time-tab" + (item === range ? " active" : "") + "\" data-holding-chart-range=\"" + html(item) + "\">" + html(item) + "</button>";
+    }).join("");
+    var meta = candles.length > 1
+      ? signedMoney(pnl, "$0.00") + " (" + signedPercent(pnlPct) + ") " + range
+      : "Needs more synced price points";
+    var accountLabel = account ? account.account : "All visible accounts";
+    var latest = last ? last.close : latestHolding ? numeric(latestHolding.price) : null;
+    return "<article class=\"panel-card wide-card holding-detail-chart-card\"><div class=\"card-head\"><div><span>Stock chart</span><h2>" + html(symbol) + " candlestick view</h2></div><span class=\"status-chip " + html(trendClass) + "\">" + html(meta) + "</span></div>"
+      + "<div class=\"chart-readout\" data-chart-readout=\"" + html(chartId) + "\"><b>" + html(latest == null ? "Needs quote" : money(latest)) + "</b><span class=\"" + html(trendClass) + "\">" + html(name + " / " + accountLabel) + "</span></div>"
+      + (candles.length ? buildCandlestickChart(candles, lineColor, symbol + " price", {interactive: true, compact: true, chartId: chartId, baseline: first ? first.open : null, range: range}) : emptyItem("No stock history", "This holding has no synced price history yet."))
+      + "<div class=\"time-tabs\" role=\"tablist\" aria-label=\"Holding chart range\">" + tabs + "</div>"
+      + (last ? "<p class=\"chart-footnote\">" + html(candles.length + " candle" + (candles.length === 1 ? "" : "s")) + " / latest " + html(money(last.close)) + " / " + html(scrubTimestamp(last.at)) + " / " + html(accountLabel) + "</p>" : "")
+      + "</article>";
+  }
+
+  function currentHoldingForSymbol(symbol, accountId) {
+    var normalized = String(symbol || "").toUpperCase();
+    if (accountId) {
+      var account = findAccountById(accountId);
+      return account && (account.positions || []).find(function (position) {
+        return String(position.symbol || "").toUpperCase() === normalized;
+      });
+    }
+    return state.holdings.find(function (holding) { return holding.symbol === normalized; }) || null;
+  }
+
+  function holdingHistoryPoints(symbol, accountId) {
+    var normalized = String(symbol || "").toUpperCase();
+    var grouped = {};
+    (state.history.positions || []).forEach(function (row) {
+      if (String(row.symbol || row.ticker || "").toUpperCase() !== normalized) return;
+      if (accountId && rowAccountId(row) !== accountId) return;
+      var at = row.at || row.timestamp || row.generatedAt || row.generated_at;
+      var price = positionHistoryPrice(row);
+      var shares = numeric(row.shares != null ? row.shares : row.quantity) || 0;
+      if (!at || price == null) return;
+      var time = new Date(at);
+      if (Number.isNaN(time.getTime())) return;
+      var key = time.toISOString();
+      if (!grouped[key]) grouped[key] = {at: key, weightedPrice: 0, shares: 0, fallbackPrice: price};
+      grouped[key].weightedPrice += price * Math.max(0.000001, Math.abs(shares || 1));
+      grouped[key].shares += Math.max(0.000001, Math.abs(shares || 1));
+      grouped[key].fallbackPrice = price;
+    });
+    var points = Object.keys(grouped).map(function (key) {
+      var row = grouped[key];
+      return {at: row.at, price: row.shares ? row.weightedPrice / row.shares : row.fallbackPrice, value: row.shares ? row.weightedPrice / row.shares : row.fallbackPrice};
+    }).filter(function (point) {
+      return point.price != null && !Number.isNaN(new Date(point.at).getTime());
+    }).sort(function (a, b) {
+      return new Date(a.at).getTime() - new Date(b.at).getTime();
+    });
+    var current = currentHoldingForSymbol(normalized, accountId);
+    var currentPrice = current ? numeric(current.price) : null;
+    var currentAt = current && (current.priceAsOf || current.quoteAsOf);
+    if (currentPrice != null && currentAt) {
+      var currentDate = new Date(currentAt);
+      if (!Number.isNaN(currentDate.getTime())) {
+        var currentIso = currentDate.toISOString();
+        if (!points.some(function (point) { return point.at === currentIso; })) {
+          points.push({at: currentIso, price: currentPrice, value: currentPrice});
+          points.sort(function (a, b) { return new Date(a.at).getTime() - new Date(b.at).getTime(); });
+        }
+      }
+    }
+    return points;
+  }
+
+  function positionHistoryPrice(row) {
+    var price = numeric(row.price != null ? row.price : row.markPrice != null ? row.markPrice : row.market_price != null ? row.market_price : row.currentPrice != null ? row.currentPrice : row.current_price);
+    if (price != null) return price;
+    var shares = numeric(row.shares != null ? row.shares : row.quantity);
+    var value = numeric(row.value != null ? row.value : row.marketValue != null ? row.marketValue : row.market_value_usd);
+    return shares ? value / shares : null;
+  }
+
+  function buildPriceCandles(points, range) {
+    var bucketMs = range === "1D" ? 5 * 60 * 1000
+      : range === "1W" ? 30 * 60 * 1000
+        : range === "1M" ? 4 * 60 * 60 * 1000
+          : range === "3M" ? 12 * 60 * 60 * 1000
+            : range === "YTD" || range === "1Y" ? 24 * 60 * 60 * 1000
+              : 3 * 24 * 60 * 60 * 1000;
+    var buckets = {};
+    (points || []).forEach(function (point) {
+      var time = new Date(point.at).getTime();
+      var price = numeric(point.price != null ? point.price : point.value);
+      if (!Number.isFinite(time) || price == null) return;
+      var key = Math.floor(time / bucketMs) * bucketMs;
+      var bucket = buckets[key];
+      if (!bucket) {
+        bucket = buckets[key] = {at: new Date(time).toISOString(), open: price, high: price, low: price, close: price, firstTime: time, lastTime: time};
+      }
+      bucket.high = Math.max(bucket.high, price);
+      bucket.low = Math.min(bucket.low, price);
+      if (time < bucket.firstTime) {
+        bucket.open = price;
+        bucket.firstTime = time;
+        bucket.at = new Date(time).toISOString();
+      }
+      if (time >= bucket.lastTime) {
+        bucket.close = price;
+        bucket.lastTime = time;
+      }
+    });
+    var candles = Object.keys(buckets).sort(function (a, b) { return Number(a) - Number(b); }).map(function (key) { return buckets[key]; });
+    if (candles.length > 220) {
+      var step = Math.ceil(candles.length / 220);
+      candles = candles.filter(function (_, index) { return index % step === 0 || index === candles.length - 1; });
+    }
+    return candles;
   }
 
   function holdingPriceCell(holding) {
@@ -3037,15 +2617,12 @@
     var cards = $("sleeve-cards");
     if (cards) {
       cards.innerHTML = state.sleeves.map(function (sleeve) {
-        var displayValue = numeric(sleeve.exactValue) || 0;
-        var actual = Math.abs(displayValue) >= 0.005 && total ? displayValue / total * 100 : null;
+        var actual = sleeve.exactValue && total ? sleeve.exactValue / total * 100 : null;
         var drift = actual == null || !sleeve.target ? "Needs target/ledger" : (actual - sleeve.target).toFixed(1) + " pts";
-        var valueLabel = Math.abs(displayValue) >= 0.005 ? money(displayValue) : ((numeric(sleeve.configuredLimit) || 0) > 0 ? "Limit " + money(sleeve.configuredLimit) : "Ledger split pending");
-        var valueSource = sleeve.allocationOnly ? "allocation limit" : ((numeric(sleeve.configuredLimit) || 0) > 0 ? "configured limit; ledger pending" : (sleeve.ledgerPending ? "derived ledger" : "live ledger"));
         return "<article class=\"sleeve-card interactive-card\" data-sleeve-detail=\"" + html(sleeve.name) + "\" tabindex=\"0\">"
           + "<span>" + html(sleeve.operatingMode || "mode unknown") + "</span>"
           + "<h3>" + html(sleeve.name) + "</h3>"
-          + "<p>Value: <b>" + html(valueLabel) + "</b> <small>" + html(valueSource) + "</small></p>"
+          + "<p>Value: <b>" + (sleeve.exactValue ? money(sleeve.exactValue) : "Ledger split pending") + "</b></p>"
           + "<p>Cash: " + money(sleeve.cash) + " / holdings " + money(sleeve.positionValue) + "</p>"
           + "<p>Target: " + sleeve.target + "% / Actual: " + (actual == null ? "needs ledger" : actual.toFixed(1) + "%") + "</p>"
           + "<p>Drift: " + html(drift) + "</p>"
@@ -3065,17 +2642,11 @@
     var table = $("sleeve-table");
     if (table) {
       table.innerHTML = state.sleeves.map(function (sleeve) {
-        var knownValue = Math.abs(numeric(sleeve.exactValue) || 0) >= 0.005 ? money(sleeve.exactValue) : "Needs sleeve ledger";
-        if (sleeve.allocationOnly && Math.abs(numeric(sleeve.exactValue) || 0) >= 0.005) {
-          knownValue += " allocation";
-        } else if ((numeric(sleeve.configuredLimit) || 0) > 0 && knownValue === "Needs sleeve ledger") {
-          knownValue = "Limit " + money(sleeve.configuredLimit);
-        }
         return "<tr>"
           + cell("Sleeve", "<b>" + html(sleeve.name) + "</b>")
           + cell("Account", html(sleeve.accounts.join(", ")))
           + cell("Holdings", html(sleeve.holdings.slice(0, 10).join(", ") || "No current positions"))
-          + cell("Known value", knownValue)
+          + cell("Known value", sleeve.exactValue ? money(sleeve.exactValue) : "Needs sleeve ledger")
           + cell("Next action", sleeve.ledgerPending ? "Assign lots to sleeve" : "Review drift")
           + "</tr>";
       }).join("");
@@ -3105,7 +2676,7 @@
     }).slice(0, 8);
     target.innerHTML = [
       "<article class=\"panel-card\"><div class=\"card-head\"><div><span>Behavior</span><h2>Current sleeve state</h2></div><span class=\"status-chip\">" + html(sleeve.operatingMode || "Unknown") + "</span></div><div class=\"stack-list\">"
-        + stackItem("Known value", sleeve.exactValue ? money(sleeve.exactValue) : ((numeric(sleeve.configuredLimit) || 0) > 0 ? "Limit " + money(sleeve.configuredLimit) + " / ledger pending" : "Ledger split pending"), sleeve.allocationOnly || (numeric(sleeve.configuredLimit) || 0) > 0 ? "Configured allocation is visible; exact cash/position split still needs ledger ownership." : "Ledger quality controls whether drift and P/L are exact.", sleeve.exactValue ? 80 : 30)
+        + stackItem("Known value", sleeve.exactValue ? money(sleeve.exactValue) : "Ledger split pending", "Ledger quality controls whether drift and P/L are exact.", sleeve.exactValue ? 80 : 30)
         + stackItem("Cash / holdings", money(sleeve.cash) + " / " + money(sleeve.positionValue), "Sleeve-level cash and position value where the analytics feed provides it.", 70)
         + stackItem("Target", sleeve.target ? sleeve.target + "%" : "Needs target", "Drift can be reviewed once target and exact ledger value are present.", sleeve.target || 25)
       + "</div></article>",
@@ -3912,20 +3483,9 @@
     var brokerConnections = $("broker-connections");
     if (brokerConnections) {
       var connected = state.accounts.map(function (account) {
-        var problem = accountDiagnosticProblem(account);
-        return stackItem(
-          account.broker,
-          problem ? problem.short : account.status || "Connected",
-          problem ? problem.risk : account.account + " last snapshot " + (account.generatedAt || "unknown"),
-          problem ? 20 : 80,
-          problem ? "compat-warn" : ""
-        );
+        return stackItem(account.broker, account.status || "Connected", account.account + " last snapshot " + (account.generatedAt || "unknown"), 80);
       });
-      connected.unshift(stackItem("Combined-label cleanup", "ibkr_etrade alerts need split ownership", "If a health email includes both IBKR Gateway and E-Trade OAuth/export failures, file separate connector incidents before acting on balances or buying power.", 68, "compat-warn"));
-      connected.unshift(stackItem("App-feed publish failures", "GitHub Actions / /api/app-feed freshness", "A failed private app-feed workflow means the app may still show the last successful feed. Verify feed publish time separately from IBKR Gateway or E-Trade OAuth status.", 58, "compat-warn"));
-      brokerHealthChecks.slice().reverse().forEach(function (check) {
-        connected.unshift(stackItem(check.title, check.meta, check.body, check.progress));
-      });
+      connected.unshift(stackItem("Daemon outage alerts", "Watchdog covered", "IBKR Gateway, RH/E*TRADE auth, daemon crashes, and abnormal stops use the shared phone/email alert path.", 80));
       connected.push(stackItem("Fidelity via Plaid", "Pending production access / read-only", "Sandbox keys cannot view John's live Fidelity accounts until production consent is approved.", 30));
       connected.push(stackItem("Schwab PCRA", "Pending official API onboarding", "Use read-only mode first; trading permission must be explicit.", 20));
       brokerConnections.innerHTML = connected.join("");
@@ -3940,7 +3500,7 @@
           + cell("Equity", money(account.equity))
           + cell("Cash", "<span class=\"" + (cash < 0 ? "negative" : "positive") + "\">" + money(cash) + "</span>")
           + cell("Buying power", money(account.buyPower))
-          + cell("Risk note", accountDiagnosticProblem(account) ? html(accountDiagnosticProblem(account).short) : cash < 0 ? "Margin balance, review buffer" : "Cash non-negative")
+          + cell("Risk note", cash < 0 ? "Margin balance, review buffer" : "Cash non-negative")
           + "</tr>";
       }).join("");
     }
@@ -4084,7 +3644,7 @@
         deadlineLabel: deadlineLabel,
         trendLabel: "Needs live quote/history",
         stance: minutesLeft != null && minutesLeft < 90 ? "Deadline close: prepare preview now" : "Collect live target tape before buying",
-        plan: "Sage does not have enough target-price history in the app feed to call momentum. Pull the latest account feed, then use a broker preview or limit ladder rather than a blind market buy."
+        plan: "Sage does not have enough target-price history in the app feed to call momentum. Pull the latest daemon cycle, then use a broker preview or limit ladder rather than a blind market buy."
       };
     }
     var room = minutesLeft == null ? "unknown time" : minutesLeft < 60 ? "less than 1 hour" : Math.round(minutesLeft / 60) + " hours";
@@ -4137,7 +3697,7 @@
         deadlineLabel: deadlineLabel,
         trendLabel: "Needs live quote/history",
         stance: minutesLeft != null && minutesLeft < 90 ? "Deadline close: prepare close preview now" : "Collect live source tape before selling",
-        plan: "Sage does not have enough source-price history in the app feed to call exit momentum. Pull the latest account feed, then prefer broker preview and limit discipline rather than a blind market sell."
+        plan: "Sage does not have enough source-price history in the app feed to call exit momentum. Pull the latest daemon cycle, then prefer broker preview and limit discipline rather than a blind market sell."
       };
     }
     var room = minutesLeft == null ? "unknown time" : minutesLeft < 60 ? "less than 1 hour" : Math.round(minutesLeft / 60) + " hours";
@@ -4203,13 +3763,9 @@
     });
     var holding = state.holdings.find(function (row) { return row.symbol === normalized; });
     if (holding && numeric(holding.price) != null) {
-      var holdingAt = holding.priceAsOf || latestTimestamp(state.accounts.map(function (account) {
-        var position = (account.positions || []).find(function (row) { return row.symbol === normalized; });
-        return position ? latestHoldingValueTimestamp(account, position) : "";
-      }));
-      if (holdingAt) rows.push({at: new Date(holdingAt), price: numeric(holding.price)});
+      rows.push({at: new Date(), price: numeric(holding.price)});
     }
-    return rows;
+    return rows.slice(-12);
   }
 
   function priceTrend(points) {
@@ -4234,15 +3790,6 @@
     return date.toLocaleDateString("en-US", {month: "short", day: "numeric"});
   }
 
-  function chartTickLabel(value, compact) {
-    var date = new Date(value);
-    if (Number.isNaN(date.getTime())) return String(value || "");
-    if (compact) {
-      return date.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"});
-    }
-    return date.toLocaleDateString("en-US", {month: "short", day: "numeric"});
-  }
-
   function compactMoney(value) {
     var number = numeric(value);
     if (number == null) return "$0";
@@ -4252,12 +3799,11 @@
     return "$" + number.toFixed(abs >= 100 ? 0 : 2);
   }
 
-  function lineChartCard(title, meta, points, valueKey, yLabel, pnlValue) {
+  function lineChartCard(title, meta, points, valueKey, yLabel, pnlValue, stale) {
     var cleanPoints = (points || []).map(function (point) {
       return {
         at: point.at,
-        value: numeric(point[valueKey]),
-        synthetic: Boolean(point.synthetic)
+        value: numeric(point[valueKey])
       };
     }).filter(function (point) { return point.at && point.value != null; }).sort(function (a, b) {
       return new Date(a.at).getTime() - new Date(b.at).getTime();
@@ -4271,21 +3817,17 @@
     if (trend == null && cleanPoints.length > 1) trend = last.value - first.value;
     var trendClass = valueClass(trend);
     var lineColor = trendClass === "negative" ? "var(--red)" : "var(--green)";
-    var chartId = "chart-" + String(title + "-" + yLabel).replace(/[^a-zA-Z0-9_-]/g, "-") + "-" + cleanPoints.length;
-    var chart = buildLineChart(cleanPoints, lineColor, yLabel, {
-      interactive: true,
-      compact: true,
-      chartId: chartId,
-      baseline: first ? first.value : null,
-      range: "all samples"
-    });
+    if (stale) {
+      trendClass = "warning";
+      lineColor = "var(--amber)";
+    }
+    var chart = buildLineChart(cleanPoints, lineColor, yLabel);
     var sub = cleanPoints.length > 1
       ? shortDate(first.at) + " to " + shortDate(last.at) + " / " + signedMoney(last.value - first.value) + " / " + cleanPoints.length + " pts"
       : "One synced point / more history needed";
     return "<article class=\"chart-card\">"
       + "<div class=\"stack-item-head\"><b>" + html(title) + "</b><span class=\"" + trendClass + "\">" + html(sub) + "</span></div>"
-      + "<div class=\"chart-readout compact-readout\" data-chart-readout=\"" + html(chartId) + "\"><b>" + html(money(last.value)) + "</b><span class=\"" + html(trendClass) + "\">" + html(signedMoney(last.value - first.value, "$0.00") + " (" + signedPercent(first.value ? (last.value - first.value) / first.value * 100 : null) + ")") + "</span></div>"
-      + "<p>" + html(meta) + " / latest " + html(money(last.value)) + " / plotting all " + html(cleanPoints.length + " point" + (cleanPoints.length === 1 ? "" : "s")) + (cleanPoints.some(function (point) { return point.synthetic; }) ? " / latest point is quote or broker-value derived" : "") + "</p>"
+      + "<p>" + html(meta) + " / latest " + html(money(last.value)) + "</p>"
       + chart
       + "</article>";
   }
@@ -4358,11 +3900,76 @@
       + "</svg>";
   }
 
+  function buildCandlestickChart(candles, lineColor, yLabel, options) {
+    options = options || {};
+    var width = 420;
+    var height = 240;
+    var left = options.compact ? 18 : 58;
+    var right = 18;
+    var top = 18;
+    var bottom = options.compact ? 30 : 46;
+    var values = [];
+    candles.forEach(function (candle) {
+      values.push(candle.high, candle.low);
+    });
+    var minValue = Math.min.apply(Math, values);
+    var maxValue = Math.max.apply(Math, values);
+    if (minValue === maxValue) {
+      var pad = Math.max(1, Math.abs(minValue) * 0.01);
+      minValue -= pad;
+      maxValue += pad;
+    }
+    function x(index) {
+      if (candles.length === 1) return (left + width - right) / 2;
+      return left + index / (candles.length - 1) * (width - left - right);
+    }
+    function y(value) {
+      return top + (maxValue - value) / (maxValue - minValue) * (height - top - bottom);
+    }
+    var candleWidth = Math.max(2.2, Math.min(10, (width - left - right) / Math.max(1, candles.length) * 0.58));
+    var yTicks = [minValue, (minValue + maxValue) / 2, maxValue];
+    var grid = yTicks.map(function (tick) {
+      var yy = y(tick).toFixed(1);
+      return "<line x1=\"" + left + "\" y1=\"" + yy + "\" x2=\"" + (width - right) + "\" y2=\"" + yy + "\" class=\"chart-grid-line\"/>"
+        + (options.compact ? "" : "<text x=\"" + (left - 8) + "\" y=\"" + (Number(yy) + 4) + "\" class=\"chart-tick\" text-anchor=\"end\">" + html(compactMoney(tick)) + "</text>");
+    }).join("");
+    var shapes = candles.map(function (candle, index) {
+      var xx = x(index);
+      var openY = y(candle.open);
+      var closeY = y(candle.close);
+      var highY = y(candle.high);
+      var lowY = y(candle.low);
+      var klass = candle.close >= candle.open ? "positive-candle" : "negative-candle";
+      var bodyY = Math.min(openY, closeY);
+      var bodyH = Math.max(1.8, Math.abs(closeY - openY));
+      return "<g class=\"" + klass + "\">"
+        + "<line x1=\"" + xx.toFixed(1) + "\" y1=\"" + highY.toFixed(1) + "\" x2=\"" + xx.toFixed(1) + "\" y2=\"" + lowY.toFixed(1) + "\" class=\"candle-wick\"/>"
+        + "<rect x=\"" + (xx - candleWidth / 2).toFixed(1) + "\" y=\"" + bodyY.toFixed(1) + "\" width=\"" + candleWidth.toFixed(1) + "\" height=\"" + bodyH.toFixed(1) + "\" rx=\"1.5\" class=\"candle-body\"/>"
+        + "</g>";
+    }).join("");
+    var chartPoints = candles.map(function (candle, index) {
+      return {at: candle.at, value: candle.close, x: Number(x(index).toFixed(2)), y: Number(y(candle.close).toFixed(2))};
+    });
+    var interactive = options.interactive
+      ? " interactive-line-chart\" data-chart-id=\"" + html(options.chartId || "") + "\" data-chart-range=\"" + html(options.range || "") + "\" data-chart-baseline=\"" + html(options.baseline == null ? "" : String(options.baseline)) + "\" data-chart-points=\"" + html(JSON.stringify(chartPoints)) + "\""
+      : "";
+    var scrub = options.interactive
+      ? "<line class=\"chart-scrub-line\" data-chart-scrub-line x1=\"0\" y1=\"" + top + "\" x2=\"0\" y2=\"" + (height - bottom) + "\" hidden/>"
+        + "<circle class=\"chart-scrub-dot\" data-chart-scrub-dot cx=\"0\" cy=\"0\" r=\"5\" hidden/>"
+        + "<rect class=\"chart-touch-target\" x=\"" + left + "\" y=\"" + top + "\" width=\"" + (width - left - right) + "\" height=\"" + (height - top - bottom) + "\"/>"
+      : "";
+    return "<svg class=\"line-chart candlestick-chart" + (options.compact ? " robinhood-line-chart" : "") + interactive + "\" style=\"color:" + html(lineColor) + "\" viewBox=\"0 0 " + width + " " + height + "\" role=\"img\" aria-label=\"" + html(yLabel) + " candlestick chart\">"
+      + grid
+      + "<line x1=\"" + left + "\" y1=\"" + (height - bottom) + "\" x2=\"" + (width - right) + "\" y2=\"" + (height - bottom) + "\" class=\"chart-axis\"/>"
+      + shapes
+      + scrub
+      + chartTimeTicks(candles.map(function (candle) { return {at: candle.at}; }), left, right, width, height)
+      + "</svg>";
+  }
+
   function chartTimeTicks(points, left, right, width, height) {
     if (!points.length) return "";
-    var maxTicks = points.length < 3 ? points.length : 6;
-    var firstDay = new Date(points[0].at).toDateString();
-    var sameDay = points.every(function (point) { return new Date(point.at).toDateString() === firstDay; });
+    var maxTicks = points.length < 3 ? points.length : 5;
     var seen = {};
     var ticks = [];
     for (var index = 0; index < maxTicks; index += 1) {
@@ -4374,7 +3981,7 @@
     return ticks.map(function (tick, index) {
       var anchor = index === 0 ? "start" : index === ticks.length - 1 ? "end" : "middle";
       var xPos = left + (new Date(tick.point.at).getTime() - new Date(points[0].at).getTime()) / Math.max(1, new Date(points[points.length - 1].at).getTime() - new Date(points[0].at).getTime()) * (width - left - right);
-      return "<text x=\"" + xPos.toFixed(1) + "\" y=\"" + (height - 28) + "\" class=\"chart-tick\" text-anchor=\"" + anchor + "\">" + html(chartTickLabel(tick.point.at, sameDay)) + "</text>";
+      return "<text x=\"" + xPos.toFixed(1) + "\" y=\"" + (height - 28) + "\" class=\"chart-tick\" text-anchor=\"" + anchor + "\">" + html(shortDate(tick.point.at)) + "</text>";
     }).join("");
   }
 
@@ -4531,7 +4138,7 @@
     state.pullRefresh.tracking = false;
     state.pullRefresh.armed = false;
     updatePullRefreshIndicator(96, true, "Checking latest app feed...");
-    text("sync-pill", "Checking feed");
+    text("sync-pill", "Refreshing cache");
     var refreshStarted = requestServerFeedRefresh();
     Promise.all([
       loadFeed({silent: true, interactiveRefresh: true}),
@@ -4546,7 +4153,7 @@
     }).then(function (result) {
       state.pullRefresh.refreshing = false;
       runRefreshBounce(result.ok);
-      updatePullRefreshIndicator(result.ok ? 72 : 48, false, result.ok ? (result.updated ? "Latest app feed synced." : "Latest available feed is showing") : "Still showing current view");
+      updatePullRefreshIndicator(result.ok ? 72 : 48, false, result.ok ? (result.updated ? "Latest app feed synced." : "Already current") : "Still showing current view");
       if (result.ok && result.updated) {
         toast("Latest app feed synced; stale account exports are called out separately.");
       } else if (!result.ok && !state.payload) {
@@ -4853,6 +4460,21 @@
         state.selectedAccountChartRange = accountChartRange.getAttribute("data-account-chart-range") || "1D";
         renderAccountDetail();
       }
+      var holdingButton = event.target.closest("[data-holding-detail]");
+      if (holdingButton) {
+        state.selectedHoldingSymbol = String(holdingButton.getAttribute("data-holding-detail") || "").toUpperCase();
+        state.selectedHoldingAccountId = holdingButton.getAttribute("data-holding-account") || "";
+        renderPerformanceCharts();
+        renderHoldingsTable();
+        renderAccountDetail();
+        toast(state.selectedHoldingSymbol + " chart opened.");
+      }
+      var holdingChartRange = event.target.closest("[data-holding-chart-range]");
+      if (holdingChartRange) {
+        state.selectedHoldingChartRange = holdingChartRange.getAttribute("data-holding-chart-range") || "1W";
+        renderPerformanceCharts();
+        renderAccountDetail();
+      }
       var sleeveButton = event.target.closest("[data-sleeve-detail]");
       if (sleeveButton) {
         state.selectedDetailSleeveName = sleeveButton.getAttribute("data-sleeve-detail");
@@ -5037,11 +4659,10 @@
     state.holdings = aggregated.holdings;
     state.foreignHoldings = aggregated.foreign;
     var visibleAccountIds = visibleAccountIdSet(state.accounts);
-    var visibleAccountOwners = visibleAccountOwnerMap(state.accounts);
     var history = payload.history || {};
     state.history = {
-      accounts: scopedHistoryRowsForVisibleAccounts(history.accounts || [], visibleAccountIds, visibleAccountOwners),
-      positions: scopedHistoryRowsForVisibleAccounts(history.positions || [], visibleAccountIds, visibleAccountOwners)
+      accounts: developerVisibleRows(visibleRows(history.accounts || [])).filter(function (row) { return visibleAccountIds[rowAccountId(row)]; }),
+      positions: developerVisibleRows(visibleRows(history.positions || [])).filter(function (row) { return visibleAccountIds[rowAccountId(row)]; })
     };
     state.serverTrades = developerVisibleRows(scopedRowsForVisibleAccounts(payload.trades || [], visibleAccountIds));
     notifyOrderFeedChanges(state.serverTrades);
@@ -5060,30 +4681,12 @@
 
   function latestDaemonLabel(payload) {
     var source = payload || state.payload || {};
-    var accountTimestamps = accountSyncTimestamps(state.accounts);
-    var timestamps = accountTimestamps.length ? accountTimestamps : [];
-    if (!timestamps.length) collectDaemonTimestamps(source, timestamps);
+    var timestamps = [];
+    collectDaemonTimestamps(source, timestamps);
     var latest = timestamps.map(function (value) { return new Date(value); }).filter(function (date) {
       return !Number.isNaN(date.getTime());
     }).sort(function (a, b) { return b - a; })[0];
-    if (!latest) return "Last account sync unavailable.";
-    var staleCount = state.accounts.filter(function (account) { return account.sourceIsStale; }).length;
-    return "Last synced trader cycle at " + latest.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit", second: "2-digit"}) + " on " + latest.toLocaleDateString([], {month: "long", day: "numeric", year: "numeric"}) + (staleCount ? " / " + staleCount + " stale account" + (staleCount === 1 ? "" : "s") + "." : ".");
-  }
-
-  function accountSyncTimestamps(accounts) {
-    var timestamps = [];
-    (accounts || []).forEach(function (account) {
-      ["generatedAt", "generated_at", "sourceAsOf", "source_as_of", "lastReconciledAt", "last_reconciled_at", "updatedAt", "updated_at"].forEach(function (key) {
-        if (account[key]) timestamps.push(account[key]);
-      });
-      (account.positions || []).slice(0, 80).forEach(function (position) {
-        ["priceAsOf", "price_as_of", "generatedAt", "generated_at", "updatedAt", "updated_at"].forEach(function (key) {
-          if (position[key]) timestamps.push(position[key]);
-        });
-      });
-    });
-    return timestamps;
+    return latest ? "Last synced trader cycle at " + latest.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit", second: "2-digit"}) + " on " + latest.toLocaleDateString([], {month: "long", day: "numeric", year: "numeric"}) + "." : "Last synced trader cycle unavailable.";
   }
 
   function feedSyncLabel(payload) {

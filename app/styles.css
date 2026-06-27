@@ -471,6 +471,11 @@ main {
   background: rgba(245, 158, 11, 0.1);
 }
 
+.status-chip.warning,
+.warning {
+  color: #ffd68a;
+}
+
 .panel {
   display: none;
 }
@@ -831,6 +836,26 @@ button.primary {
   font-size: 10px;
 }
 
+.account-alert-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.account-alert-strip span {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  padding: 3px 7px;
+  border: 1px solid rgba(245, 158, 11, 0.36);
+  border-radius: 999px;
+  color: #ffd68a;
+  background: rgba(245, 158, 11, 0.09);
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.1;
+}
+
 .interactive-card {
   cursor: pointer;
 }
@@ -974,39 +999,6 @@ button.primary {
   line-height: 1.15;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.account-audit-strip {
-  display: grid;
-  gap: 6px;
-  margin-top: 8px;
-}
-
-.account-audit-strip span {
-  display: block;
-  padding: 7px 8px;
-  border: 1px solid rgba(34, 211, 238, 0.20);
-  border-radius: 7px;
-  color: #b9cbbb;
-  background: rgba(34, 211, 238, 0.07);
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1.35;
-  text-transform: none;
-  letter-spacing: 0;
-}
-
-.account-audit-strip span.warning {
-  border-color: rgba(245, 158, 11, 0.34);
-  color: #f8d89b;
-  background: rgba(245, 158, 11, 0.10);
-}
-
-.account-audit-strip b {
-  display: inline;
-  color: var(--text);
-  font-size: inherit;
-  font-weight: 900;
 }
 
 .progress-bar {
@@ -1615,8 +1607,44 @@ textarea:focus {
   gap: 8px;
 }
 
+.holding-detail-chart-card {
+  gap: 8px;
+}
+
 .account-detail-summary {
   gap: 10px;
+}
+
+.account-source-notice {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 5px;
+  padding: 10px 12px;
+  border: 1px solid rgba(34, 211, 238, 0.24);
+  border-radius: 8px;
+  background: rgba(34, 211, 238, 0.07);
+}
+
+.account-source-notice.warning {
+  border-color: rgba(245, 158, 11, 0.38);
+  background: rgba(245, 158, 11, 0.09);
+}
+
+.account-source-notice p,
+.account-source-notice small {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.account-source-notice b {
+  color: var(--text);
+}
+
+.account-source-notice small {
+  color: #d8f5dd;
+  font-weight: 800;
 }
 
 .account-detail-metrics {
@@ -1713,14 +1741,6 @@ textarea:focus {
   font-weight: 900;
 }
 
-.chart-readout.compact-readout {
-  min-height: 34px;
-}
-
-.chart-readout.compact-readout b {
-  font-size: 18px;
-}
-
 .coverage-subhead {
   padding: 7px 2px 2px;
   color: var(--muted);
@@ -1739,6 +1759,44 @@ textarea:focus {
   width: 100%;
   min-height: 170px;
   overflow: visible;
+}
+
+.clickable-row {
+  cursor: pointer;
+}
+
+.clickable-row:hover {
+  background: rgba(57, 255, 20, 0.055);
+}
+
+.clickable-row:focus-within {
+  outline: 2px solid rgba(57, 255, 20, 0.38);
+  outline-offset: -2px;
+}
+
+.candlestick-chart {
+  min-height: 210px;
+}
+
+.positive-candle .candle-body,
+.positive-candle .candle-wick {
+  fill: rgba(57, 255, 20, 0.55);
+  stroke: var(--green);
+}
+
+.negative-candle .candle-body,
+.negative-candle .candle-wick {
+  fill: rgba(255, 92, 122, 0.55);
+  stroke: var(--red);
+}
+
+.candle-body,
+.candle-wick {
+  vector-effect: non-scaling-stroke;
+}
+
+.candle-wick {
+  stroke-width: 1.5;
 }
 
 .robinhood-line-chart {

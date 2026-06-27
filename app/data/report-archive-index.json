@@ -1,1 +1,52 @@
-{"status":"locked","reports":[],"message":"SmartSleeve reports are available only through the private application gateway."}
+{
+  "generated_at": "2026-06-26T23:08:06.514556+00:00",
+  "reports": [
+    {
+      "audienceEmails": [
+        "criseldasarenas@gmail.com",
+        "john@smartsleeve.ai",
+        "jpsheppard88@gmail.com"
+      ],
+      "date": "2026-06-23",
+      "id": "daily-performance-2026-06-23",
+      "latestUrl": "/app/reports/daily/latest.html",
+      "title": "Daily SmartSleeve performance report",
+      "type": "daily_performance",
+      "url": "/app/reports/daily/2026-06-23/"
+    },
+    {
+      "algo": "grand_sage",
+      "audienceEmails": [
+        "criseldasarenas@gmail.com",
+        "john@smartsleeve.ai",
+        "jpsheppard88@gmail.com"
+      ],
+      "date": "2026-06-22",
+      "id": "grand_sage-2026-06-22",
+      "latestUrl": "/app/reports/stock-picks/grand_sage/latest.html",
+      "title": "Semi Sage stock picks",
+      "type": "stock_pick",
+      "url": "/app/reports/stock-picks/grand_sage/2026-06-22/"
+    },
+    {
+      "algo": "general_sage",
+      "audienceEmails": [
+        "john@smartsleeve.ai",
+        "jpsheppard88@gmail.com"
+      ],
+      "date": "2026-06-22",
+      "id": "general_sage-2026-06-22",
+      "latestUrl": "/app/reports/stock-picks/general_sage/latest.html",
+      "title": "General Sage stock picks",
+      "type": "stock_pick",
+      "url": "/app/reports/stock-picks/general_sage/2026-06-22/"
+    }
+  ],
+  "schema_version": 1,
+  "storage": {
+    "indexPath": "/app/data/report-archive-index.json",
+    "localPagesPrefix": "/app/reports",
+    "publicReportFilesWritten": false,
+    "spacesPrefix": "app/reports"
+  }
+}

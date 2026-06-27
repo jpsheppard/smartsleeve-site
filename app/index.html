@@ -15,7 +15,7 @@
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
   <link rel="manifest" href="/site.webmanifest">
-  <link rel="stylesheet" href="/app/styles.css">
+  <link rel="stylesheet" href="/app/styles.css?v=20260627-holding-candles">
 </head>
 <body>
   <div class="app-shell">
@@ -41,7 +41,7 @@
       </nav>
       <div class="sidebar-status">
         <b>Data source</b>
-        <span id="snapshot-source"></span>
+        <span id="snapshot-source">Analytics snapshot</span>
         <span id="snapshot-time">Loading...</span>
       </div>
     </aside>
@@ -82,17 +82,17 @@
           <article class="metric-card">
             <span>Cash</span>
             <strong id="cash-value">Loading...</strong>
-            <p id="cash-metric-copy">Broker-reported cash across visible accounts.</p>
+            <p>Broker-reported cash across visible accounts.</p>
           </article>
           <article class="metric-card">
             <span>Buying power</span>
             <strong id="buying-power">Loading...</strong>
-            <p id="buying-power-metric-copy">Available buying power where brokers report it.</p>
+            <p>Available buying power where brokers report it.</p>
           </article>
           <article class="metric-card">
             <span>Margin usage</span>
             <strong id="margin-usage">Loading...</strong>
-            <p id="margin-metric-copy">Negative cash and explicit margin exposure.</p>
+            <p>Negative cash and explicit margin exposure.</p>
           </article>
           <article class="metric-card">
             <span>Daily P/L</span>
@@ -846,6 +846,6 @@
   </nav>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="/app/app.js" defer></script>
+  <script src="/app/app.js?v=20260627-holding-candles" defer></script>
 </body>
 </html>
