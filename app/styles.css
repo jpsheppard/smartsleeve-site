@@ -976,6 +976,39 @@ button.primary {
   white-space: nowrap;
 }
 
+.account-audit-strip {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.account-audit-strip span {
+  display: block;
+  padding: 7px 8px;
+  border: 1px solid rgba(34, 211, 238, 0.20);
+  border-radius: 7px;
+  color: #b9cbbb;
+  background: rgba(34, 211, 238, 0.07);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.account-audit-strip span.warning {
+  border-color: rgba(245, 158, 11, 0.34);
+  color: #f8d89b;
+  background: rgba(245, 158, 11, 0.10);
+}
+
+.account-audit-strip b {
+  display: inline;
+  color: var(--text);
+  font-size: inherit;
+  font-weight: 900;
+}
+
 .progress-bar {
   height: 8px;
   overflow: hidden;

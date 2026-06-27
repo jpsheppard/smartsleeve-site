@@ -1203,6 +1203,48 @@
     }, 0);
   }
 
+  function accountingSummary() {
+    var estimatedCash = state.accounts.filter(function (account) {
+      return isEstimatedCashSource(account.cashSource);
+    }).length;
+    var estimatedValue = state.accounts.filter(function (account) {
+      return account.equitySource === "positions_plus_cash_estimate" || account.equitySource === "buying_power_fallback";
+    }).length;
+    var stale = state.accounts.filter(function (account) {
+      return Boolean(account.sourceIsStale);
+    }).length;
+    return {
+      estimatedCash: estimatedCash,
+      estimatedValue: estimatedValue,
+      stale: stale,
+      count: state.accounts.length
+    };
+  }
+
+  function renderAccountingMetricCopy() {
+    var summary = accountingSummary();
+    text(
+      "cash-metric-copy",
+      summary.estimatedCash
+        ? summary.estimatedCash + " account" + (summary.estimatedCash === 1 ? " uses" : "s use") + " a labeled cash estimate from broker value or buying power."
+        : "Broker-reported cash across visible accounts."
+    );
+    text(
+      "buying-power-metric-copy",
+      summary.stale
+        ? "Available buying power where brokers report it; " + summary.stale + " account export" + (summary.stale === 1 ? " is" : "s are") + " stale."
+        : "Available buying power where brokers report it."
+    );
+    text(
+      "margin-metric-copy",
+      marginUsed()
+        ? "Negative cash is shown as margin used, with buying-power buffer shown in account details."
+        : summary.estimatedValue
+          ? summary.estimatedValue + " account value" + (summary.estimatedValue === 1 ? " is" : "s are") + " labeled as estimated until broker export confirms."
+          : "Negative cash and explicit margin exposure."
+    );
+  }
+
   function aggregateHoldings(accounts) {
     var grouped = {};
     var foreign = [];
@@ -1862,6 +1904,7 @@
     text("cash-value", money(accountTotal("cash")));
     text("buying-power", money(accountTotal("buyPower")));
     text("margin-usage", marginUsed() ? money(marginUsed()) : "$0");
+    renderAccountingMetricCopy();
     setMetric("daily-pl", dailyPnl, function (value) { return signedMoney(value); }, "Needs daily P/L sync");
     setMetric("total-pl", totalPnl, function (value) { return signedMoney(value); }, "Needs basis sync");
     setMetric("portfolio-return", totalPnl != null && totalCostBasis ? totalPnl / totalCostBasis * 100 : null, function (value) { return (value >= 0 ? "+" : "") + value.toFixed(2) + "%"; }, "Needs basis sync");
@@ -1949,6 +1992,7 @@
         + miniMetric("Positions", String((account.positions || []).length))
         + miniMetric("Status", accountStatusLabel(account))
         + "</div>"
+        + accountAccountingStrip(account)
         + "</article>";
     }).join("") || emptyItem("No visible accounts", "Sign in with an email that has SmartSleeve account access.");
   }
@@ -1968,6 +2012,66 @@
     return "Cash: <span class=\"positive\">" + money(cash) + "</span> / buying power " + money(buyPower) + source;
   }
 
+  function accountAccountingStrip(account) {
+    var rows = accountAccountingNotes(account);
+    if (!rows.length) return "";
+    return "<div class=\"account-audit-strip\" aria-label=\"Accounting provenance\">"
+      + rows.slice(0, 3).map(function (row) {
+        return "<span class=\"" + html(row.className || "") + "\"><b>" + html(row.label) + "</b> " + html(row.body) + "</span>";
+      }).join("")
+      + "</div>";
+  }
+
+  function accountAccountingNotes(account) {
+    var rows = [];
+    if (account.equitySource === "buying_power_fallback") {
+      rows.push({
+        label: "Value estimate",
+        body: "E-Trade value exported as zero; showing buying power until broker value syncs.",
+        className: "warning"
+      });
+    } else if (account.equitySource === "positions_plus_cash_estimate") {
+      rows.push({
+        label: "Value estimate",
+        body: "Using synced positions plus cash because broker value exported as zero.",
+        className: "warning"
+      });
+    } else if (account.equitySource === "broker_equity") {
+      rows.push({
+        label: "Broker equity",
+        body: "Net liquidation value was preferred over a stale or conflicting account value.",
+        className: ""
+      });
+    }
+    if (account.cashSource === "etrade_equity_buying_power_cash_equivalent") {
+      rows.push({
+        label: "Cash estimate",
+        body: "Cash is matched to E-Trade buying power because value and buying power agree.",
+        className: "warning"
+      });
+    } else if (account.cashSource === "buying_power_cash_equivalent") {
+      rows.push({
+        label: "Cash estimate",
+        body: "Broker cash is zero; available buying power is shown as estimated cash.",
+        className: "warning"
+      });
+    } else if (account.cashSource === "equity_minus_positions_estimate") {
+      rows.push({
+        label: "Cash estimate",
+        body: "Cash is estimated as account value minus synced positions.",
+        className: "warning"
+      });
+    }
+    if (account.sourceIsStale) {
+      rows.push({
+        label: "Stale sync",
+        body: accountFreshnessLabel(account) + "; refresh account export before trading from this view.",
+        className: "warning"
+      });
+    }
+    return rows;
+  }
+
   function renderAccountDirectory() {
     var target = $("accounts-directory");
     if (!target) return;
@@ -1984,6 +2088,7 @@
         + miniMetric("Positions", String((account.positions || []).length))
         + miniMetric("Last sync", accountFreshnessLabel(account))
         + "</div>"
+        + accountAccountingStrip(account)
         + "<div class=\"recommendation-actions\"><button type=\"button\" class=\"text-button\" data-account-detail=\"" + html(account.id) + "\">Open details</button></div>"
         + "</article>";
     }).join("") || emptyItem("No visible accounts", "Sign in with an email that has SmartSleeve account access.");
