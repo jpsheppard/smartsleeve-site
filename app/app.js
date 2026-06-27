@@ -1797,6 +1797,7 @@
       "<article class=\"panel-card account-detail-summary\"><div class=\"card-head\"><div><span>Broker values</span><h2>Cash and margin</h2></div><span class=\"" + brokerStatusClass + "\">" + html(account.broker) + "</span></div><div class=\"account-detail-metrics\">"
         + detailMetric("Account value", money(account.equity), compactAccountValueSource(account))
         + detailMetric("Last sync", accountFreshnessLabel(account), account.sourceIsStale ? "Stale broker export." : "Current broker export.", account.sourceIsStale ? "warning" : "")
+        + detailMetric("Chart history", accountHistoryRangeLabel(account), accountHistoryCoverage(account), accountHistoryIsThin(account) ? "warning" : "")
         + detailMetric("Cash / margin", cashMarginMeta(account), marginPlainText(account), numeric(account.cash) < 0 ? "warning" : "")
         + detailMetric("Available to buy", money(deployableFunds(account)), deployableFundsBody(account), cashHasSeparateDeployableFunds(account) ? "warning" : "")
         + (emptyAccountWarning ? stackItem("Live holdings missing", "Awaiting broker export", "This configured account has no synced positions or equity in the current app feed, so do not treat it as a true zero-balance account.") : "")
@@ -1978,7 +1979,7 @@
   }
 
   function accountFreshnessLabel(account) {
-    if (account.sourceFreshnessLabel) return account.sourceFreshnessLabel;
+    if (account.sourceFreshnessLabel) return normalizeTimestampCopy(account.sourceFreshnessLabel);
     if (account.sourceAgeMinutes != null) return Math.round(account.sourceAgeMinutes) + " min old";
     return account.generatedAt ? shortTimestamp(account.generatedAt) : "needs sync";
   }
@@ -2013,7 +2014,29 @@
     if (!points.length) return "No private account-history points synced yet.";
     var first = points[0];
     var last = points[points.length - 1];
-    return points.length + " history point" + (points.length === 1 ? "" : "s") + " from " + shortTimestamp(first.at) + " to " + shortTimestamp(last.at) + ".";
+    return points.length + " history point" + (points.length === 1 ? "" : "s") + " from " + shortTimestamp(first.at) + " to " + shortTimestamp(last.at) + ". This is the visible app-feed history window, not guaranteed broker-account inception history.";
+  }
+
+  function accountHistoryRangeLabel(account) {
+    var points = accountHistoryPoints(account).sort(function (a, b) {
+      return new Date(a.at).getTime() - new Date(b.at).getTime();
+    });
+    if (!points.length) return "No chart points";
+    var first = points[0];
+    var last = points[points.length - 1];
+    if (points.length === 1) return shortTimestamp(last.at);
+    return shortTimestamp(first.at) + " -> " + shortTimestamp(last.at);
+  }
+
+  function accountHistoryIsThin(account) {
+    var points = accountHistoryPoints(account).sort(function (a, b) {
+      return new Date(a.at).getTime() - new Date(b.at).getTime();
+    });
+    if (points.length < 2) return true;
+    var first = new Date(points[0].at).getTime();
+    var last = new Date(points[points.length - 1].at).getTime();
+    if (!Number.isFinite(first) || !Number.isFinite(last)) return true;
+    return last - first < 6 * 24 * 60 * 60 * 1000;
   }
 
   function accountValueSourceCopy(account) {
@@ -2052,7 +2075,23 @@
     if (!value) return "";
     var date = new Date(value);
     if (Number.isNaN(date.getTime())) return "";
-    return date.toLocaleString([], {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"});
+    return easternTimestamp(date, {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"});
+  }
+
+  function easternTimestamp(value, options) {
+    var date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    return date.toLocaleString("en-US", Object.assign({
+      timeZone: "America/New_York",
+      timeZoneName: "short"
+    }, options || {}));
+  }
+
+  function normalizeTimestampCopy(value) {
+    return String(value || "").replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?/g, function (match) {
+      var parsed = new Date(match);
+      return Number.isNaN(parsed.getTime()) ? match : easternTimestamp(parsed, {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"});
+    });
   }
 
   function marginPlainText(account) {
@@ -2609,7 +2648,7 @@
   function shortTime(value) {
     var date = new Date(value);
     if (Number.isNaN(date.getTime())) return String(value);
-    return date.toLocaleString([], {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"});
+    return easternTimestamp(date, {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"});
   }
 
   function renderSleeves() {
@@ -3003,7 +3042,7 @@
     }
     var order = {
       id: intent.intent_id,
-      time: new Date().toLocaleString(),
+      time: easternTimestamp(new Date(), {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"}),
       account: intent.account_label,
       sleeve: intent.sleeve,
       ticker: intent.symbol + (intent.target_symbol ? " -> " + intent.target_symbol : ""),
@@ -3483,7 +3522,7 @@
     var brokerConnections = $("broker-connections");
     if (brokerConnections) {
       var connected = state.accounts.map(function (account) {
-        return stackItem(account.broker, account.status || "Connected", account.account + " last snapshot " + (account.generatedAt || "unknown"), 80);
+        return stackItem(account.broker, account.status || "Connected", account.account + " last snapshot " + (account.generatedAt ? shortTimestamp(account.generatedAt) : "unknown"), 80);
       });
       connected.unshift(stackItem("Daemon outage alerts", "Watchdog covered", "IBKR Gateway, RH/E*TRADE auth, daemon crashes, and abnormal stops use the shared phone/email alert path.", 80));
       connected.push(stackItem("Fidelity via Plaid", "Pending production access / read-only", "Sandbox keys cannot view John's live Fidelity accounts until production consent is approved.", 30));
@@ -4064,7 +4103,7 @@
   function scrubTimestamp(value) {
     var date = new Date(value);
     if (Number.isNaN(date.getTime())) return String(value || "");
-    return date.toLocaleString("en-US", {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"});
+    return easternTimestamp(date, {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"});
   }
 
   function cssEscape(value) {
@@ -4081,7 +4120,7 @@
   }
 
   function addActivity(event, operator, account, detail) {
-    state.activity.unshift({event: event, operator: operator || "SYSTEM", account: account || "SmartSleeve", detail: detail || "", time: new Date().toLocaleString()});
+    state.activity.unshift({event: event, operator: operator || "SYSTEM", account: account || "SmartSleeve", detail: detail || "", time: easternTimestamp(new Date(), {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"})});
   }
 
   function toast(message) {
@@ -4686,7 +4725,7 @@
     var latest = timestamps.map(function (value) { return new Date(value); }).filter(function (date) {
       return !Number.isNaN(date.getTime());
     }).sort(function (a, b) { return b - a; })[0];
-    return latest ? "Last synced trader cycle at " + latest.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit", second: "2-digit"}) + " on " + latest.toLocaleDateString([], {month: "long", day: "numeric", year: "numeric"}) + "." : "Last synced trader cycle unavailable.";
+    return latest ? "Last synced trader cycle at " + easternTimestamp(latest, {month: "long", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit"}) + "." : "Last synced trader cycle unavailable.";
   }
 
   function feedSyncLabel(payload) {
@@ -4694,7 +4733,7 @@
     var feedAt = source.published_at || source.generated_at || source.generatedAt || source.updated_at || source.updatedAt;
     var date = feedAt ? new Date(feedAt) : null;
     var base = date && !Number.isNaN(date.getTime())
-      ? "App feed refreshed at " + date.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit", second: "2-digit"}) + " on " + date.toLocaleDateString([], {month: "long", day: "numeric", year: "numeric"}) + "."
+      ? "App feed refreshed at " + easternTimestamp(date, {month: "long", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit"}) + "."
       : latestDaemonLabel(source);
     var staleAccounts = (state.accounts || []).filter(function (account) { return account.sourceIsStale; });
     if (!staleAccounts.length) return base;
