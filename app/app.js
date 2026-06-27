@@ -109,9 +109,9 @@
 
   var brokerHealthChecks = [
     {
-      title: "Alert naming",
-      meta: "No combined ibkr_etrade labels",
-      body: "Health emails should name the failing connector directly: IBKR Gateway, E-Trade auth/export, Robinhood trader, or app-feed publisher.",
+      title: "Connector alert routing",
+      meta: "Split IBKR, E-Trade, Robinhood, app feed",
+      body: "Operational alerts should name exactly one failing connector, account owner, and recovery path so IBKR Gateway outages are not grouped with E-Trade OAuth/export failures.",
       progress: 70
     },
     {
@@ -125,6 +125,12 @@
       meta: "OAuth/session/account export",
       body: "Report E-Trade auth, cash, buying-power, and account-value export failures separately from IBKR so alerts are actionable.",
       progress: 65
+    },
+    {
+      title: "App-feed publisher",
+      meta: "GitHub Action / private feed API",
+      body: "Report failed private app-feed publishes separately from broker outages so the app can distinguish stale account exports from a stale aggregate feed.",
+      progress: 72
     },
     {
       title: "Robinhood trader",
@@ -996,6 +1002,7 @@
       generatedAt: account.generatedAt || account.generated_at,
       latestGeneratedAt: account.latestGeneratedAt || account.latest_generated_at,
       portfolioSource: account.portfolioSource || account.portfolio_source,
+      feedPublishedAt: account.feedPublishedAt || account.feed_published_at || account.appFeedPublishedAt || account.app_feed_published_at,
       sourceAgeMinutes: numeric(account.sourceAgeMinutes != null ? account.sourceAgeMinutes : account.source_age_minutes),
       sourceIsStale: Boolean(account.sourceIsStale || account.source_is_stale),
       sourceFreshness: account.sourceFreshness || account.source_freshness,
@@ -2075,6 +2082,13 @@
         className: "warning"
       });
     }
+    if (account.feedPublishedAt && account.generatedAt && account.feedPublishedAt !== account.generatedAt) {
+      rows.push({
+        label: "Feed provenance",
+        body: "Account export and app-feed publish timestamps differ; verify freshness before acting.",
+        className: ""
+      });
+    }
     return rows;
   }
 
@@ -2429,6 +2443,7 @@
     }
     var visible = appEdition === "developer" ? Number(coverage.visible_count || state.accounts.length || 0) : state.accounts.length;
     var total = appEdition === "developer" ? Number(coverage.expected_count || expected.length || 0) : expected.length;
+    var publisherRows = appFeedPublisherRows(coverage);
     var rows = [
       stackItem(
         "Expected account coverage",
@@ -2437,6 +2452,7 @@
         total ? visible / total * 100 : 0
       )
     ];
+    rows = rows.concat(publisherRows);
     missing.slice(0, 6).forEach(function (row) {
       rows.push(stackItem("Missing: " + (row.account || row.id), row.broker || "Broker unknown", row.expectedUse || row.status || "Expected account has no current app-feed row.", 12));
     });
@@ -2444,6 +2460,32 @@
       rows.push(stackItem("Awaiting live export: " + (row.account || row.id), row.broker || "Broker unknown", row.expectedUse || row.status || "Configured account is visible but lacks live analytics.", 35));
     });
     target.innerHTML = rows.join("");
+  }
+
+  function appFeedPublisherRows(coverage) {
+    var rows = [];
+    var source = coverage || {};
+    var status = source.publisher_status || source.publisherStatus || source.feed_status || source.feedStatus || "";
+    var workflow = source.workflow_status || source.workflowStatus || source.github_workflow_status || source.githubWorkflowStatus || "";
+    var publishedAt = source.published_at || source.publishedAt || source.feed_published_at || source.feedPublishedAt || feedStamp(state.payload || {});
+    var sourceName = source.publisher || source.feed_source || source.feedSource || "Private app-feed publisher";
+    if (status || workflow || publishedAt) {
+      var meta = [status || workflow || "published", publishedAt ? "last publish " + shortDateTime(publishedAt) : ""].filter(Boolean).join(" / ");
+      var body = workflow && /fail|error|cancel/i.test(workflow)
+        ? "Latest publish workflow reported a failure; balances on screen may reflect the previous successful feed."
+        : "This is aggregate feed freshness, separate from broker connector freshness and account-level stale export flags.";
+      rows.push(stackItem(sourceName, meta, body, /fail|error|cancel/i.test(String(workflow || status)) ? 35 : 74, /fail|error|cancel/i.test(String(workflow || status)) ? "compat-warn" : "compact-stack"));
+    }
+    if ((coverage && coverage.missing && coverage.missing.length) || (coverage && coverage.configured_without_live && coverage.configured_without_live.length)) {
+      rows.push(stackItem("Publisher vs connector split", "Do not collapse missing rows into broker health", "Missing account rows indicate app-feed coverage gaps; stale account rows indicate broker/export gaps. Treat each separately before trusting totals.", 64, "compact-stack"));
+    }
+    return rows;
+  }
+
+  function shortDateTime(value) {
+    var date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value || "unknown");
+    return date.toLocaleDateString([], {month: "short", day: "numeric"}) + " " + date.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"});
   }
 
   function renderPerformanceCharts() {
@@ -3704,6 +3746,8 @@
           problem ? "compat-warn" : ""
         );
       });
+      connected.unshift(stackItem("Combined-label cleanup", "ibkr_etrade alerts need split ownership", "If a health email includes both IBKR Gateway and E-Trade OAuth/export failures, file separate connector incidents before acting on balances or buying power.", 68, "compat-warn"));
+      connected.unshift(stackItem("App-feed publish failures", "GitHub Actions / /api/app-feed freshness", "A failed private app-feed workflow means the app may still show the last successful feed. Verify feed publish time separately from IBKR Gateway or E-Trade OAuth status.", 58, "compat-warn"));
       brokerHealthChecks.slice().reverse().forEach(function (check) {
         connected.unshift(stackItem(check.title, check.meta, check.body, check.progress));
       });
