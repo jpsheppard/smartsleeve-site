@@ -500,6 +500,76 @@
     return email === "john@smartsleeve.ai" ? "jpsheppard88@gmail.com" : email;
   }
 
+  function isQuoteDerivedSource(value) {
+    var source = String(value || "").toLowerCase();
+    return source.indexOf("yfinance") !== -1 || source.indexOf("quote") !== -1 || source.indexOf("market_data") !== -1;
+  }
+
+  function defensibleQuoteTimestamp(value, source) {
+    if (!value) return value;
+    if (!isQuoteDerivedSource(source)) return value;
+    var parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return value;
+    return latestRegularMarketPrint(parsed).toISOString();
+  }
+
+  function easternDateParts(date) {
+    var parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    }).formatToParts(date).reduce(function (out, part) {
+      out[part.type] = part.value;
+      return out;
+    }, {});
+    return {
+      year: Number(parts.year),
+      month: Number(parts.month),
+      day: Number(parts.day),
+      weekday: parts.weekday,
+      hour: Number(parts.hour),
+      minute: Number(parts.minute)
+    };
+  }
+
+  function easternBusinessCloseUtc(year, month, day) {
+    var noonUtc = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+    var easternNoonHour = easternDateParts(noonUtc).hour;
+    var offsetHours = easternNoonHour - 12;
+    return new Date(Date.UTC(year, month - 1, day, 16 - offsetHours, 0, 0));
+  }
+
+  function latestRegularMarketPrint(date) {
+    var parts = easternDateParts(date);
+    var close = easternBusinessCloseUtc(parts.year, parts.month, parts.day);
+    var day = new Date(Date.UTC(parts.year, parts.month - 1, parts.day, 12, 0, 0));
+    var weekday = parts.weekday;
+    if (weekday === "Sat") {
+      day.setUTCDate(day.getUTCDate() - 1);
+      var friday = easternDateParts(day);
+      return easternBusinessCloseUtc(friday.year, friday.month, friday.day);
+    }
+    if (weekday === "Sun") {
+      day.setUTCDate(day.getUTCDate() - 2);
+      var priorFriday = easternDateParts(day);
+      return easternBusinessCloseUtc(priorFriday.year, priorFriday.month, priorFriday.day);
+    }
+    if (parts.hour < 9 || (parts.hour === 9 && parts.minute < 30)) {
+      do {
+        day.setUTCDate(day.getUTCDate() - 1);
+        parts = easternDateParts(day);
+      } while (parts.weekday === "Sat" || parts.weekday === "Sun");
+      return easternBusinessCloseUtc(parts.year, parts.month, parts.day);
+    }
+    if (date > close) return close;
+    return date;
+  }
+
   var configuredAccountOwners = {
     "criselda": "criseldasarenas@gmail.com",
     "crissy": "criseldasarenas@gmail.com",
@@ -874,19 +944,22 @@
 
   function normalizeAccount(account) {
     var positions = (account.positions || []).map(function (position) {
+      var rawPriceSource = position.priceSource || position.price_source || position.quoteSource || position.quote_source || position.marketDataSource || position.market_data_source;
+      var rawPriceAsOf = position.priceAsOf || position.price_as_of || position.quoteAsOf || position.quote_as_of || position.marketDataAsOf || position.market_data_as_of;
       return {
         symbol: String(position.symbol || "").toUpperCase(),
         name: position.name || tickerNames[String(position.symbol || "").toUpperCase()],
         shares: numeric(position.shares != null ? position.shares : position.quantity),
         price: numeric(position.price != null ? position.price : position.current_price),
         brokerPrice: numeric(position.brokerPrice != null ? position.brokerPrice : position.broker_price),
-        priceAsOf: position.priceAsOf || position.price_as_of || position.quoteAsOf || position.quote_as_of || position.marketDataAsOf || position.market_data_as_of,
-        priceSource: position.priceSource || position.price_source || position.quoteSource || position.quote_source || position.marketDataSource || position.market_data_source,
+        priceAsOf: defensibleQuoteTimestamp(rawPriceAsOf, rawPriceSource),
+        priceSource: rawPriceSource,
+        rawPriceAsOf: rawPriceAsOf,
         priceDerivedFromMarketValue: Boolean(position.priceDerivedFromMarketValue || position.price_derived_from_market_value),
         value: numeric(position.value != null ? position.value : position.market_value_usd),
         brokerValue: numeric(position.brokerValue != null ? position.brokerValue : position.broker_value),
         quotePrice: numeric(position.quotePrice != null ? position.quotePrice : position.quote_price),
-        quoteAsOf: position.quoteAsOf || position.quote_as_of,
+        quoteAsOf: defensibleQuoteTimestamp(position.quoteAsOf || position.quote_as_of, position.quoteSource || position.quote_source),
         quoteSource: position.quoteSource || position.quote_source,
         averageCost: numeric(position.averageCost != null ? position.averageCost : position.average_cost),
         costBasis: numeric(position.costBasis != null ? position.costBasis : position.cost_basis),
@@ -894,8 +967,6 @@
         unrealizedPnl: numeric(position.unrealizedPnl != null ? position.unrealizedPnl : position.unrealized_pnl),
         realizedPnl: numeric(position.realizedPnl != null ? position.realizedPnl : position.realized_pnl),
         totalPnl: numeric(position.totalPnl != null ? position.totalPnl : position.total_pnl),
-        priceAsOf: position.priceAsOf || position.price_as_of,
-        priceSource: position.priceSource || position.price_source,
         currency: position.currency || "USD"
       };
     });
@@ -1110,8 +1181,40 @@
     return ids;
   }
 
+  function visibleAccountOwnerMap(accounts) {
+    var owners = {};
+    (accounts || []).forEach(function (account) {
+      var owner = rowOwnerEmail(account);
+      [
+        account.id,
+        account.accountId,
+        account.account_id,
+        account.account
+      ].forEach(function (value) {
+        var key = String(value || "").trim();
+        if (!key) return;
+        if (!owners[key]) owners[key] = {};
+        if (owner) owners[key][owner] = true;
+      });
+    });
+    return owners;
+  }
+
   function rowAccountId(row) {
     return String(row && (row.accountId || row.account_id || row.id || row.account || "") || "").trim();
+  }
+
+  function accountKeyMatches(row, account) {
+    var rowKey = rowAccountId(row);
+    if (!rowKey || !account) return false;
+    return [
+      account.id,
+      account.accountId,
+      account.account_id,
+      account.account
+    ].some(function (value) {
+      return String(value || "").trim() === rowKey;
+    });
   }
 
   function scopedRowsForVisibleAccounts(rows, visibleIds) {
@@ -1124,6 +1227,20 @@
       }
       var accountId = rowAccountId(row);
       return !accountId || Boolean(visibleIds[accountId]);
+    });
+  }
+
+  function scopedHistoryRowsForVisibleAccounts(rows, visibleIds, ownerMap) {
+    return developerVisibleRows(visibleRows(rows || [])).filter(function (row) {
+      if (rowHasConflictingOwner(row)) return false;
+      var accountId = rowAccountId(row);
+      if (!accountId || !visibleIds[accountId]) return false;
+      var explicitOwner = rowOwnerEmail(row);
+      var ownersForKey = ownerMap[accountId] || {};
+      var owners = Object.keys(ownersForKey);
+      if (!owners.length) return true;
+      if (explicitOwner) return Boolean(ownersForKey[explicitOwner]);
+      return owners.length === 1;
     });
   }
 
@@ -2255,13 +2372,10 @@
 
   function accountDetailValueChart(account) {
     var range = state.selectedAccountChartRange || "1D";
-    var allPoints = accountHistoryPoints(account);
+    var allPoints = accountChartPoints(account);
     var points = filterHistoryRange(allPoints, range);
-    if (!points.length && numeric(account.equity) != null) {
-      points = [{at: account.generatedAt || new Date().toISOString(), value: account.equity}];
-    }
     var cleanPoints = points.map(function (point) {
-      return {at: point.at, value: numeric(point.value)};
+      return {at: point.at, value: numeric(point.value), synthetic: Boolean(point.synthetic)};
     }).filter(function (point) { return point.at && point.value != null; }).sort(function (a, b) {
       return new Date(a.at).getTime() - new Date(b.at).getTime();
     });
@@ -2282,16 +2396,42 @@
       + (last ? "<div class=\"chart-readout\" data-chart-readout=\"" + html(chartId) + "\"><b>" + html(money(last.value)) + "</b><span class=\"" + html(trendClass) + "\">" + html(meta) + "</span></div>" : "")
       + (cleanPoints.length ? buildLineChart(cleanPoints, lineColor, "Account value", {interactive: true, compact: true, chartId: chartId, baseline: first ? first.value : null, range: range}) : emptyItem("No account history", "Private account history has not synced for this account yet."))
       + "<div class=\"time-tabs\" role=\"tablist\" aria-label=\"Account chart range\">" + tabs + "</div>"
-      + (last ? "<p class=\"chart-footnote\">Latest " + html(money(last.value)) + " / " + html(shortTimestamp(last.at)) + " / plotting all " + html(cleanPoints.length + " synced point" + (cleanPoints.length === 1 ? "" : "s")) + "</p>" : "")
+      + (last ? "<p class=\"chart-footnote\">Latest " + html(money(last.value)) + " / " + html(shortTimestamp(last.at)) + " / plotting all " + html(cleanPoints.length + " point" + (cleanPoints.length === 1 ? "" : "s")) + (cleanPoints.some(function (point) { return point.synthetic; }) ? " / latest point is quote or broker-value derived, not a new broker ledger export" : "") + "</p>" : "")
       + "</article>";
   }
 
   function accountHistoryPoints(account) {
     return (state.history.accounts || []).filter(function (row) {
-      return rowAccountId(row) === account.id;
+      return accountKeyMatches(row, account);
     }).map(function (row) {
-      return {at: row.at || row.generatedAt || row.generated_at, value: numeric(row.equity != null ? row.equity : row.value)};
+      return {at: row.at || row.generatedAt || row.generated_at, value: numeric(row.equity != null ? row.equity : row.value), synthetic: false};
     }).filter(function (row) { return row.at && row.value != null; });
+  }
+
+  function latestAccountValueTimestamp(account) {
+    var candidates = [];
+    (account.positions || []).forEach(function (position) {
+      var stamp = latestHoldingValueTimestamp(account, position);
+      if (stamp) candidates.push(stamp);
+    });
+    [account.latestGeneratedAt, account.generatedAt, account.feedPublishedAt].forEach(function (value) {
+      if (value) candidates.push(value);
+    });
+    return latestTimestamp(candidates);
+  }
+
+  function latestHoldingValueTimestamp(account, position) {
+    var candidates = [];
+    [position.priceAsOf, position.quoteAsOf, account.latestGeneratedAt, account.generatedAt].forEach(function (value) {
+      if (value) candidates.push(value);
+    });
+    return latestTimestamp(candidates);
+  }
+
+  function latestTimestamp(values) {
+    return (values || []).filter(Boolean).sort(function (a, b) {
+      return timestampMs(b) - timestampMs(a);
+    })[0] || "";
   }
 
   function filterHistoryRange(points, range) {
@@ -2493,10 +2633,9 @@
     var holdingTarget = $("holding-value-charts");
     if (accountTarget) {
       accountTarget.innerHTML = state.accounts.map(function (account) {
-        var points = state.history.accounts.filter(function (row) { return row.accountId === account.id; });
-        if (!points.length && numeric(account.equity) != null) {
-          points = [{at: account.generatedAt || new Date().toISOString(), equity: account.equity}];
-        }
+        var points = accountChartPoints(account).map(function (point) {
+          return {at: point.at, equity: point.value, synthetic: point.synthetic};
+        });
         return lineChartCard(account.account, "Account value", points, "equity", "Account value");
       }).join("") || emptyItem("No account history", "Account value charts appear after private feed history syncs.");
     }
@@ -2511,17 +2650,53 @@
       var rows = Object.keys(latestByKey).map(function (key) { return latestByKey[key]; }).sort(function (a, b) { return b.value - a.value; }).slice(0, 8);
       holdingTarget.innerHTML = rows.map(function (row) {
         var points = state.history.positions.filter(function (point) {
-          return point.accountId === row.account.id && point.symbol === row.position.symbol;
+          return accountKeyMatches(point, row.account) && point.symbol === row.position.symbol;
         });
         points = deglitchHoldingHistory(points, row.position.value);
+        points = points.map(function (point) {
+          return {at: point.at || point.timestamp || point.generatedAt || point.generated_at, value: numeric(point.value), synthetic: false};
+        }).filter(function (point) {
+          return point.at && point.value != null;
+        });
+        points = withLatestHoldingPoint(points, row.account, row.position);
         if (!points.length && numeric(row.position.value) != null) {
-          points = [{at: row.account.generatedAt || new Date().toISOString(), value: row.position.value}];
+          var fallbackAt = latestHoldingValueTimestamp(row.account, row.position);
+          if (fallbackAt) points = [{at: fallbackAt, value: row.position.value, synthetic: true}];
         }
         var title = row.position.symbol + " / " + row.account.account;
-        var meta = (row.position.name || tickerNames[row.position.symbol] || row.position.symbol) + " holding value";
+        var meta = (row.position.name || tickerNames[row.position.symbol] || row.position.symbol) + " holding value" + (points.some(function (point) { return point.synthetic; }) ? " / latest point is quote-derived" : "");
         return lineChartCard(title, meta, points, "value", "Stock value", row.position.totalPnl);
       }).join("") || emptyItem("No holding history", "Stock holding charts appear after private feed history syncs.");
     }
+  }
+
+  function accountChartPoints(account) {
+    var points = accountHistoryPoints(account);
+    var currentValue = numeric(account.equity);
+    var latestAt = latestAccountValueTimestamp(account);
+    if (currentValue != null && latestAt) {
+      var last = points.slice().sort(function (a, b) {
+        return new Date(a.at).getTime() - new Date(b.at).getTime();
+      }).pop();
+      if (!last || timestampMs(latestAt) > timestampMs(last.at) || !isNearAmount(last.value, currentValue)) {
+        points.push({at: latestAt, value: currentValue, synthetic: true});
+      }
+    }
+    return points;
+  }
+
+  function withLatestHoldingPoint(points, account, position) {
+    var currentValue = numeric(position.value);
+    var latestAt = latestHoldingValueTimestamp(account, position);
+    if (currentValue == null || !latestAt) return points || [];
+    var rows = (points || []).slice();
+    var last = rows.slice().sort(function (a, b) {
+      return new Date(a.at).getTime() - new Date(b.at).getTime();
+    }).pop();
+    if (!last || timestampMs(latestAt) > timestampMs(last.at) || !isNearAmount(last.value, currentValue)) {
+      rows.push({at: latestAt, value: currentValue, synthetic: true});
+    }
+    return rows;
   }
 
   function deglitchHoldingHistory(points, currentValue) {
@@ -4028,7 +4203,11 @@
     });
     var holding = state.holdings.find(function (row) { return row.symbol === normalized; });
     if (holding && numeric(holding.price) != null) {
-      rows.push({at: new Date(), price: numeric(holding.price)});
+      var holdingAt = holding.priceAsOf || latestTimestamp(state.accounts.map(function (account) {
+        var position = (account.positions || []).find(function (row) { return row.symbol === normalized; });
+        return position ? latestHoldingValueTimestamp(account, position) : "";
+      }));
+      if (holdingAt) rows.push({at: new Date(holdingAt), price: numeric(holding.price)});
     }
     return rows;
   }
@@ -4077,7 +4256,8 @@
     var cleanPoints = (points || []).map(function (point) {
       return {
         at: point.at,
-        value: numeric(point[valueKey])
+        value: numeric(point[valueKey]),
+        synthetic: Boolean(point.synthetic)
       };
     }).filter(function (point) { return point.at && point.value != null; }).sort(function (a, b) {
       return new Date(a.at).getTime() - new Date(b.at).getTime();
@@ -4105,7 +4285,7 @@
     return "<article class=\"chart-card\">"
       + "<div class=\"stack-item-head\"><b>" + html(title) + "</b><span class=\"" + trendClass + "\">" + html(sub) + "</span></div>"
       + "<div class=\"chart-readout compact-readout\" data-chart-readout=\"" + html(chartId) + "\"><b>" + html(money(last.value)) + "</b><span class=\"" + html(trendClass) + "\">" + html(signedMoney(last.value - first.value, "$0.00") + " (" + signedPercent(first.value ? (last.value - first.value) / first.value * 100 : null) + ")") + "</span></div>"
-      + "<p>" + html(meta) + " / latest " + html(money(last.value)) + " / plotting all " + html(cleanPoints.length + " synced point" + (cleanPoints.length === 1 ? "" : "s")) + "</p>"
+      + "<p>" + html(meta) + " / latest " + html(money(last.value)) + " / plotting all " + html(cleanPoints.length + " point" + (cleanPoints.length === 1 ? "" : "s")) + (cleanPoints.some(function (point) { return point.synthetic; }) ? " / latest point is quote or broker-value derived" : "") + "</p>"
       + chart
       + "</article>";
   }
@@ -4857,10 +5037,11 @@
     state.holdings = aggregated.holdings;
     state.foreignHoldings = aggregated.foreign;
     var visibleAccountIds = visibleAccountIdSet(state.accounts);
+    var visibleAccountOwners = visibleAccountOwnerMap(state.accounts);
     var history = payload.history || {};
     state.history = {
-      accounts: developerVisibleRows(visibleRows(history.accounts || [])).filter(function (row) { return visibleAccountIds[rowAccountId(row)]; }),
-      positions: developerVisibleRows(visibleRows(history.positions || [])).filter(function (row) { return visibleAccountIds[rowAccountId(row)]; })
+      accounts: scopedHistoryRowsForVisibleAccounts(history.accounts || [], visibleAccountIds, visibleAccountOwners),
+      positions: scopedHistoryRowsForVisibleAccounts(history.positions || [], visibleAccountIds, visibleAccountOwners)
     };
     state.serverTrades = developerVisibleRows(scopedRowsForVisibleAccounts(payload.trades || [], visibleAccountIds));
     notifyOrderFeedChanges(state.serverTrades);
