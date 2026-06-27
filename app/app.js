@@ -1245,10 +1245,10 @@
     text(
       "margin-metric-copy",
       marginUsed()
-        ? "Negative cash is shown as margin used, with buying-power buffer shown in account details."
+        ? "Negative cash is shown as margin used; review broker maintenance and " + money(accountTotal("buyPower")) + " buying-power buffer before adding risk."
         : summary.estimatedValue
           ? summary.estimatedValue + " account value" + (summary.estimatedValue === 1 ? " is" : "s are") + " labeled as estimated until broker export confirms."
-          : "Negative cash and explicit margin exposure."
+          : "No negative-cash margin detected; buying power is " + money(accountTotal("buyPower")) + " across visible accounts."
     );
   }
 
@@ -2282,7 +2282,7 @@
       + (last ? "<div class=\"chart-readout\" data-chart-readout=\"" + html(chartId) + "\"><b>" + html(money(last.value)) + "</b><span class=\"" + html(trendClass) + "\">" + html(meta) + "</span></div>" : "")
       + (cleanPoints.length ? buildLineChart(cleanPoints, lineColor, "Account value", {interactive: true, compact: true, chartId: chartId, baseline: first ? first.value : null, range: range}) : emptyItem("No account history", "Private account history has not synced for this account yet."))
       + "<div class=\"time-tabs\" role=\"tablist\" aria-label=\"Account chart range\">" + tabs + "</div>"
-      + (last ? "<p class=\"chart-footnote\">Latest " + html(money(last.value)) + " / " + html(shortTimestamp(last.at)) + " / plotting all " + html(cleanPoints.length + " synced sample" + (cleanPoints.length === 1 ? "" : "s")) + "</p>" : "")
+      + (last ? "<p class=\"chart-footnote\">Latest " + html(money(last.value)) + " / " + html(shortTimestamp(last.at)) + " / plotting all " + html(cleanPoints.length + " synced point" + (cleanPoints.length === 1 ? "" : "s")) + "</p>" : "")
       + "</article>";
   }
 
@@ -4105,7 +4105,7 @@
     return "<article class=\"chart-card\">"
       + "<div class=\"stack-item-head\"><b>" + html(title) + "</b><span class=\"" + trendClass + "\">" + html(sub) + "</span></div>"
       + "<div class=\"chart-readout compact-readout\" data-chart-readout=\"" + html(chartId) + "\"><b>" + html(money(last.value)) + "</b><span class=\"" + html(trendClass) + "\">" + html(signedMoney(last.value - first.value, "$0.00") + " (" + signedPercent(first.value ? (last.value - first.value) / first.value * 100 : null) + ")") + "</span></div>"
-      + "<p>" + html(meta) + " / latest " + html(money(last.value)) + " / plotting all " + html(cleanPoints.length + " synced sample" + (cleanPoints.length === 1 ? "" : "s")) + "</p>"
+      + "<p>" + html(meta) + " / latest " + html(money(last.value)) + " / plotting all " + html(cleanPoints.length + " synced point" + (cleanPoints.length === 1 ? "" : "s")) + "</p>"
       + chart
       + "</article>";
   }
@@ -4322,7 +4322,7 @@
     indicator.classList.toggle("refreshing", Boolean(state.pullRefresh.refreshing));
     applyPullStretch(distance);
     if (textTarget) {
-      textTarget.textContent = label || (armed ? "Release to check latest account feed" : "Pull down to check latest account feed");
+      textTarget.textContent = label || (armed ? "Release to sync latest daemon cycle" : "Pull down to sync latest daemon cycle");
     }
   }
 
@@ -4339,7 +4339,7 @@
       state.pullRefresh.tracking = false;
       state.pullRefresh.armed = false;
       state.pullRefresh.distance = 0;
-      updatePullRefreshIndicator(0, false, "Pull down to check latest account feed");
+      updatePullRefreshIndicator(0, false, "Pull down to sync latest daemon cycle");
       applyPullStretch(0);
     }, delay || 0);
   }
@@ -4887,8 +4887,7 @@
     }).sort(function (a, b) { return b - a; })[0];
     if (!latest) return "Last account sync unavailable.";
     var staleCount = state.accounts.filter(function (account) { return account.sourceIsStale; }).length;
-    var scope = accountTimestamps.length ? "account sync" : "app feed";
-    return "Last " + scope + " at " + latest.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit", second: "2-digit"}) + " on " + latest.toLocaleDateString([], {month: "long", day: "numeric", year: "numeric"}) + (staleCount ? " / " + staleCount + " stale account" + (staleCount === 1 ? "" : "s") + "." : ".");
+    return "Last synced trader cycle at " + latest.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit", second: "2-digit"}) + " on " + latest.toLocaleDateString([], {month: "long", day: "numeric", year: "numeric"}) + (staleCount ? " / " + staleCount + " stale account" + (staleCount === 1 ? "" : "s") + "." : ".");
   }
 
   function accountSyncTimestamps(accounts) {
