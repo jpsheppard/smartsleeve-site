@@ -1191,6 +1191,10 @@
             value: 0,
             priceValue: 0,
             priceShares: 0,
+            quoteValue: 0,
+            quoteShares: 0,
+            quoteAsOf: null,
+            quoteSource: "",
             impliedPriceValue: 0,
             impliedPriceShares: 0,
             priceAsOf: null,
@@ -1215,6 +1219,16 @@
           grouped[symbol].impliedPriceValue += value;
           grouped[symbol].impliedPriceShares += shares;
           grouped[symbol].priceDerivedFromMarketValue = true;
+        }
+        if (position.quotePrice && shares) {
+          grouped[symbol].quoteValue += position.quotePrice * shares;
+          grouped[symbol].quoteShares += shares;
+        }
+        if (position.quoteAsOf && (!grouped[symbol].quoteAsOf || timestampMs(position.quoteAsOf) > timestampMs(grouped[symbol].quoteAsOf))) {
+          grouped[symbol].quoteAsOf = position.quoteAsOf;
+        }
+        if (position.quoteSource && grouped[symbol].quoteSource.indexOf(position.quoteSource) === -1) {
+          grouped[symbol].quoteSource = grouped[symbol].quoteSource ? grouped[symbol].quoteSource + ", " + position.quoteSource : position.quoteSource;
         }
         var priceAsOf = position.priceAsOf;
         if (priceAsOf && (!grouped[symbol].priceAsOf || timestampMs(priceAsOf) > timestampMs(grouped[symbol].priceAsOf))) {
@@ -1251,6 +1265,7 @@
     var holdings = Object.keys(grouped).map(function (symbol) {
       var row = grouped[symbol];
       row.price = row.priceShares ? row.priceValue / row.priceShares : (row.impliedPriceShares ? row.impliedPriceValue / row.impliedPriceShares : null);
+      row.quotePrice = row.quoteShares ? row.quoteValue / row.quoteShares : null;
       row.priceDerivedFromMarketValue = !row.priceShares && row.impliedPriceShares > 0;
       row.avgPrice = row.price;
       row.averageCost = row.costBasis != null && row.costShares ? row.costBasis / row.costShares : null;
@@ -1773,6 +1788,7 @@
     text("portfolio-scope", appEdition === "developer" ? "All visible SmartSleeve accounts in the current live feed." : "Accounts tied to " + (principalEmail || "the signed-in user") + ".");
     text("cash-value", money(accountTotal("cash")));
     text("buying-power", money(accountTotal("buyPower")));
+    renderBrokerAccuracyMetric();
     text("margin-usage", money(marginUsed()));
     text("margin-usage-note", marginUsageNote());
     setMetric("daily-pl", dailyPnl, function (value) { return signedMoney(value); }, "Needs daily P/L sync");
@@ -1890,6 +1906,53 @@
     return "No negative-cash margin detected; buying power is " + money(buyPower) + " across visible accounts.";
   }
 
+  function renderBrokerAccuracyMetric() {
+    var value = $("broker-accuracy");
+    var note = $("broker-accuracy-note");
+    if (!value || !note) return;
+    var stale = state.accounts.filter(function (account) { return account.sourceIsStale; });
+    var deltas = state.accounts.filter(function (account) {
+      var delta = numeric(account.accountValueDelta);
+      return delta != null && Math.abs(delta) >= 0.005;
+    });
+    var diagnostics = state.accounts.filter(function (account) { return accountDiagnosticProblem(account); });
+    var missingBrokerValues = state.accounts.filter(function (account) {
+      return /robinhood/i.test(account.broker || "") && numeric(account.brokerReportedEquity) == null;
+    });
+    var totalGaps = stale.length + deltas.length + diagnostics.length + missingBrokerValues.length;
+    value.classList.remove("positive", "negative", "neutral", "needs-sync");
+    if (!state.accounts.length) {
+      value.classList.add("needs-sync");
+      value.textContent = "Needs feed";
+      note.textContent = "No account rows are visible in this app scope.";
+      return;
+    }
+    if (!totalGaps) {
+      value.classList.add("positive");
+      value.textContent = "Broker-matched";
+      note.textContent = state.accounts.length + " account" + (state.accounts.length === 1 ? "" : "s") + " have current broker values in the app feed.";
+      return;
+    }
+    value.classList.add("needs-sync");
+    value.textContent = totalGaps + " gap" + (totalGaps === 1 ? "" : "s");
+    var parts = [];
+    if (deltas.length) parts.push(deltas.length + " reconciliation delta" + (deltas.length === 1 ? "" : "s") + " (" + brokerDeltaSummary(deltas) + ")");
+    if (stale.length) parts.push(stale.length + " stale export" + (stale.length === 1 ? "" : "s") + " (" + accountNameSummary(stale) + ")");
+    if (diagnostics.length) parts.push(diagnostics.length + " daemon diagnostic" + (diagnostics.length === 1 ? "" : "s") + " (" + accountNameSummary(diagnostics) + ")");
+    if (missingBrokerValues.length) parts.push(missingBrokerValues.length + " RH account" + (missingBrokerValues.length === 1 ? "" : "s") + " missing broker value");
+    note.textContent = parts.join("; ") + ".";
+  }
+
+  function accountNameSummary(accounts) {
+    return accounts.slice(0, 3).map(function (account) { return account.account; }).join(", ") + (accounts.length > 3 ? ", +" + (accounts.length - 3) : "");
+  }
+
+  function brokerDeltaSummary(accounts) {
+    return accounts.slice(0, 2).map(function (account) {
+      return account.account + " " + signedMoney(account.accountValueDelta);
+    }).join(", ") + (accounts.length > 2 ? ", +" + (accounts.length - 2) : "");
+  }
+
   function renderAccountDirectory() {
     var target = $("accounts-directory");
     if (!target) return;
@@ -1947,8 +2010,9 @@
     target.innerHTML = [
       "<article class=\"panel-card account-detail-summary\"><div class=\"card-head\"><div><span>Broker values</span><h2>Cash and margin</h2></div><span class=\"" + brokerStatusClass + "\">" + html(account.broker) + "</span></div><div class=\"account-detail-metrics\">"
         + detailMetric("Account value", money(account.equity), accountValueSourceCopy(account))
-        + detailMetric("Market data as-of", accountMarketDataLabel(account), "Broker or quote timestamp shown in US Eastern; app refresh time is separate.", accountMarketDataIsMissing(account) ? "warning" : "")
-        + detailMetric("Last sync", accountFreshnessLabel(account), account.sourceIsStale ? "Broker export is stale; refresh the daemon/account analytics before trading from this view." : "Broker/account export is inside the expected sync window.", account.sourceIsStale ? "warning" : "")
+        + brokerGroundTruthMetric(account)
+        + detailMetric("Market data as-of", accountMarketDataLabel(account), "Latest broker mark or quote timestamp shown in ET; app refresh time is separate.", accountMarketDataIsMissing(account) ? "warning" : "")
+        + detailMetric("Last app sync", accountFreshnessLabel(account), account.sourceIsStale ? "Broker export is stale; refresh the daemon/account analytics before trading from this view." : "Broker/account export is inside the expected sync window.", account.sourceIsStale ? "warning" : "")
         + detailMetric("Chart history", accountHistoryRangeLabel(account), accountHistoryCoverage(account), accountHistoryIsThin(account) ? "warning" : "")
         + detailMetric("Holdings total", money(accountPositionValue(account)), "Sum of visible synced positions in this app feed.", accountNeedsBrokerReconciliation(account) ? "warning" : "")
         + detailMetric("Broker app match", brokerReconciliationLabel(account), brokerReconciliationBody(account), accountNeedsBrokerReconciliation(account) ? "warning" : "")
@@ -1996,10 +2060,10 @@
       + rows.map(function (position) {
         var points = positionPriceHistoryPoints(account, position);
         var title = position.symbol + " / " + account.account;
-        var marketTime = shortTimestamp(position.quoteAsOf || position.priceAsOf || account.quoteAsOf || account.generatedAt);
+        var marketTime = shortTimestamp(positionMarketDataTimestamp(position) || accountMarketDataTimestamp(account));
         var meta = (position.name || tickerNames[position.symbol] || position.symbol)
           + " / " + numberText(position.shares, 6) + " sh / " + money(position.value)
-          + (marketTime ? " / market data as of " + marketTime : "");
+          + (marketTime ? " / market data as-of " + marketTime : "");
         return lineChartCard(title, meta, points, "price", "Stock price", position.totalPnl);
       }).join("")
       + "</div></article>";
@@ -2149,7 +2213,7 @@
       + (last ? "<div class=\"chart-readout\" data-chart-readout=\"" + html(chartId) + "\"><b>" + html(money(last.value)) + "</b><span class=\"" + html(trendClass) + "\">" + html(meta) + "</span></div>" : "")
       + (cleanPoints.length ? buildLineChart(cleanPoints, lineColor, "Account value", {interactive: true, compact: true, chartId: chartId, baseline: first ? first.value : null, range: range}) : emptyItem("No account history", "Private account history has not synced for this account yet."))
       + "<div class=\"time-tabs\" role=\"tablist\" aria-label=\"Account chart range\">" + tabs + "</div>"
-      + (last ? "<p class=\"chart-footnote\">Latest " + html(money(last.value)) + " / market data as-of " + html(shortTimestamp(last.at)) + " US Eastern / " + html(accountValueChartAuthority(account)) + " / plotting all " + html(cleanPoints.length + " synced point" + (cleanPoints.length === 1 ? "" : "s")) + (account.sourceIsStale ? " / stale broker export; awaiting fresh daemon sync" : "") + "</p>" : "")
+      + (last ? "<p class=\"chart-footnote\">Latest " + html(money(last.value)) + " / value timestamp " + html(shortTimestamp(last.at)) + " / " + html(accountValueChartAuthority(account)) + " / plotting all " + html(cleanPoints.length + " synced point" + (cleanPoints.length === 1 ? "" : "s")) + (account.sourceIsStale ? " / stale broker export; awaiting fresh daemon sync" : "") + "</p>" : "")
       + "</article>";
   }
 
@@ -2228,29 +2292,31 @@
   }
 
   function accountMarketDataTimestamp(account) {
-    var direct = [
+    var quoteTimes = (account.positions || []).map(function (position) {
+      return position.quoteAsOf || position.quote_as_of || position.marketDataAsOf || position.market_data_as_of;
+    }).filter(Boolean);
+    if (quoteTimes.length) {
+      return latestTimestamp(quoteTimes);
+    }
+    var brokerMarkTimes = (account.positions || []).map(function (position) {
+      return position.priceAsOf || position.price_as_of;
+    }).filter(Boolean);
+    if (brokerMarkTimes.length) {
+      return latestTimestamp(brokerMarkTimes);
+    }
+    return latestTimestamp([
       account.quoteAsOf,
       account.quote_as_of,
       account.sourceAsOf,
       account.source_as_of,
-      account.latestGeneratedAt,
-      account.latest_generated_at,
-      account.generatedAt,
-      account.generated_at,
-      account.updatedAt,
-      account.updated_at,
       account.lastReconciledAt,
       account.last_reconciled_at
-    ].filter(Boolean);
-    var positionTimes = (account.positions || []).map(function (position) {
-      return position.quoteAsOf || position.quote_as_of || position.priceAsOf || position.price_as_of || position.marketDataAsOf || position.market_data_as_of || position.generatedAt || position.generated_at || position.updatedAt || position.updated_at;
-    }).filter(Boolean);
-    return latestTimestamp(direct.concat(positionTimes));
+    ].filter(Boolean));
   }
 
   function accountMarketDataLabel(account) {
     var timestamp = accountMarketDataTimestamp(account);
-    return timestamp ? shortTimestamp(timestamp) + " US Eastern" : "Needs market timestamp";
+    return timestamp ? shortTimestamp(timestamp) : "Needs market timestamp";
   }
 
   function accountMarketDataIsMissing(account) {
@@ -2305,13 +2371,16 @@
 
   function positionMarketDataTimestamp(position) {
     if (!position) return "";
-    return latestTimestamp([
+    var quoteTime = latestTimestamp([
       position.quoteAsOf,
       position.quote_as_of,
+      position.marketDataAsOf,
+      position.market_data_as_of
+    ]);
+    if (quoteTime) return quoteTime;
+    return latestTimestamp([
       position.priceAsOf,
       position.price_as_of,
-      position.marketDataAsOf,
-      position.market_data_as_of,
       position.generatedAt,
       position.generated_at,
       position.updatedAt,
@@ -2323,6 +2392,8 @@
     var broker = String(account.broker || "").toLowerCase();
     var source = String(account.portfolioSource || account.portfolio_source || "").toLowerCase();
     var status = String(account.status || "").toLowerCase();
+    var delta = numeric(account.accountValueDelta);
+    if (delta != null && Math.abs(delta) >= 0.005) return true;
     if (broker.indexOf("robinhood") === -1) return false;
     return Boolean(
       account.sourceIsStale
@@ -2337,6 +2408,8 @@
 
   function brokerReconciliationLabel(account) {
     if (!accountNeedsBrokerReconciliation(account)) return "Broker-confirmed";
+    var delta = numeric(account.accountValueDelta);
+    if (delta != null && Math.abs(delta) >= 0.005) return "Delta " + signedMoney(delta);
     var source = String(account.portfolioSource || account.portfolio_source || "").toLowerCase();
     if (source.indexOf("reconstructed") !== -1) return "Estimated from shares";
     if (account.sourceIsStale) return "Needs RH refresh";
@@ -2347,6 +2420,10 @@
     if (!accountNeedsBrokerReconciliation(account)) {
       return "Current app row is using a broker-confirmed account export.";
     }
+    var delta = numeric(account.accountValueDelta);
+    if (delta != null && Math.abs(delta) >= 0.005) {
+      return "App-feed broker reconciliation reports account value minus holdings/cash delta of " + signedMoney(delta) + ". Treat the broker app/account export as ground truth until the next account-scoped sync reconciles to the cent.";
+    }
     var source = String(account.portfolioSource || account.portfolio_source || "").toLowerCase();
     if (source.indexOf("reconstructed") !== -1) {
       return "Displayed value is reconstructed from last sane shares plus market marks because the latest Robinhood export looked cross-account contaminated.";
@@ -2355,6 +2432,21 @@
       return "Displayed value comes from an older Robinhood export and may differ from the live phone app until the daemon syncs a fresh account-scoped export.";
     }
     return "Displayed value needs a fresh account-scoped broker export before treating it as exact.";
+  }
+
+  function brokerGroundTruthMetric(account) {
+    var brokerValue = numeric(account.brokerReportedEquity != null ? account.brokerReportedEquity : account.brokerEquity);
+    var broker = displayLabel(account.broker, "Broker");
+    if (brokerValue == null) {
+      var warning = /robinhood/i.test(broker) ? "warning" : "";
+      return detailMetric("Broker ground truth", "Needs broker value", broker + " did not provide a current account-value field in this app feed. Refresh the account-scoped broker sync before treating the displayed value as exact.", warning);
+    }
+    var delta = numeric(account.accountValueDelta);
+    var body = broker + " account value from the app feed, shown to the nearest cent.";
+    if (delta != null) {
+      body += " Reconciliation delta versus holdings plus cash: " + signedMoney(delta) + ".";
+    }
+    return detailMetric("Broker ground truth", money(brokerValue), body, delta != null && Math.abs(delta) >= 0.005 ? "warning" : "");
   }
 
   function accountEquationMetric(account) {
@@ -2428,8 +2520,9 @@
   function priceMarkCell(position) {
     var source = priceSourceLabel(position.priceSource);
     var asOf = shortTimestamp(position.priceAsOf);
-    var quote = position.quotePrice == null ? "" : " | quote " + money(position.quotePrice);
-    return "<b>" + html(money(position.price)) + "</b><small>" + html(source + (asOf ? " / " + asOf : "") + quote) + "</small>";
+    var quoteAsOf = shortTimestamp(position.quoteAsOf);
+    var quote = position.quotePrice == null ? "" : " | " + priceSourceLabel(position.quoteSource || "quote") + " " + money(position.quotePrice) + (quoteAsOf ? " as-of " + quoteAsOf : "");
+    return "<b>" + html(money(position.price)) + "</b><small>" + html(source + (asOf ? " as-of " + asOf : "") + quote) + "</small>";
   }
 
   function priceSourceLabel(value) {
@@ -2545,7 +2638,7 @@
           points = [{at: holdingAsOf, value: row.position.value}];
         }
         var title = row.position.symbol + " / " + row.account.account;
-        var meta = (row.position.name || tickerNames[row.position.symbol] || row.position.symbol) + " holding value / market data as-of " + (holdingAsOf ? shortTimestamp(holdingAsOf) + " US Eastern" : "needs timestamp");
+        var meta = (row.position.name || tickerNames[row.position.symbol] || row.position.symbol) + " holding value / market data as-of " + (holdingAsOf ? shortTimestamp(holdingAsOf) : "needs timestamp");
         return lineChartCard(title, meta, points, "value", "Stock value", row.position.totalPnl);
       }).join("") || emptyItem("No holding history", "Stock holding charts appear after private feed history syncs.");
     }
@@ -2825,6 +2918,7 @@
       var holdingBadge = holdingHasSage(holding) ? sageBadge() : "";
       return "<tr>"
         + cell("Ticker", "<span class=\"ticker-lockup\">" + holdingBadge + "<span><b>" + html(holding.symbol) + "</b><small>" + html(holding.name) + "</small></span></span>")
+        + cell("Chart", "<button type=\"button\" class=\"icon-text-button\" data-holding-chart=\"" + html(holding.symbol) + "\">Open chart</button>")
         + cell("Company", html(holding.name))
         + cell("Shares", numberText(holding.shares, 6))
         + cell("Stock price", holdingPriceCell(holding))
@@ -2841,13 +2935,35 @@
     }).join("") || "<tr>" + cell("Holdings", "No holdings synced") + "</tr>";
   }
 
+  function accountIdForHoldingChart(symbol) {
+    var normalized = String(symbol || "").toUpperCase();
+    var bestAccount = null;
+    var bestValue = -Infinity;
+    state.accounts.forEach(function (account) {
+      (account.positions || []).forEach(function (position) {
+        if (String(position.symbol || "").toUpperCase() !== normalized) return;
+        var value = numeric(position.value) || 0;
+        if (!bestAccount || value > bestValue) {
+          bestAccount = account;
+          bestValue = value;
+        }
+      });
+    });
+    return bestAccount ? String(bestAccount.id) : "";
+  }
+
   function holdingPriceCell(holding) {
     var price = numeric(holding.price);
     if (price == null) {
       return "<span class=\"needs-sync\">Needs quote sync</span>";
     }
     var meta = priceFreshnessLabel(holding);
-    return html(money(price)) + (meta ? "<small>" + html(meta) + "</small>" : "");
+    var quote = numeric(holding.quotePrice);
+    var quoteMeta = quote == null ? "" : "<small>" + html("quote " + money(quote) + " / " + priceFreshnessLabel({
+      priceSource: holding.quoteSource || "quote",
+      priceAsOf: holding.quoteAsOf
+    })) + "</small>";
+    return html(money(price)) + (meta ? "<small>" + html(meta) + "</small>" : "") + quoteMeta;
   }
 
   function priceFreshnessLabel(holding) {
@@ -2860,12 +2976,12 @@
     } else {
       parts.push("broker mark");
     }
-    var asOf = holding.priceAsOf;
+    var asOf = holding.priceAsOf || holding.quoteAsOf;
     var ageMs = Date.now() - timestampMs(asOf);
     if (asOf && Number.isFinite(ageMs) && ageMs > 15 * 60 * 1000) {
       parts.push("stale " + ageLabel(ageMs));
     } else if (asOf) {
-      parts.push("as of " + shortTime(asOf));
+      parts.push("as-of " + shortTime(asOf));
     }
     return parts.join(" / ");
   }
@@ -4673,12 +4789,27 @@
         state.selectedTradeId = tradeButton.getAttribute("data-server-trade-id");
         renderServerTrades();
       }
+      var holdingChartButton = event.target.closest("[data-holding-chart]");
+      if (holdingChartButton) {
+        var accountId = accountIdForHoldingChart(holdingChartButton.getAttribute("data-holding-chart"));
+        if (accountId) {
+          state.selectedDetailAccountId = accountId;
+          renderAccountDetail();
+          handleNav("account-detail");
+          history.replaceState(null, "", "#account-detail");
+          toast("Opened the account chart for " + holdingChartButton.getAttribute("data-holding-chart") + ".");
+        } else {
+          toast("No account chart is available for that holding yet.");
+        }
+        return;
+      }
       var accountButton = event.target.closest("[data-account-detail]");
       if (accountButton) {
         state.selectedDetailAccountId = accountButton.getAttribute("data-account-detail");
         renderAccountDetail();
         handleNav("account-detail");
         history.replaceState(null, "", "#account-detail");
+        return;
       }
       var accountChartRange = event.target.closest("[data-account-chart-range]");
       if (accountChartRange) {

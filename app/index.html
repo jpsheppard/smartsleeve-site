@@ -15,7 +15,7 @@
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
   <link rel="manifest" href="/site.webmanifest">
-  <link rel="stylesheet" href="/app/styles.css?v=20260628-market-asof">
+  <link rel="stylesheet" href="/app/styles.css?v=20260628-broker-groundtruth-dashboard">
 </head>
 <body>
   <div class="app-shell">
@@ -88,6 +88,11 @@
             <span>Buying power</span>
             <strong id="buying-power">Loading...</strong>
             <p>Available buying power where brokers report it.</p>
+          </article>
+          <article class="metric-card">
+            <span>Broker accuracy</span>
+            <strong id="broker-accuracy">Checking</strong>
+            <p id="broker-accuracy-note">Ground-truth broker values and stale exports.</p>
           </article>
           <article class="metric-card">
             <span>Margin usage</span>
@@ -231,6 +236,7 @@
               <thead>
                 <tr>
                   <th>Ticker</th>
+                  <th>Chart</th>
                   <th>Company</th>
                   <th>Shares</th>
                   <th>Stock price</th>
@@ -846,6 +852,6 @@
   </nav>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="/app/app.js?v=20260628-market-asof" defer></script>
+  <script src="/app/app.js?v=20260628-broker-groundtruth-dashboard" defer></script>
 </body>
 </html>

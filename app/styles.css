@@ -842,6 +842,26 @@ button.primary {
   outline: none;
 }
 
+.icon-text-button {
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid rgba(34, 211, 238, 0.22);
+  border-radius: 7px;
+  color: var(--cyan);
+  background: rgba(34, 211, 238, 0.08);
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.icon-text-button:hover,
+.icon-text-button:focus {
+  border-color: rgba(57, 255, 20, 0.42);
+  color: var(--green);
+  outline: none;
+}
+
 .wide-card {
   grid-column: 1 / -1;
 }
