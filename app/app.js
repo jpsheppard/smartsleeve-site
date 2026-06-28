@@ -2136,8 +2136,21 @@
       + (last ? "<div class=\"chart-readout\" data-chart-readout=\"" + html(chartId) + "\"><b>" + html(money(last.value)) + "</b><span class=\"" + html(trendClass) + "\">" + html(meta) + "</span></div>" : "")
       + (cleanPoints.length ? buildLineChart(cleanPoints, lineColor, "Account value", {interactive: true, compact: true, chartId: chartId, baseline: first ? first.value : null, range: range}) : emptyItem("No account history", "Private account history has not synced for this account yet."))
       + "<div class=\"time-tabs\" role=\"tablist\" aria-label=\"Account chart range\">" + tabs + "</div>"
-      + (last ? "<p class=\"chart-footnote\">Latest " + html(money(last.value)) + " / " + html(shortTimestamp(last.at)) + " / plotting all " + html(cleanPoints.length + " synced point" + (cleanPoints.length === 1 ? "" : "s")) + "</p>" : "")
+      + (last ? "<p class=\"chart-footnote\">Latest " + html(money(last.value)) + " / " + html(shortTimestamp(last.at)) + " / " + html(accountValueChartAuthority(account)) + " / plotting all " + html(cleanPoints.length + " synced point" + (cleanPoints.length === 1 ? "" : "s")) + "</p>" : "")
       + "</article>";
+  }
+
+  function accountValueChartAuthority(account) {
+    if (account.accountValueAuthority) {
+      return account.accountValueAuthority;
+    }
+    if (account.accountValueSource === "broker_reported_equity" || account.equitySource === "broker_reported_equity") {
+      return "broker-reported account value";
+    }
+    if (account.equitySource === "positions_plus_cash_estimate") {
+      return "positions plus cash estimate";
+    }
+    return "account value source visible in broker values";
   }
 
   function accountHistoryPoints(account) {
