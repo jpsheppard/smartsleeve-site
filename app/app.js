@@ -928,7 +928,14 @@
     var brokerReportedEquity = firstNumeric([account.brokerReportedEquity, account.broker_reported_equity, account.brokerEquity, account.broker_equity, equity]);
     var holdingsValue = firstNumeric([account.holdingsValue, account.holdings_value, account.positionValue, account.position_value, positionValue]);
     var accountValueDelta = firstNumeric([account.accountValueDelta, account.account_value_delta]);
+    var isRobinhoodAccount = /robinhood/i.test(brokerName);
     var equitySource = "broker";
+    if (isRobinhoodAccount && brokerEquity != null) {
+      equity = brokerEquity;
+      accountValueSource = "broker_reported_equity";
+      accountValueAuthority = accountValueAuthority || "Robinhood API equity (ground truth)";
+      equitySource = "broker_reported_equity";
+    }
     if (brokerEquity != null && Math.abs(brokerEquity) >= 0.005 && (equity == null || Math.abs(brokerEquity - equity) > Math.max(100, Math.abs(brokerEquity) * 0.01))) {
       equity = brokerEquity;
       equitySource = "broker_equity";
@@ -2151,6 +2158,9 @@
       return account.accountValueAuthority;
     }
     if (account.accountValueSource === "broker_reported_equity" || account.equitySource === "broker_reported_equity") {
+      if (/robinhood/i.test(account.broker || "")) {
+        return "Robinhood API equity (ground truth)";
+      }
       return "broker-reported account value";
     }
     if (account.equitySource === "positions_plus_cash_estimate") {
@@ -2171,11 +2181,19 @@
       }
       return {at: row.at || row.generatedAt || row.generated_at, value: numeric(row.equity != null ? row.equity : row.value), source: source};
     }).filter(function (row) { return row.at && row.value != null; });
-    if (account.accountValueSource === "broker_reported_equity" && numeric(account.equity) != null && account.generatedAt) {
+    var latestBrokerEquity = /robinhood/i.test(account.broker || "")
+      ? firstNumeric([account.brokerReportedEquity, account.brokerEquity, account.equity])
+      : null;
+    var latestAccountValue = latestBrokerEquity != null && account.generatedAt
+      ? latestBrokerEquity
+      : account.accountValueSource === "broker_reported_equity" && numeric(account.equity) != null && account.generatedAt
+        ? account.equity
+        : null;
+    if (latestAccountValue != null && account.generatedAt) {
       var currentTime = new Date(account.generatedAt).getTime();
       var hasCurrent = rows.some(function (row) { return new Date(row.at).getTime() === currentTime; });
       if (!hasCurrent) {
-        rows.push({at: account.generatedAt, value: account.equity, source: "broker_reported_equity"});
+        rows.push({at: account.generatedAt, value: latestAccountValue, source: "broker_reported_equity"});
       }
     }
     return rows;
