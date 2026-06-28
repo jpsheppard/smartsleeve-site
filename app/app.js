@@ -1766,7 +1766,7 @@
     text("portfolio-scope", appEdition === "developer" ? "All visible SmartSleeve accounts in the current live feed." : "Accounts tied to " + (principalEmail || "the signed-in user") + ".");
     text("cash-value", money(accountTotal("cash")));
     text("buying-power", money(accountTotal("buyPower")));
-    text("margin-usage", marginUsed() ? money(marginUsed()) : "$0");
+    text("margin-usage", money(marginUsed()));
     text("margin-usage-note", marginUsageNote());
     setMetric("daily-pl", dailyPnl, function (value) { return signedMoney(value); }, "Needs daily P/L sync");
     setMetric("total-pl", totalPnl, function (value) { return signedMoney(value); }, "Needs basis sync");
@@ -1940,7 +1940,12 @@
     target.innerHTML = [
       "<article class=\"panel-card account-detail-summary\"><div class=\"card-head\"><div><span>Broker values</span><h2>Cash and margin</h2></div><span class=\"" + brokerStatusClass + "\">" + html(account.broker) + "</span></div><div class=\"account-detail-metrics\">"
         + detailMetric("Account value", money(account.equity), accountValueSourceCopy(account))
+        + detailMetric("Market data as-of", accountMarketDataLabel(account), "Broker or quote timestamp shown in US Eastern; app refresh time is separate.", accountMarketDataIsMissing(account) ? "warning" : "")
         + detailMetric("Last sync", accountFreshnessLabel(account), account.sourceIsStale ? "Broker export is stale; refresh the daemon/account analytics before trading from this view." : "Broker/account export is inside the expected sync window.", account.sourceIsStale ? "warning" : "")
+        + detailMetric("Chart history", accountHistoryRangeLabel(account), accountHistoryCoverage(account), accountHistoryIsThin(account) ? "warning" : "")
+        + detailMetric("Holdings total", money(accountPositionValue(account)), "Sum of visible synced positions in this app feed.", accountNeedsBrokerReconciliation(account) ? "warning" : "")
+        + detailMetric("Broker app match", brokerReconciliationLabel(account), brokerReconciliationBody(account), accountNeedsBrokerReconciliation(account) ? "warning" : "")
+        + accountEquationMetric(account)
         + detailMetric("Cash / margin", cashMarginMeta(account), marginPlainText(account), numeric(account.cash) < 0 ? "warning" : "")
         + detailMetric("Buying power", money(account.buyPower), "Buying power can be zero even when account value is positive.")
         + (emptyAccountWarning ? stackItem("Live holdings missing", "Awaiting broker export", "This configured account has no synced positions or equity in the current app feed, so do not treat it as a true zero-balance account.") : "")
@@ -2111,8 +2116,9 @@
     var range = state.selectedAccountChartRange || "1D";
     var allPoints = accountHistoryPoints(account);
     var points = filterHistoryRange(allPoints, range);
-    if (!points.length && numeric(account.equity) != null) {
-      points = [{at: account.generatedAt || new Date().toISOString(), value: account.equity}];
+    var accountAsOf = accountMarketDataTimestamp(account);
+    if (!points.length && numeric(account.equity) != null && accountAsOf) {
+      points = [{at: accountAsOf, value: account.equity}];
     }
     var cleanPoints = points.map(function (point) {
       return {at: point.at, value: numeric(point.value)};
@@ -2136,7 +2142,7 @@
       + (last ? "<div class=\"chart-readout\" data-chart-readout=\"" + html(chartId) + "\"><b>" + html(money(last.value)) + "</b><span class=\"" + html(trendClass) + "\">" + html(meta) + "</span></div>" : "")
       + (cleanPoints.length ? buildLineChart(cleanPoints, lineColor, "Account value", {interactive: true, compact: true, chartId: chartId, baseline: first ? first.value : null, range: range}) : emptyItem("No account history", "Private account history has not synced for this account yet."))
       + "<div class=\"time-tabs\" role=\"tablist\" aria-label=\"Account chart range\">" + tabs + "</div>"
-      + (last ? "<p class=\"chart-footnote\">Latest " + html(money(last.value)) + " / " + html(shortTimestamp(last.at)) + " / " + html(accountValueChartAuthority(account)) + " / plotting all " + html(cleanPoints.length + " synced point" + (cleanPoints.length === 1 ? "" : "s")) + "</p>" : "")
+      + (last ? "<p class=\"chart-footnote\">Latest " + html(money(last.value)) + " / market data as-of " + html(shortTimestamp(last.at)) + " US Eastern / " + html(accountValueChartAuthority(account)) + " / plotting all " + html(cleanPoints.length + " synced point" + (cleanPoints.length === 1 ? "" : "s")) + (account.sourceIsStale ? " / stale broker export; awaiting fresh daemon sync" : "") + "</p>" : "")
       + "</article>";
   }
 
@@ -2203,6 +2209,36 @@
     return account.generatedAt ? shortTimestamp(account.generatedAt) : "needs sync";
   }
 
+  function accountMarketDataTimestamp(account) {
+    var direct = [
+      account.quoteAsOf,
+      account.quote_as_of,
+      account.sourceAsOf,
+      account.source_as_of,
+      account.latestGeneratedAt,
+      account.latest_generated_at,
+      account.generatedAt,
+      account.generated_at,
+      account.updatedAt,
+      account.updated_at,
+      account.lastReconciledAt,
+      account.last_reconciled_at
+    ].filter(Boolean);
+    var positionTimes = (account.positions || []).map(function (position) {
+      return position.quoteAsOf || position.quote_as_of || position.priceAsOf || position.price_as_of || position.marketDataAsOf || position.market_data_as_of || position.generatedAt || position.generated_at || position.updatedAt || position.updated_at;
+    }).filter(Boolean);
+    return latestTimestamp(direct.concat(positionTimes));
+  }
+
+  function accountMarketDataLabel(account) {
+    var timestamp = accountMarketDataTimestamp(account);
+    return timestamp ? shortTimestamp(timestamp) + " US Eastern" : "Needs market timestamp";
+  }
+
+  function accountMarketDataIsMissing(account) {
+    return !accountMarketDataTimestamp(account);
+  }
+
   function accountStatusLabel(account) {
     var status = account.status || "synced";
     var problem = accountDiagnosticProblem(account);
@@ -2241,6 +2277,111 @@
     var textValue = String(value || "").replace(/\s+/g, " ").trim();
     if (textValue.length <= 150) return textValue;
     return textValue.slice(0, 147) + "...";
+  }
+
+  function accountPositionValue(account) {
+    return (account.positions || []).reduce(function (sum, position) {
+      return sum + (numeric(position.value) || 0);
+    }, 0);
+  }
+
+  function positionMarketDataTimestamp(position) {
+    if (!position) return "";
+    return latestTimestamp([
+      position.quoteAsOf,
+      position.quote_as_of,
+      position.priceAsOf,
+      position.price_as_of,
+      position.marketDataAsOf,
+      position.market_data_as_of,
+      position.generatedAt,
+      position.generated_at,
+      position.updatedAt,
+      position.updated_at
+    ]);
+  }
+
+  function accountNeedsBrokerReconciliation(account) {
+    var broker = String(account.broker || "").toLowerCase();
+    var source = String(account.portfolioSource || account.portfolio_source || "").toLowerCase();
+    var status = String(account.status || "").toLowerCase();
+    if (broker.indexOf("robinhood") === -1) return false;
+    return Boolean(
+      account.sourceIsStale
+      || source.indexOf("reconstructed") !== -1
+      || source.indexOf("rejected") !== -1
+      || status.indexOf("rejected") !== -1
+      || status.indexOf("stale") !== -1
+      || status.indexOf("cross-account") !== -1
+      || status.indexOf("refresh needed") !== -1
+    );
+  }
+
+  function brokerReconciliationLabel(account) {
+    if (!accountNeedsBrokerReconciliation(account)) return "Broker-confirmed";
+    var source = String(account.portfolioSource || account.portfolio_source || "").toLowerCase();
+    if (source.indexOf("reconstructed") !== -1) return "Estimated from shares";
+    if (account.sourceIsStale) return "Needs RH refresh";
+    return "Needs broker check";
+  }
+
+  function brokerReconciliationBody(account) {
+    if (!accountNeedsBrokerReconciliation(account)) {
+      return "Current app row is using a broker-confirmed account export.";
+    }
+    var source = String(account.portfolioSource || account.portfolio_source || "").toLowerCase();
+    if (source.indexOf("reconstructed") !== -1) {
+      return "Displayed value is reconstructed from last sane shares plus market marks because the latest Robinhood export looked cross-account contaminated.";
+    }
+    if (account.sourceIsStale) {
+      return "Displayed value comes from an older Robinhood export and may differ from the live phone app until the daemon syncs a fresh account-scoped export.";
+    }
+    return "Displayed value needs a fresh account-scoped broker export before treating it as exact.";
+  }
+
+  function accountEquationMetric(account) {
+    var equity = numeric(account.equity);
+    var positionValue = accountPositionValue(account);
+    var cash = numeric(account.cash) || 0;
+    if (equity == null) {
+      return detailMetric("Accounting equation", "Needs broker value", "Cannot reconcile holdings plus cash until account value syncs.", "warning");
+    }
+    var delta = equity - (positionValue + cash);
+    var status = Math.abs(delta) < 0.005 ? "Matches to cent" : "Delta " + signedMoney(delta, "$0.00");
+    var body = "Account value " + money(equity) + " - holdings " + money(positionValue) + " - cash " + money(cash) + " = " + signedMoney(delta, "$0.00") + ". Broker app remains ground truth when available.";
+    return detailMetric("Accounting equation", status, body, Math.abs(delta) >= 0.005 ? "warning" : "");
+  }
+
+  function accountHistoryCoverage(account) {
+    var points = accountHistoryPoints(account).sort(function (a, b) {
+      return new Date(a.at).getTime() - new Date(b.at).getTime();
+    });
+    if (!points.length) return "No private account-history points synced yet.";
+    var first = points[0];
+    var last = points[points.length - 1];
+    return points.length + " history point" + (points.length === 1 ? "" : "s") + " from " + shortTimestamp(first.at) + " to " + shortTimestamp(last.at) + ". This is the visible app-feed history window, not guaranteed broker-account inception history.";
+  }
+
+  function accountHistoryRangeLabel(account) {
+    var points = accountHistoryPoints(account).sort(function (a, b) {
+      return new Date(a.at).getTime() - new Date(b.at).getTime();
+    });
+    if (!points.length) return "No chart points";
+    var first = points[0];
+    var last = points[points.length - 1];
+    if (points.length === 1) return shortTimestamp(last.at);
+    return shortTimestamp(first.at) + " -> " + shortTimestamp(last.at);
+  }
+
+  function accountHistoryIsThin(account) {
+    var points = accountHistoryPoints(account).sort(function (a, b) {
+      return new Date(a.at).getTime() - new Date(b.at).getTime();
+    });
+    if (points.length < 2) return true;
+    var first = new Date(points[0].at).getTime();
+    var last = new Date(points[points.length - 1].at).getTime();
+    if (!Number.isFinite(first) || !Number.isFinite(last)) return true;
+    return last - first < 6 * 24 * 60 * 60 * 1000;
   }
 
   function accountValueSourceCopy(account) {
@@ -2287,6 +2428,17 @@
     var date = new Date(value);
     if (Number.isNaN(date.getTime())) return "";
     return easternTimestamp(date, {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"});
+  }
+
+  function latestTimestamp(values) {
+    return (values || []).map(function (value) {
+      var date = new Date(value);
+      return Number.isNaN(date.getTime()) ? null : date;
+    }).filter(Boolean).sort(function (a, b) {
+      return b - a;
+    }).map(function (date) {
+      return date.toISOString();
+    })[0] || "";
   }
 
   function easternTimestamp(value, options) {
@@ -2349,10 +2501,11 @@
     if (accountTarget) {
       accountTarget.innerHTML = state.accounts.map(function (account) {
         var points = state.history.accounts.filter(function (row) { return row.accountId === account.id; });
-        if (!points.length && numeric(account.equity) != null) {
-          points = [{at: account.generatedAt || new Date().toISOString(), equity: account.equity}];
+        var accountAsOf = accountMarketDataTimestamp(account);
+        if (!points.length && numeric(account.equity) != null && accountAsOf) {
+          points = [{at: accountAsOf, equity: account.equity}];
         }
-        return lineChartCard(account.account, "Account value", points, "equity", "Account value");
+        return lineChartCard(account.account, account.sourceIsStale ? "Stale broker export / " + accountHistoryCoverage(account) : "Account value / market data as-of " + accountMarketDataLabel(account), points, "equity", "Account value", null, account.sourceIsStale);
       }).join("") || emptyItem("No account history", "Account value charts appear after private feed history syncs.");
     }
     if (holdingTarget) {
@@ -2369,11 +2522,12 @@
           return point.accountId === row.account.id && point.symbol === row.position.symbol;
         });
         points = deglitchHoldingHistory(points, row.position.value);
-        if (!points.length && numeric(row.position.value) != null) {
-          points = [{at: row.account.generatedAt || new Date().toISOString(), value: row.position.value}];
+        var holdingAsOf = positionMarketDataTimestamp(row.position) || accountMarketDataTimestamp(row.account);
+        if (!points.length && numeric(row.position.value) != null && holdingAsOf) {
+          points = [{at: holdingAsOf, value: row.position.value}];
         }
         var title = row.position.symbol + " / " + row.account.account;
-        var meta = (row.position.name || tickerNames[row.position.symbol] || row.position.symbol) + " holding value";
+        var meta = (row.position.name || tickerNames[row.position.symbol] || row.position.symbol) + " holding value / market data as-of " + (holdingAsOf ? shortTimestamp(holdingAsOf) + " US Eastern" : "needs timestamp");
         return lineChartCard(title, meta, points, "value", "Stock value", row.position.totalPnl);
       }).join("") || emptyItem("No holding history", "Stock holding charts appear after private feed history syncs.");
     }
