@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-26T23:08:06.514556+00:00",
+  "generated_at": "2026-06-28T03:34:47.841170+00:00",
   "reports": [
     {
       "audienceEmails": [
@@ -46,7 +46,7 @@
   "storage": {
     "indexPath": "/app/data/report-archive-index.json",
     "localPagesPrefix": "/app/reports",
-    "publicReportFilesWritten": false,
+    "publicReportFilesWritten": true,
     "spacesPrefix": "app/reports"
   }
 }

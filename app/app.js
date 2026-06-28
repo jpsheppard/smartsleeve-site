@@ -556,7 +556,8 @@
     return number.toLocaleString("en-US", {
       style: "currency",
       currency: "USD",
-      maximumFractionDigits: Math.abs(number) >= 1000 ? 0 : 2
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
     });
   }
 
@@ -851,8 +852,8 @@
         unrealizedPnl: numeric(position.unrealizedPnl != null ? position.unrealizedPnl : position.unrealized_pnl),
         realizedPnl: numeric(position.realizedPnl != null ? position.realizedPnl : position.realized_pnl),
         totalPnl: numeric(position.totalPnl != null ? position.totalPnl : position.total_pnl),
-        priceAsOf: position.priceAsOf || position.price_as_of,
-        priceSource: position.priceSource || position.price_source,
+        priceAsOf: position.priceAsOf || position.price_as_of || position.quoteAsOf || position.quote_as_of || position.marketDataAsOf || position.market_data_as_of,
+        priceSource: position.priceSource || position.price_source || position.quoteSource || position.quote_source || position.marketDataSource || position.market_data_source,
         currency: position.currency || "USD"
       };
     });
@@ -3886,9 +3887,9 @@
     var number = numeric(value);
     if (number == null) return "$0";
     var abs = Math.abs(number);
-    if (abs >= 1000000) return "$" + (number / 1000000).toFixed(abs >= 10000000 ? 0 : 1) + "M";
-    if (abs >= 1000) return "$" + (number / 1000).toFixed(abs >= 10000 ? 0 : 1) + "K";
-    return "$" + number.toFixed(abs >= 100 ? 0 : 2);
+    if (abs >= 1000000) return "$" + (number / 1000000).toFixed(2) + "M";
+    if (abs >= 1000) return "$" + (number / 1000).toFixed(2) + "K";
+    return "$" + number.toFixed(2);
   }
 
   function lineChartCard(title, meta, points, valueKey, yLabel, pnlValue, stale) {
@@ -3956,7 +3957,7 @@
     var grid = yTicks.map(function (tick) {
       var yy = y(tick).toFixed(1);
       return "<line x1=\"" + left + "\" y1=\"" + yy + "\" x2=\"" + (width - right) + "\" y2=\"" + yy + "\" class=\"chart-grid-line\"/>"
-        + (options.compact ? "" : "<text x=\"" + (left - 8) + "\" y=\"" + (Number(yy) + 4) + "\" class=\"chart-tick\" text-anchor=\"end\">" + html(compactMoney(tick)) + "</text>");
+        + (options.compact ? "" : "<text x=\"" + (left - 8) + "\" y=\"" + (Number(yy) + 4) + "\" class=\"chart-tick\" text-anchor=\"end\">" + html(money(tick)) + "</text>");
     }).join("");
     var dotStep = points.length > 180 ? Math.ceil(points.length / 180) : 1;
     var dots = points.map(function (point, index) {
@@ -4023,7 +4024,7 @@
     var grid = yTicks.map(function (tick) {
       var yy = y(tick).toFixed(1);
       return "<line x1=\"" + left + "\" y1=\"" + yy + "\" x2=\"" + (width - right) + "\" y2=\"" + yy + "\" class=\"chart-grid-line\"/>"
-        + (options.compact ? "" : "<text x=\"" + (left - 8) + "\" y=\"" + (Number(yy) + 4) + "\" class=\"chart-tick\" text-anchor=\"end\">" + html(compactMoney(tick)) + "</text>");
+        + (options.compact ? "" : "<text x=\"" + (left - 8) + "\" y=\"" + (Number(yy) + 4) + "\" class=\"chart-tick\" text-anchor=\"end\">" + html(money(tick)) + "</text>");
     }).join("");
     var shapes = candles.map(function (candle, index) {
       var xx = x(index);
@@ -4773,12 +4774,27 @@
 
   function latestDaemonLabel(payload) {
     var source = payload || state.payload || {};
-    var timestamps = [];
+    var timestamps = accountSyncTimestamps(state.accounts);
     collectDaemonTimestamps(source, timestamps);
     var latest = timestamps.map(function (value) { return new Date(value); }).filter(function (date) {
       return !Number.isNaN(date.getTime());
     }).sort(function (a, b) { return b - a; })[0];
     return latest ? "Last synced trader cycle at " + easternTimestamp(latest, {month: "long", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit"}) + "." : "Last synced trader cycle unavailable.";
+  }
+
+  function accountSyncTimestamps(accounts) {
+    var timestamps = [];
+    (accounts || []).forEach(function (account) {
+      ["quoteAsOf", "quote_as_of", "generatedAt", "generated_at", "sourceAsOf", "source_as_of", "lastReconciledAt", "last_reconciled_at", "updatedAt", "updated_at"].forEach(function (key) {
+        if (account[key]) timestamps.push(account[key]);
+      });
+      (account.positions || []).slice(0, 80).forEach(function (position) {
+        ["quoteAsOf", "quote_as_of", "priceAsOf", "price_as_of", "marketDataAsOf", "market_data_as_of", "generatedAt", "generated_at", "updatedAt", "updated_at"].forEach(function (key) {
+          if (position[key]) timestamps.push(position[key]);
+        });
+      });
+    });
+    return timestamps;
   }
 
   function feedSyncLabel(payload) {
