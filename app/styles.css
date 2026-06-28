@@ -1056,6 +1056,76 @@ td small {
   color: var(--muted);
 }
 
+.holding-detail-button {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  min-height: 36px;
+  padding: 5px 7px;
+  border: 1px solid rgba(34, 211, 238, 0.16);
+  border-radius: 7px;
+  color: var(--text);
+  background: rgba(34, 211, 238, 0.06);
+  text-align: left;
+  cursor: pointer;
+}
+
+.holding-detail-button:hover,
+.holding-detail-button:focus-visible,
+.holding-detail-button[aria-expanded="true"] {
+  border-color: rgba(57, 255, 20, 0.42);
+  background: rgba(57, 255, 20, 0.08);
+  outline: none;
+}
+
+.holding-detail-button b {
+  font-size: 13px;
+}
+
+.holding-detail-row td {
+  padding: 0 0 14px;
+  border-bottom-color: rgba(57, 255, 20, 0.22);
+}
+
+.holding-detail-row td::before {
+  content: none;
+}
+
+.holding-detail-panel {
+  display: grid;
+  gap: 10px;
+  margin: 4px 0 8px;
+  padding: 12px;
+  border: 1px solid rgba(57, 255, 20, 0.18);
+  border-radius: 8px;
+  background: rgba(2, 6, 23, 0.62);
+}
+
+.holding-detail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.holding-detail-head span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.holding-detail-head h3 {
+  margin: 3px 0 0;
+  font-size: 17px;
+}
+
+.holding-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
 .ticker-lockup,
 .feature-badges {
   display: inline-flex;
@@ -1841,6 +1911,32 @@ textarea:focus {
   vector-effect: non-scaling-stroke;
 }
 
+.candle-chart {
+  min-height: 205px;
+  touch-action: none;
+}
+
+.candle line {
+  stroke: currentColor;
+  stroke-width: 1.4;
+  vector-effect: non-scaling-stroke;
+}
+
+.candle rect {
+  fill: currentColor;
+  opacity: 0.82;
+}
+
+.candle.down line,
+.candle.down rect {
+  color: var(--red);
+}
+
+.candle.up line,
+.candle.up rect {
+  color: var(--green);
+}
+
 .chart-label,
 .chart-tick {
   fill: rgba(248, 250, 252, 0.92);
@@ -1932,6 +2028,10 @@ textarea:focus {
   }
 
   .account-detail-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .holding-detail-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -2062,6 +2162,12 @@ textarea:focus {
 
   .trade-row {
     display: grid;
+  }
+
+  .holding-detail-head,
+  .holding-detail-grid {
+    display: grid;
+    grid-template-columns: 1fr;
   }
 
   .trade-row i {

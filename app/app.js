@@ -1804,6 +1804,7 @@
         + detailMetric("Chart history", accountHistoryRangeLabel(account), accountHistoryCoverage(account), accountHistoryIsThin(account) ? "warning" : "")
         + detailMetric("Holdings total", money(accountPositionValue(account)), "Sum of visible synced positions in this app feed.", accountNeedsBrokerReconciliation(account) ? "warning" : "")
         + detailMetric("Broker app match", brokerReconciliationLabel(account), brokerReconciliationBody(account), accountNeedsBrokerReconciliation(account) ? "warning" : "")
+        + accountEquationMetric(account)
         + detailMetric("Cash / margin", cashMarginMeta(account), marginPlainText(account), numeric(account.cash) < 0 ? "warning" : "")
         + detailMetric("Available to buy", money(deployableFunds(account)), deployableFundsBody(account), cashHasSeparateDeployableFunds(account) ? "warning" : "")
         + (emptyAccountWarning ? stackItem("Live holdings missing", "Awaiting broker export", "This configured account has no synced positions or equity in the current app feed, so do not treat it as a true zero-balance account.") : "")
@@ -2059,6 +2060,19 @@
       return "Displayed value comes from an older Robinhood export and may differ from the live phone app until the daemon syncs a fresh account-scoped export.";
     }
     return "Displayed value needs a fresh account-scoped broker export before treating it as exact.";
+  }
+
+  function accountEquationMetric(account) {
+    var equity = numeric(account.equity);
+    var positionValue = accountPositionValue(account);
+    var cash = numeric(account.cash) || 0;
+    if (equity == null) {
+      return detailMetric("Accounting equation", "Needs broker value", "Cannot reconcile holdings plus cash until account value syncs.", "warning");
+    }
+    var delta = equity - (positionValue + cash);
+    var status = Math.abs(delta) < 0.005 ? "Matches to cent" : "Delta " + signedMoney(delta, "$0.00");
+    var body = "Account value " + money(equity) + " - holdings " + money(positionValue) + " - cash " + money(cash) + " = " + signedMoney(delta, "$0.00") + ". Broker app remains ground truth when available.";
+    return detailMetric("Accounting equation", status, body, Math.abs(delta) >= 0.005 ? "warning" : "");
   }
 
   function accountHistoryCoverage(account) {
