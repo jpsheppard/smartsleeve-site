@@ -4078,11 +4078,18 @@
 
   function merchCard(product) {
     var size = merchDefaultSize(product);
+    var backImage = product.back_print_preview || "";
     var options = (product.sizes || []).map(function (item) {
       return "<option value=\"" + html(item) + "\"" + (item === size ? " selected" : "") + ">" + html(item) + "</option>";
     }).join("");
     return "<article class=\"merch-product-card\" data-merch-product-card=\"" + html(product.key) + "\">"
-      + "<img src=\"" + html(merchPreviewFor(product)) + "\" alt=\"" + html(merchCleanName(product.name)) + "\" loading=\"lazy\">"
+      + "<div class=\"merch-product-images\">"
+      + "<figure><img src=\"" + html(product.front_print_preview || merchPreviewFor(product)) + "\" alt=\"" + html(merchCleanName(product.name)) + " front\" loading=\"lazy\"><figcaption>Front</figcaption></figure>"
+      + "<figure>" + (backImage
+        ? "<img src=\"" + html(backImage) + "\" alt=\"" + html(merchCleanName(product.name)) + " back\" loading=\"lazy\">"
+        : "<div class=\"merch-blank-back\"><span>Black back</span></div>")
+      + "<figcaption>Back</figcaption></figure>"
+      + "</div>"
       + "<div class=\"merch-product-copy\">"
       + "<h4>" + html(merchCleanName(product.name)) + "</h4>"
       + "<div class=\"merch-chip-row\"><span>Front: " + html(merchFrontLabel(product)) + "</span><span>Back: " + html(merchBackType(product)) + "</span></div>"
@@ -4129,7 +4136,7 @@
     var checkout = $("merch-checkout-button");
     if (checkout) checkout.disabled = !count || !merchCheckoutEndpoint;
     if (!state.merchCart.length) {
-      list.innerHTML = emptyItem("Your cart is empty", " ");
+      list.innerHTML = "<article class=\"merch-cart-empty\">Your cart is empty</article>";
       return;
     }
     list.innerHTML = state.merchCart.map(function (item) {

@@ -413,6 +413,25 @@ def preview_url(sync_product: dict[str, Any], matched: dict[str, Any] | None = N
     return None
 
 
+def print_file_previews(variants: list[dict[str, Any]]) -> dict[str, str]:
+    previews: dict[str, str] = {}
+    for variant in variants:
+        for file in variant.get("files") or []:
+            if not isinstance(file, dict):
+                continue
+            file_type = str(file.get("type") or "").lower()
+            preview = file.get("preview_url") or file.get("thumbnail_url")
+            if not preview:
+                continue
+            if "front" in file_type or file_type == "default":
+                previews.setdefault("front_print_preview", str(preview))
+            elif "back" in file_type:
+                previews.setdefault("back_print_preview", str(preview))
+        if previews.get("front_print_preview") and previews.get("back_print_preview"):
+            break
+    return previews
+
+
 def variant_prices_and_ids(variants: list[dict[str, Any]]) -> tuple[dict[str, str], dict[str, int]]:
     prices: dict[str, str] = {}
     sync_variant_ids: dict[str, int] = {}
@@ -454,9 +473,10 @@ def public_product(
     sync_product: dict[str, Any],
     matched: dict[str, Any] | None = None,
     preview: str | None = None,
+    print_previews: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     sizes = ordered_sizes(prices)
-    return {
+    product = {
         "key": key,
         "name": name,
         "printful_name": sync_product.get("name") or name,
@@ -466,6 +486,9 @@ def public_product(
         "sizes": sizes,
         "prices": {size: prices[size] for size in sizes},
     }
+    if print_previews:
+        product.update(print_previews)
+    return product
 
 
 def finalized_catalog_outputs(
@@ -535,7 +558,7 @@ def build_catalog_and_vars_for_all_products(
             "product_id": product_id,
             "prices": prices,
             "sync_variant_ids": sync_variant_ids,
-            "public": public_product(key, name, product_id, prices, sync_product, product),
+            "public": public_product(key, name, product_id, prices, sync_product, product, print_previews=print_file_previews(variants)),
         })
         time.sleep(0.1)
 
@@ -578,7 +601,7 @@ def build_catalog_and_vars(
             "product_id": product_id,
             "prices": prices,
             "sync_variant_ids": sync_variant_ids,
-            "public": public_product(target.key, target.name, product_id, prices, sync_product, matched, target.preview),
+            "public": public_product(target.key, target.name, product_id, prices, sync_product, matched, target.preview, print_file_previews(variants)),
         })
         time.sleep(0.1)
 

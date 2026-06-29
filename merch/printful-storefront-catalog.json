@@ -1,8 +1,9 @@
 {
   "currency": "USD",
-  "generated_at": "2026-06-29T21:19:25.469196+00:00",
+  "generated_at": "2026-06-29T21:39:10.739516+00:00",
   "products": [
     {
+      "front_print_preview": "https://files.cdn.printful.com/files/fda/fdaafbb579a50b80a328ec2e99ab51eb_preview.png",
       "key": "printful-440236989-smartsleeve-ss-men-s-tee-plain-back",
       "name": "SmartSleeve SS Men's Tee - Plain Back",
       "preview": "https://files.cdn.printful.com/files/566/56688e7f4d73bcbbc098edb89056696a_preview.png",
@@ -27,6 +28,8 @@
       ]
     },
     {
+      "back_print_preview": "https://files.cdn.printful.com/files/892/8921130f075b2e5e87d1421867b811f0_preview.png",
+      "front_print_preview": "https://files.cdn.printful.com/files/fda/fdaafbb579a50b80a328ec2e99ab51eb_preview.png",
       "key": "printful-440237139-smartsleeve-ss-men-s-tee-website-back",
       "name": "SmartSleeve SS Men's Tee - Website Back",
       "preview": "https://files.cdn.printful.com/files/566/56688e7f4d73bcbbc098edb89056696a_preview.png",
@@ -51,6 +54,8 @@
       ]
     },
     {
+      "back_print_preview": "https://files.cdn.printful.com/files/b67/b678f1b032d0148bea9a8e58c57c080d_preview.png",
+      "front_print_preview": "https://files.cdn.printful.com/files/fda/fdaafbb579a50b80a328ec2e99ab51eb_preview.png",
       "key": "printful-440237265-smartsleeve-ss-men-s-tee-website-qr-back",
       "name": "SmartSleeve SS Men's Tee - Website+QR Back",
       "preview": "https://files.cdn.printful.com/files/566/56688e7f4d73bcbbc098edb89056696a_preview.png",
@@ -75,6 +80,7 @@
       ]
     },
     {
+      "front_print_preview": "https://files.cdn.printful.com/files/aa1/aa1d5b0891e1cfe4d17becf516d83500_preview.png",
       "key": "printful-440238430-smartsleeve-sqts-men-s-tee-plain-back",
       "name": "SmartSleeve SQTS Men's Tee - Plain Back",
       "preview": "https://files.cdn.printful.com/files/9e8/9e86376106d75f973d27a4f4e38980d3_preview.png",
@@ -99,6 +105,8 @@
       ]
     },
     {
+      "back_print_preview": "https://files.cdn.printful.com/files/892/8921130f075b2e5e87d1421867b811f0_preview.png",
+      "front_print_preview": "https://files.cdn.printful.com/files/aa1/aa1d5b0891e1cfe4d17becf516d83500_preview.png",
       "key": "printful-440239419-smartsleeve-sqts-men-s-tee-website-back",
       "name": "SmartSleeve SQTS Men's Tee - Website Back",
       "preview": "https://files.cdn.printful.com/files/9e8/9e86376106d75f973d27a4f4e38980d3_preview.png",
@@ -123,6 +131,8 @@
       ]
     },
     {
+      "back_print_preview": "https://files.cdn.printful.com/files/b67/b678f1b032d0148bea9a8e58c57c080d_preview.png",
+      "front_print_preview": "https://files.cdn.printful.com/files/aa1/aa1d5b0891e1cfe4d17becf516d83500_preview.png",
       "key": "printful-440239223-smartsleeve-sqts-men-s-tee-website-qr-back",
       "name": "SmartSleeve SQTS Men's Tee - Website+QR Back",
       "preview": "https://files.cdn.printful.com/files/9e8/9e86376106d75f973d27a4f4e38980d3_preview.png",
@@ -147,6 +157,7 @@
       ]
     },
     {
+      "front_print_preview": "https://files.cdn.printful.com/files/fda/fdaafbb579a50b80a328ec2e99ab51eb_preview.png",
       "key": "printful-440236649-smartsleeve-ss-men-s-muscle-tee-plain-back",
       "name": "SmartSleeve SS - Men's Muscle Tee - Plain Back",
       "preview": "https://files.cdn.printful.com/files/46e/46e00fd517d0a5f64ac33a244f679dcd_preview.png",
@@ -169,6 +180,8 @@
       ]
     },
     {
+      "back_print_preview": "https://files.cdn.printful.com/files/b67/b678f1b032d0148bea9a8e58c57c080d_preview.png",
+      "front_print_preview": "https://files.cdn.printful.com/files/fda/fdaafbb579a50b80a328ec2e99ab51eb_preview.png",
       "key": "printful-440237425-smartsleeve-ss-men-s-muscle-tee-website-back",
       "name": "SmartSleeve SS - Men's Muscle Tee - Website Back",
       "preview": "https://files.cdn.printful.com/files/46e/46e00fd517d0a5f64ac33a244f679dcd_preview.png",
@@ -191,6 +204,8 @@
       ]
     },
     {
+      "back_print_preview": "https://files.cdn.printful.com/files/b67/b678f1b032d0148bea9a8e58c57c080d_preview.png",
+      "front_print_preview": "https://files.cdn.printful.com/files/fda/fdaafbb579a50b80a328ec2e99ab51eb_preview.png",
       "key": "printful-440237483-smartsleeve-ss-men-s-muscle-tee-website-qr-back",
       "name": "SmartSleeve SS - Men's Muscle Tee - Website+QR Back",
       "preview": "https://files.cdn.printful.com/files/46e/46e00fd517d0a5f64ac33a244f679dcd_preview.png",
@@ -213,6 +228,7 @@
       ]
     },
     {
+      "front_print_preview": "https://files.cdn.printful.com/files/aa1/aa1d5b0891e1cfe4d17becf516d83500_preview.png",
       "key": "printful-440239096-smartsleeve-sqts-men-s-muscle-tee-plain-back",
       "name": "SmartSleeve SQTS Men's Muscle Tee - Plain Back",
       "preview": "https://files.cdn.printful.com/files/044/044f3b66d1ce61a07ba1986dc58ba8f2_preview.png",
@@ -235,6 +251,8 @@
       ]
     },
     {
+      "back_print_preview": "https://files.cdn.printful.com/files/892/8921130f075b2e5e87d1421867b811f0_preview.png",
+      "front_print_preview": "https://files.cdn.printful.com/files/aa1/aa1d5b0891e1cfe4d17becf516d83500_preview.png",
       "key": "printful-440238866-smartsleeve-sqts-men-s-muscle-tee-website-back",
       "name": "SmartSleeve SQTS Men's Muscle Tee - Website Back",
       "preview": "https://files.cdn.printful.com/files/044/044f3b66d1ce61a07ba1986dc58ba8f2_preview.png",
@@ -257,6 +275,8 @@
       ]
     },
     {
+      "back_print_preview": "https://files.cdn.printful.com/files/b67/b678f1b032d0148bea9a8e58c57c080d_preview.png",
+      "front_print_preview": "https://files.cdn.printful.com/files/aa1/aa1d5b0891e1cfe4d17becf516d83500_preview.png",
       "key": "printful-440238836-smartsleeve-sqts-men-s-muscle-tee-website-qr-back",
       "name": "SmartSleeve SQTS Men's Muscle Tee - Website+QR Back",
       "preview": "https://files.cdn.printful.com/files/044/044f3b66d1ce61a07ba1986dc58ba8f2_preview.png",
@@ -279,6 +299,7 @@
       ]
     },
     {
+      "front_print_preview": "https://files.cdn.printful.com/files/fda/fdaafbb579a50b80a328ec2e99ab51eb_preview.png",
       "key": "printful-440238241-smartsleeve-ss-men-s-tank-plain-back",
       "name": "SmartSleeve SS - Men's Tank - Plain Back",
       "preview": "https://files.cdn.printful.com/files/6c9/6c9e170cbe8a620e7d8fecc061cba39e_preview.png",
@@ -303,6 +324,8 @@
       ]
     },
     {
+      "back_print_preview": "https://files.cdn.printful.com/files/6e8/6e82b38888e06f0842ac4bcab3fab8e8_preview.png",
+      "front_print_preview": "https://files.cdn.printful.com/printfile-preview/1008749226/1778c48cafc460077ef916bf16a011d9_preview.png",
       "key": "printful-440238145-smartsleeve-ss-men-s-tank-website-back",
       "name": "SmartSleeve SS - Men's Tank - Website Back",
       "preview": "https://files.cdn.printful.com/files/6c9/6c9e170cbe8a620e7d8fecc061cba39e_preview.png",
@@ -327,6 +350,8 @@
       ]
     },
     {
+      "back_print_preview": "https://files.cdn.printful.com/files/f45/f45131a3ba93eb54f7e211e77745a940_preview.png",
+      "front_print_preview": "https://files.cdn.printful.com/files/fda/fdaafbb579a50b80a328ec2e99ab51eb_preview.png",
       "key": "printful-440238091-smartsleeve-ss-men-s-tank-website-qr-back",
       "name": "SmartSleeve SS - Men's Tank - Website+QR Back",
       "preview": "https://files.cdn.printful.com/files/6c9/6c9e170cbe8a620e7d8fecc061cba39e_preview.png",
@@ -351,6 +376,7 @@
       ]
     },
     {
+      "front_print_preview": "https://files.cdn.printful.com/files/fda/fdaafbb579a50b80a328ec2e99ab51eb_preview.png",
       "key": "printful-440237742-smartsleeve-ss-women-s-tee-plain-back",
       "name": "SmartSleeve SS - Women's Tee - Plain Back",
       "preview": "https://files.cdn.printful.com/files/d5b/d5b105395db9e92623dcb144f68238d2_preview.png",
@@ -375,6 +401,8 @@
       ]
     },
     {
+      "back_print_preview": "https://files.cdn.printful.com/files/892/8921130f075b2e5e87d1421867b811f0_preview.png",
+      "front_print_preview": "https://files.cdn.printful.com/files/fda/fdaafbb579a50b80a328ec2e99ab51eb_preview.png",
       "key": "printful-440237860-smartsleeve-ss-women-s-tee-website-back",
       "name": "SmartSleeve SS - Women's Tee - Website Back",
       "preview": "https://files.cdn.printful.com/files/d5b/d5b105395db9e92623dcb144f68238d2_preview.png",
@@ -399,6 +427,8 @@
       ]
     },
     {
+      "back_print_preview": "https://files.cdn.printful.com/files/b67/b678f1b032d0148bea9a8e58c57c080d_preview.png",
+      "front_print_preview": "https://files.cdn.printful.com/files/fda/fdaafbb579a50b80a328ec2e99ab51eb_preview.png",
       "key": "printful-440237961-smartsleeve-ss-women-s-tee-website-qr-back",
       "name": "SmartSleeve SS - Women's Tee - Website+QR Back",
       "preview": "https://files.cdn.printful.com/files/d5b/d5b105395db9e92623dcb144f68238d2_preview.png",
@@ -423,6 +453,7 @@
       ]
     },
     {
+      "front_print_preview": "https://files.cdn.printful.com/files/fda/fdaafbb579a50b80a328ec2e99ab51eb_preview.png",
       "key": "printful-440238664-smartsleeve-ss-women-s-tank-blank-back",
       "name": "SmartSleeve SS - Women's Tank - Blank Back",
       "preview": "https://files.cdn.printful.com/files/3eb/3ebbc5960561f07ad311fa043b565b6b_preview.png",
@@ -445,6 +476,8 @@
       ]
     },
     {
+      "back_print_preview": "https://files.cdn.printful.com/files/892/8921130f075b2e5e87d1421867b811f0_preview.png",
+      "front_print_preview": "https://files.cdn.printful.com/files/fda/fdaafbb579a50b80a328ec2e99ab51eb_preview.png",
       "key": "printful-440238628-smartsleeve-ss-women-s-tank-website-back",
       "name": "SmartSleeve SS Women's Tank - Website Back",
       "preview": "https://files.cdn.printful.com/files/3eb/3ebbc5960561f07ad311fa043b565b6b_preview.png",
@@ -467,6 +500,8 @@
       ]
     },
     {
+      "back_print_preview": "https://files.cdn.printful.com/files/f45/f45131a3ba93eb54f7e211e77745a940_preview.png",
+      "front_print_preview": "https://files.cdn.printful.com/files/fda/fdaafbb579a50b80a328ec2e99ab51eb_preview.png",
       "key": "printful-440238538-smartsleeve-ss-women-s-tank-website-qr-back",
       "name": "SmartSleeve SS - Women's Tank - Website+QR Back",
       "preview": "https://files.cdn.printful.com/files/3eb/3ebbc5960561f07ad311fa043b565b6b_preview.png",
