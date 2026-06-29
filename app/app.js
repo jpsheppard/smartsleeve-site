@@ -852,6 +852,7 @@
         price: numeric(position.price != null ? position.price : position.current_price),
         brokerPrice: numeric(position.brokerPrice != null ? position.brokerPrice : position.broker_price),
         priceAsOf: position.priceAsOf || position.price_as_of || position.quoteAsOf || position.quote_as_of || position.marketDataAsOf || position.market_data_as_of,
+        marketDataAsOf: position.marketDataAsOf || position.market_data_as_of || position.priceAsOf || position.price_as_of || position.quoteAsOf || position.quote_as_of,
         priceSource: position.priceSource || position.price_source || position.quoteSource || position.quote_source || position.marketDataSource || position.market_data_source,
         priceDerivedFromMarketValue: Boolean(position.priceDerivedFromMarketValue || position.price_derived_from_market_value),
         value: numeric(position.value != null ? position.value : position.market_value_usd),
@@ -865,8 +866,6 @@
         unrealizedPnl: numeric(position.unrealizedPnl != null ? position.unrealizedPnl : position.unrealized_pnl),
         realizedPnl: numeric(position.realizedPnl != null ? position.realizedPnl : position.realized_pnl),
         totalPnl: numeric(position.totalPnl != null ? position.totalPnl : position.total_pnl),
-        priceAsOf: position.priceAsOf || position.price_as_of || position.quoteAsOf || position.quote_as_of || position.marketDataAsOf || position.market_data_as_of,
-        priceSource: position.priceSource || position.price_source || position.quoteSource || position.quote_source || position.marketDataSource || position.market_data_source,
         currency: position.currency || "USD"
       };
     });
@@ -971,6 +970,7 @@
       status: account.status || "synced",
       generatedAt: account.generatedAt || account.generated_at,
       latestGeneratedAt: account.latestGeneratedAt || account.latest_generated_at,
+      marketDataAsOf: account.marketDataAsOf || account.market_data_as_of || account.quoteAsOf || account.quote_as_of || account.pricesAsOf || account.prices_as_of,
       portfolioSource: account.portfolioSource || account.portfolio_source,
       sourceAgeMinutes: numeric(account.sourceAgeMinutes != null ? account.sourceAgeMinutes : account.source_age_minutes),
       sourceIsStale: Boolean(account.sourceIsStale || account.source_is_stale),
@@ -2252,7 +2252,7 @@
       + (last ? "<div class=\"chart-readout\" data-chart-readout=\"" + html(chartId) + "\"><b>" + html(money(last.value)) + "</b><span class=\"" + html(trendClass) + "\">" + html(meta) + "</span></div>" : "")
       + (cleanPoints.length ? buildLineChart(cleanPoints, lineColor, "Account value", {interactive: true, compact: true, chartId: chartId, baseline: first ? first.value : null, range: range}) : emptyItem("No account history", "Private account history has not synced for this account yet."))
       + "<div class=\"time-tabs\" role=\"tablist\" aria-label=\"Account chart range\">" + tabs + "</div>"
-      + (last ? "<p class=\"chart-footnote\">Latest " + html(money(last.value)) + " / " + html(latestProvenance) + " / plotting all " + html(cleanPoints.length + " synced point" + (cleanPoints.length === 1 ? "" : "s")) + (account.sourceIsStale ? " / stale broker export; awaiting fresh daemon sync" : "") + "</p>" : "")
+      + (last ? "<p class=\"chart-footnote\"><b>Latest market point</b> " + html(money(last.value)) + " / " + html(latestProvenance) + " / plotting all " + html(cleanPoints.length + " market point" + (cleanPoints.length === 1 ? "" : "s")) + (account.sourceIsStale ? " / stale broker export; awaiting fresh daemon sync" : "") + "</p>" : "")
       + "</article>";
   }
 
@@ -2282,21 +2282,22 @@
         && /robinhood/i.test(account.broker || "")) {
         return null;
       }
-      return {at: row.at || row.generatedAt || row.generated_at, value: numeric(row.equity != null ? row.equity : row.value), source: source};
+      return {at: row.at || row.asOf || row.as_of || row.marketDataAsOf || row.market_data_as_of || row.generatedAt || row.generated_at, value: numeric(row.equity != null ? row.equity : row.value), source: source};
     }).filter(function (row) { return row.at && row.value != null; });
     var latestBrokerEquity = /robinhood/i.test(account.broker || "")
       ? firstNumeric([account.brokerReportedEquity, account.brokerEquity, account.equity])
       : null;
-    var latestAccountValue = latestBrokerEquity != null && account.generatedAt
+    var latestAt = accountMarketDataTimestamp(account);
+    var latestAccountValue = latestBrokerEquity != null && latestAt
       ? latestBrokerEquity
-      : account.accountValueSource === "broker_reported_equity" && numeric(account.equity) != null && account.generatedAt
+      : account.accountValueSource === "broker_reported_equity" && numeric(account.equity) != null && latestAt
         ? account.equity
         : null;
-    if (latestAccountValue != null && account.generatedAt) {
-      var currentTime = new Date(account.generatedAt).getTime();
+    if (latestAccountValue != null && latestAt) {
+      var currentTime = new Date(latestAt).getTime();
       var hasCurrent = rows.some(function (row) { return new Date(row.at).getTime() === currentTime; });
       if (!hasCurrent) {
-        rows.push({at: account.generatedAt, value: latestAccountValue, source: "broker_reported_equity"});
+        rows.push({at: latestAt, value: latestAccountValue, source: "broker_reported_equity"});
       }
     }
     return rows;
@@ -2344,12 +2345,12 @@
       return latestTimestamp(brokerMarkTimes);
     }
     return latestTimestamp([
+      account.marketDataAsOf,
+      account.market_data_as_of,
       account.quoteAsOf,
       account.quote_as_of,
-      account.sourceAsOf,
-      account.source_as_of,
-      account.lastReconciledAt,
-      account.last_reconciled_at
+      account.pricesAsOf,
+      account.prices_as_of
     ].filter(Boolean));
   }
 
@@ -2497,7 +2498,7 @@
     }
     var delta = equity - (positionValue + cash);
     var status = Math.abs(delta) < 0.005 ? "Matches to cent" : "Delta " + signedMoney(delta, "$0.00");
-    var body = "Account value " + money(equity) + " - holdings " + money(positionValue) + " - cash " + money(cash) + " = " + signedMoney(delta, "$0.00") + ". Broker app remains ground truth when available.";
+    var body = "Account value " + money(equity) + " - holdings " + money(positionValue) + " - cash " + money(cash) + " = " + signedMoney(delta, "$0.00") + ". Broker app remains ground truth when available. All displayed dollar amounts are rounded to the nearest cent.";
     return detailMetric("Accounting equation", status, body, Math.abs(delta) >= 0.005 ? "warning" : "");
   }
 
@@ -4274,11 +4275,11 @@
     });
     var sub = cleanPoints.length > 1
       ? shortDate(first.at) + " to " + scrubTimestamp(last.at) + " / " + signedMoney(last.value - first.value) + " / " + cleanPoints.length + " points"
-      : "One synced point / more history needed";
+      : "One market point / more history needed";
     return "<article class=\"chart-card\">"
       + "<div class=\"stack-item-head\"><b>" + html(title) + "</b><span class=\"" + trendClass + "\">" + html(sub) + "</span></div>"
       + "<div class=\"chart-readout compact-readout\" data-chart-readout=\"" + html(chartId) + "\"><b>" + html(money(last.value)) + "</b><span class=\"" + html(trendClass) + "\">" + html(signedMoney(last.value - first.value, "$0.00") + " (" + signedPercent(first.value ? (last.value - first.value) / first.value * 100 : null) + ")") + "</span></div>"
-      + "<p>" + html(meta) + " / latest " + html(money(last.value)) + " / plotting all " + html(cleanPoints.length + " synced point" + (cleanPoints.length === 1 ? "" : "s")) + "</p>"
+      + "<p>" + html(meta) + " / latest market point " + html(money(last.value)) + " / " + html(scrubTimestamp(last.at)) + " / plotting all " + html(cleanPoints.length + " market point" + (cleanPoints.length === 1 ? "" : "s")) + "</p>"
       + chart
       + "</article>";
   }
