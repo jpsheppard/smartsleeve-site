@@ -831,6 +831,45 @@ button.primary {
   font-size: 10px;
 }
 
+.account-source-strip {
+  display: grid;
+  grid-template-columns: minmax(86px, 0.72fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 4px;
+  align-items: center;
+}
+
+.account-source-strip span {
+  overflow: hidden;
+  min-height: 22px;
+  padding: 4px 6px;
+  border: 1px solid rgba(148, 163, 184, 0.13);
+  border-radius: 6px;
+  color: var(--muted);
+  background: rgba(2, 6, 23, 0.22);
+  font-size: 9.5px;
+  font-weight: 900;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-source-strip .source-chip {
+  color: var(--text);
+  background: rgba(148, 163, 184, 0.10);
+}
+
+.account-source-strip .positive-chip {
+  color: var(--green);
+  border-color: rgba(57, 255, 20, 0.22);
+  background: rgba(57, 255, 20, 0.08);
+}
+
+.account-source-strip .warning-chip {
+  color: #ffd68a;
+  border-color: rgba(245, 158, 11, 0.28);
+  background: rgba(245, 158, 11, 0.10);
+}
+
 .interactive-card {
   cursor: pointer;
 }
@@ -1961,6 +2000,10 @@ textarea:focus {
   .account-grid,
   .holding-chart-grid,
   .detail-grid-wide {
+    grid-template-columns: 1fr;
+  }
+
+  .account-source-strip {
     grid-template-columns: 1fr;
   }
 

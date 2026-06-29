@@ -1869,6 +1869,7 @@
       var positionValue = (account.positions || []).reduce(function (sum, position) { return sum + (numeric(position.value) || 0); }, 0);
       return "<article class=\"account-card interactive-card\" data-account-detail=\"" + html(account.id) + "\" tabindex=\"0\">"
         + "<div class=\"stack-item-head\"><b>" + html(account.account) + "</b><span>" + html(account.broker) + "</span></div>"
+        + accountValueSourceStrip(account)
         + accountPositionsStrip(account)
         + "<div class=\"account-mini-grid\">"
         + miniMetric("Equity", money(account.equity))
@@ -1960,6 +1961,7 @@
       var positionValue = (account.positions || []).reduce(function (sum, position) { return sum + (numeric(position.value) || 0); }, 0);
       return "<article class=\"account-card interactive-card\" data-account-detail=\"" + html(account.id) + "\" tabindex=\"0\">"
         + "<div class=\"stack-item-head\"><b>" + html(account.account) + "</b><span>" + html(accountOwnerLabel(account.ownerEmail)) + " / " + html(account.broker) + "</span></div>"
+        + accountValueSourceStrip(account)
         + accountPositionsStrip(account)
         + "<div class=\"account-mini-grid\">"
         + miniMetric("Value", money(account.equity))
@@ -1972,6 +1974,42 @@
         + "<div class=\"recommendation-actions\"><button type=\"button\" class=\"text-button\" data-account-detail=\"" + html(account.id) + "\">Open details</button></div>"
         + "</article>";
     }).join("") || emptyItem("No visible accounts", "Sign in with an email that has SmartSleeve account access.");
+  }
+
+  function accountValueSourceStrip(account) {
+    var source = accountValueSourceBadge(account);
+    var marketAsOf = accountMarketDataLabel(account);
+    var equation = compactAccountEquation(account);
+    return "<div class=\"account-source-strip\">"
+      + "<span class=\"" + html(source.className) + "\">" + html(source.label) + "</span>"
+      + "<span>Market data ET: " + html(marketAsOf) + "</span>"
+      + "<span>" + html(equation) + "</span>"
+      + "</div>";
+  }
+
+  function accountValueSourceBadge(account) {
+    if (account.accountValueSource === "broker_reported_equity" || account.equitySource === "broker_reported_equity") {
+      return {
+        label: /robinhood/i.test(account.broker || "") ? "RH broker value" : "Broker value",
+        className: "source-chip positive-chip"
+      };
+    }
+    if (account.equitySource === "positions_plus_cash_estimate") {
+      return {label: "Estimated value", className: "source-chip warning-chip"};
+    }
+    if (account.equitySource === "buying_power_fallback") {
+      return {label: "Buying-power fallback", className: "source-chip warning-chip"};
+    }
+    return {label: "Broker feed", className: "source-chip"};
+  }
+
+  function compactAccountEquation(account) {
+    var equity = numeric(account.equity);
+    if (equity == null) return "Equation: needs broker value";
+    var delta = equity - (accountPositionValue(account) + (numeric(account.cash) || 0));
+    return Math.abs(delta) < 0.005
+      ? "Equation: matches to cent"
+      : "Equation delta: " + signedMoney(delta, "$0.00");
   }
 
   function accountPositionsStrip(account) {
@@ -2205,6 +2243,7 @@
     var meta = cleanPoints.length > 1
       ? signedMoney(pnl, "$0.00") + " (" + signedPercent(pnlPct) + ") " + range
       : "Needs more synced points for selected range P&L";
+    var latestProvenance = accountValueChartAuthority(account) + " / ET " + (last ? shortTimestamp(last.at) : accountMarketDataLabel(account));
     var chartId = "account-detail-chart-" + String(account.id || account.account || "account").replace(/[^a-zA-Z0-9_-]/g, "-") + "-" + range;
     var tabs = ["1D", "1W", "1M", "3M", "YTD", "1Y", "ALL"].map(function (item) {
       return "<button type=\"button\" class=\"time-tab" + (item === range ? " active" : "") + "\" data-account-chart-range=\"" + html(item) + "\">" + html(item) + "</button>";
@@ -2213,7 +2252,7 @@
       + (last ? "<div class=\"chart-readout\" data-chart-readout=\"" + html(chartId) + "\"><b>" + html(money(last.value)) + "</b><span class=\"" + html(trendClass) + "\">" + html(meta) + "</span></div>" : "")
       + (cleanPoints.length ? buildLineChart(cleanPoints, lineColor, "Account value", {interactive: true, compact: true, chartId: chartId, baseline: first ? first.value : null, range: range}) : emptyItem("No account history", "Private account history has not synced for this account yet."))
       + "<div class=\"time-tabs\" role=\"tablist\" aria-label=\"Account chart range\">" + tabs + "</div>"
-      + (last ? "<p class=\"chart-footnote\">Latest " + html(money(last.value)) + " / value timestamp " + html(shortTimestamp(last.at)) + " / " + html(accountValueChartAuthority(account)) + " / plotting all " + html(cleanPoints.length + " synced point" + (cleanPoints.length === 1 ? "" : "s")) + (account.sourceIsStale ? " / stale broker export; awaiting fresh daemon sync" : "") + "</p>" : "")
+      + (last ? "<p class=\"chart-footnote\">Latest " + html(money(last.value)) + " / " + html(latestProvenance) + " / plotting all " + html(cleanPoints.length + " synced point" + (cleanPoints.length === 1 ? "" : "s")) + (account.sourceIsStale ? " / stale broker export; awaiting fresh daemon sync" : "") + "</p>" : "")
       + "</article>";
   }
 
@@ -2616,7 +2655,11 @@
         if (!points.length && numeric(account.equity) != null && accountAsOf) {
           points = [{at: accountAsOf, equity: account.equity}];
         }
-        return lineChartCard(account.account, account.sourceIsStale ? "Stale broker export / " + accountHistoryCoverage(account) : "Account value / market data as-of " + accountMarketDataLabel(account), points, "equity", "Account value", null, account.sourceIsStale);
+        var sourceCopy = accountValueChartAuthority(account);
+        var meta = account.sourceIsStale
+          ? "Stale broker export / " + accountHistoryCoverage(account)
+          : sourceCopy + " / market data ET " + accountMarketDataLabel(account);
+        return lineChartCard(account.account, meta, points, "equity", "Account value", null, account.sourceIsStale);
       }).join("") || emptyItem("No account history", "Account value charts appear after private feed history syncs.");
     }
     if (holdingTarget) {
@@ -2638,7 +2681,7 @@
           points = [{at: holdingAsOf, value: row.position.value}];
         }
         var title = row.position.symbol + " / " + row.account.account;
-        var meta = (row.position.name || tickerNames[row.position.symbol] || row.position.symbol) + " holding value / market data as-of " + (holdingAsOf ? shortTimestamp(holdingAsOf) : "needs timestamp");
+        var meta = (row.position.name || tickerNames[row.position.symbol] || row.position.symbol) + " holding value / market data ET " + (holdingAsOf ? shortTimestamp(holdingAsOf) : "needs timestamp");
         return lineChartCard(title, meta, points, "value", "Stock value", row.position.totalPnl);
       }).join("") || emptyItem("No holding history", "Stock holding charts appear after private feed history syncs.");
     }
