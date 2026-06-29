@@ -1,6 +1,6 @@
 {
   "currency": "USD",
-  "generated_at": "2026-06-29T21:49:45.452777+00:00",
+  "generated_at": "2026-06-29T22:10:56.679211+00:00",
   "products": [
     {
       "front_print_preview": "https://files.cdn.printful.com/files/fda/fdaafbb579a50b80a328ec2e99ab51eb_preview.png",
@@ -25,7 +25,9 @@
         "XL",
         "2XL",
         "3XL"
-      ]
+      ],
+      "front_mockup": "/merch/mockups/printful-440236989-smartsleeve-ss-men-s-tee-plain-back-front.jpg",
+      "back_mockup": "/merch/mockups/printful-440236989-smartsleeve-ss-men-s-tee-plain-back-back.jpg"
     },
     {
       "back_print_preview": "https://files.cdn.printful.com/files/892/8921130f075b2e5e87d1421867b811f0_preview.png",
@@ -51,7 +53,9 @@
         "XL",
         "2XL",
         "3XL"
-      ]
+      ],
+      "front_mockup": "/merch/mockups/printful-440237139-smartsleeve-ss-men-s-tee-website-back-front.jpg",
+      "back_mockup": "/merch/mockups/printful-440237139-smartsleeve-ss-men-s-tee-website-back-back.jpg"
     },
     {
       "back_print_preview": "https://files.cdn.printful.com/files/b67/b678f1b032d0148bea9a8e58c57c080d_preview.png",
@@ -77,7 +81,9 @@
         "XL",
         "2XL",
         "3XL"
-      ]
+      ],
+      "front_mockup": "/merch/mockups/printful-440237265-smartsleeve-ss-men-s-tee-website-qr-back-front.jpg",
+      "back_mockup": "/merch/mockups/printful-440237265-smartsleeve-ss-men-s-tee-website-qr-back-back.jpg"
     },
     {
       "front_print_preview": "https://files.cdn.printful.com/files/aa1/aa1d5b0891e1cfe4d17becf516d83500_preview.png",
@@ -102,7 +108,9 @@
         "XL",
         "2XL",
         "3XL"
-      ]
+      ],
+      "front_mockup": "/merch/mockups/printful-440238430-smartsleeve-sqts-men-s-tee-plain-back-front.jpg",
+      "back_mockup": "/merch/mockups/printful-440238430-smartsleeve-sqts-men-s-tee-plain-back-back.jpg"
     },
     {
       "back_print_preview": "https://files.cdn.printful.com/files/892/8921130f075b2e5e87d1421867b811f0_preview.png",
@@ -128,7 +136,9 @@
         "XL",
         "2XL",
         "3XL"
-      ]
+      ],
+      "front_mockup": "/merch/mockups/printful-440239419-smartsleeve-sqts-men-s-tee-website-back-front.jpg",
+      "back_mockup": "/merch/mockups/printful-440239419-smartsleeve-sqts-men-s-tee-website-back-back.jpg"
     },
     {
       "back_print_preview": "https://files.cdn.printful.com/files/b67/b678f1b032d0148bea9a8e58c57c080d_preview.png",
@@ -154,7 +164,9 @@
         "XL",
         "2XL",
         "3XL"
-      ]
+      ],
+      "front_mockup": "/merch/mockups/printful-440239223-smartsleeve-sqts-men-s-tee-website-qr-back-front.jpg",
+      "back_mockup": "/merch/mockups/printful-440239223-smartsleeve-sqts-men-s-tee-website-qr-back-back.jpg"
     },
     {
       "front_print_preview": "https://files.cdn.printful.com/files/fda/fdaafbb579a50b80a328ec2e99ab51eb_preview.png",
@@ -177,10 +189,12 @@
         "L",
         "XL",
         "2XL"
-      ]
+      ],
+      "front_mockup": "/merch/mockups/printful-440236649-smartsleeve-ss-men-s-muscle-tee-plain-back-front.jpg",
+      "back_mockup": "/merch/mockups/printful-440236649-smartsleeve-ss-men-s-muscle-tee-plain-back-back.jpg"
     },
     {
-      "back_print_preview": "https://files.cdn.printful.com/files/b67/b678f1b032d0148bea9a8e58c57c080d_preview.png",
+      "back_print_preview": "https://files.cdn.printful.com/files/892/8921130f075b2e5e87d1421867b811f0_preview.png",
       "front_print_preview": "https://files.cdn.printful.com/files/fda/fdaafbb579a50b80a328ec2e99ab51eb_preview.png",
       "key": "printful-440237425-smartsleeve-ss-men-s-muscle-tee-website-back",
       "name": "SmartSleeve SS - Men's Muscle Tee - Website Back",
@@ -201,7 +215,9 @@
         "L",
         "XL",
         "2XL"
-      ]
+      ],
+      "front_mockup": "/merch/mockups/printful-440237425-smartsleeve-ss-men-s-muscle-tee-website-back-front.jpg",
+      "back_mockup": "/merch/mockups/printful-440237425-smartsleeve-ss-men-s-muscle-tee-website-back-back.jpg"
     },
     {
       "back_print_preview": "https://files.cdn.printful.com/files/b67/b678f1b032d0148bea9a8e58c57c080d_preview.png",
@@ -225,7 +241,9 @@
         "L",
         "XL",
         "2XL"
-      ]
+      ],
+      "front_mockup": "/merch/mockups/printful-440237483-smartsleeve-ss-men-s-muscle-tee-website-qr-back-front.jpg",
+      "back_mockup": "/merch/mockups/printful-440237483-smartsleeve-ss-men-s-muscle-tee-website-qr-back-back.jpg"
     },
     {
       "front_print_preview": "https://files.cdn.printful.com/files/aa1/aa1d5b0891e1cfe4d17becf516d83500_preview.png",
@@ -248,7 +266,9 @@
         "L",
         "XL",
         "2XL"
-      ]
+      ],
+      "front_mockup": "/merch/mockups/printful-440239096-smartsleeve-sqts-men-s-muscle-tee-plain-back-front.jpg",
+      "back_mockup": "/merch/mockups/printful-440239096-smartsleeve-sqts-men-s-muscle-tee-plain-back-back.jpg"
     },
     {
       "back_print_preview": "https://files.cdn.printful.com/files/892/8921130f075b2e5e87d1421867b811f0_preview.png",
@@ -272,7 +292,9 @@
         "L",
         "XL",
         "2XL"
-      ]
+      ],
+      "front_mockup": "/merch/mockups/printful-440238866-smartsleeve-sqts-men-s-muscle-tee-website-back-front.jpg",
+      "back_mockup": "/merch/mockups/printful-440238866-smartsleeve-sqts-men-s-muscle-tee-website-back-back.jpg"
     },
     {
       "back_print_preview": "https://files.cdn.printful.com/files/b67/b678f1b032d0148bea9a8e58c57c080d_preview.png",
@@ -296,7 +318,9 @@
         "L",
         "XL",
         "2XL"
-      ]
+      ],
+      "front_mockup": "/merch/mockups/printful-440238836-smartsleeve-sqts-men-s-muscle-tee-website-qr-back-front.jpg",
+      "back_mockup": "/merch/mockups/printful-440238836-smartsleeve-sqts-men-s-muscle-tee-website-qr-back-back.jpg"
     },
     {
       "front_print_preview": "https://files.cdn.printful.com/files/fda/fdaafbb579a50b80a328ec2e99ab51eb_preview.png",
@@ -321,7 +345,9 @@
         "XL",
         "2XL",
         "3XL"
-      ]
+      ],
+      "front_mockup": "/merch/mockups/printful-440238241-smartsleeve-ss-men-s-tank-plain-back-front.jpg",
+      "back_mockup": "/merch/mockups/printful-440238241-smartsleeve-ss-men-s-tank-plain-back-back.jpg"
     },
     {
       "back_print_preview": "https://files.cdn.printful.com/files/6e8/6e82b38888e06f0842ac4bcab3fab8e8_preview.png",
@@ -347,7 +373,9 @@
         "XL",
         "2XL",
         "3XL"
-      ]
+      ],
+      "front_mockup": "/merch/mockups/printful-440238145-smartsleeve-ss-men-s-tank-website-back-front.jpg",
+      "back_mockup": "/merch/mockups/printful-440238145-smartsleeve-ss-men-s-tank-website-back-back.jpg"
     },
     {
       "back_print_preview": "https://files.cdn.printful.com/files/f45/f45131a3ba93eb54f7e211e77745a940_preview.png",
@@ -373,7 +401,9 @@
         "XL",
         "2XL",
         "3XL"
-      ]
+      ],
+      "front_mockup": "/merch/mockups/printful-440238091-smartsleeve-ss-men-s-tank-website-qr-back-front.jpg",
+      "back_mockup": "/merch/mockups/printful-440238091-smartsleeve-ss-men-s-tank-website-qr-back-back.jpg"
     },
     {
       "front_print_preview": "https://files.cdn.printful.com/files/fda/fdaafbb579a50b80a328ec2e99ab51eb_preview.png",
@@ -398,7 +428,9 @@
         "XL",
         "2XL",
         "3XL"
-      ]
+      ],
+      "front_mockup": "/merch/mockups/printful-440237742-smartsleeve-ss-women-s-tee-plain-back-front.jpg",
+      "back_mockup": "/merch/mockups/printful-440237742-smartsleeve-ss-women-s-tee-plain-back-back.jpg"
     },
     {
       "back_print_preview": "https://files.cdn.printful.com/files/892/8921130f075b2e5e87d1421867b811f0_preview.png",
@@ -424,7 +456,9 @@
         "XL",
         "2XL",
         "3XL"
-      ]
+      ],
+      "front_mockup": "/merch/mockups/printful-440237860-smartsleeve-ss-women-s-tee-website-back-front.jpg",
+      "back_mockup": "/merch/mockups/printful-440237860-smartsleeve-ss-women-s-tee-website-back-back.jpg"
     },
     {
       "back_print_preview": "https://files.cdn.printful.com/files/b67/b678f1b032d0148bea9a8e58c57c080d_preview.png",
@@ -450,7 +484,9 @@
         "XL",
         "2XL",
         "3XL"
-      ]
+      ],
+      "front_mockup": "/merch/mockups/printful-440237961-smartsleeve-ss-women-s-tee-website-qr-back-front.jpg",
+      "back_mockup": "/merch/mockups/printful-440237961-smartsleeve-ss-women-s-tee-website-qr-back-back.jpg"
     },
     {
       "front_print_preview": "https://files.cdn.printful.com/files/fda/fdaafbb579a50b80a328ec2e99ab51eb_preview.png",
@@ -473,7 +509,9 @@
         "M",
         "L",
         "XL"
-      ]
+      ],
+      "front_mockup": "/merch/mockups/printful-440238664-smartsleeve-ss-women-s-tank-blank-back-front.jpg",
+      "back_mockup": "/merch/mockups/printful-440238664-smartsleeve-ss-women-s-tank-blank-back-back.jpg"
     },
     {
       "back_print_preview": "https://files.cdn.printful.com/files/892/8921130f075b2e5e87d1421867b811f0_preview.png",
@@ -497,7 +535,9 @@
         "M",
         "L",
         "XL"
-      ]
+      ],
+      "front_mockup": "/merch/mockups/printful-440238628-smartsleeve-ss-women-s-tank-website-back-front.jpg",
+      "back_mockup": "/merch/mockups/printful-440238628-smartsleeve-ss-women-s-tank-website-back-back.jpg"
     },
     {
       "back_print_preview": "https://files.cdn.printful.com/files/f45/f45131a3ba93eb54f7e211e77745a940_preview.png",
@@ -521,7 +561,9 @@
         "M",
         "L",
         "XL"
-      ]
+      ],
+      "front_mockup": "/merch/mockups/printful-440238538-smartsleeve-ss-women-s-tank-website-qr-back-front.jpg",
+      "back_mockup": "/merch/mockups/printful-440238538-smartsleeve-ss-women-s-tank-website-qr-back-back.jpg"
     }
   ],
   "sizes": [

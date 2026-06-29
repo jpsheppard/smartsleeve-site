@@ -545,6 +545,8 @@ def build_catalog_and_vars_for_all_products(
             continue
         detail = client.sync_product_detail(product_id)
         sync_product = detail.get("sync_product") or product
+        if int(sync_product.get("synced") if sync_product.get("synced") is not None else product.get("synced") or 1) == 0:
+            continue
         name = str(sync_product.get("name") or product.get("name") or f"Printful product {product_id}").strip()
         variants = detail.get("sync_variants") or []
         prices, sync_variant_ids = variant_prices_and_ids(variants)
@@ -590,6 +592,9 @@ def build_catalog_and_vars(
         product_id = int(matched.get("id") or 0)
         detail = client.sync_product_detail(product_id)
         sync_product = detail.get("sync_product") or matched
+        if int(sync_product.get("synced") if sync_product.get("synced") is not None else matched.get("synced") or 1) == 0:
+            warnings.append(f"Skipping unsynced Printful product for {target.key} ({sync_product.get('name')})")
+            continue
         variants = detail.get("sync_variants") or []
         prices, sync_variant_ids = variant_prices_and_ids(variants)
         if not prices:

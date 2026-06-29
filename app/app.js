@@ -4008,6 +4008,14 @@
     return "/merch/" + brand + "-" + cut + "-" + back + "-preview.png";
   }
 
+  function merchFrontImage(product) {
+    return product.front_mockup || product.front_print_preview || merchPreviewFor(product);
+  }
+
+  function merchBackImage(product) {
+    return product.back_mockup || product.back_print_preview || "";
+  }
+
   function merchDefaultSize(product) {
     var sizes = product && product.sizes ? product.sizes : [];
     if (sizes.indexOf("L") !== -1) return "L";
@@ -4079,13 +4087,13 @@
 
   function merchCard(product) {
     var size = merchDefaultSize(product);
-    var backImage = product.back_print_preview || "";
+    var backImage = merchBackImage(product);
     var options = (product.sizes || []).map(function (item) {
       return "<option value=\"" + html(item) + "\"" + (item === size ? " selected" : "") + ">" + html(item) + "</option>";
     }).join("");
     return "<article class=\"merch-product-card\" data-merch-product-card=\"" + html(product.key) + "\">"
       + "<div class=\"merch-product-images\">"
-      + "<figure><img src=\"" + html(product.front_print_preview || merchPreviewFor(product)) + "\" alt=\"" + html(merchCleanName(product.name)) + " front\" loading=\"lazy\"><figcaption>Front</figcaption></figure>"
+      + "<figure><img src=\"" + html(merchFrontImage(product)) + "\" alt=\"" + html(merchCleanName(product.name)) + " front\" loading=\"lazy\"><figcaption>Front</figcaption></figure>"
       + "<figure>" + (backImage
         ? "<img src=\"" + html(backImage) + "\" alt=\"" + html(merchCleanName(product.name)) + " back\" loading=\"lazy\">"
         : "<div class=\"merch-blank-back\"><span>Black back</span></div>")
@@ -4142,7 +4150,7 @@
     }
     list.innerHTML = state.merchCart.map(function (item) {
       return "<article class=\"merch-cart-item\" data-merch-cart-item=\"" + html(merchCartKey(item.product.key, item.size)) + "\">"
-        + "<img src=\"" + html(merchPreviewFor(item.product)) + "\" alt=\"\" loading=\"lazy\">"
+        + "<img src=\"" + html(merchFrontImage(item.product)) + "\" alt=\"\" loading=\"lazy\">"
         + "<div><b>" + html(merchCleanName(item.product.name)) + "</b><span>Size " + html(item.size) + " · " + money(merchPrice(item.product, item.size)) + "</span></div>"
         + "<label>Qty <input type=\"number\" min=\"1\" max=\"9\" value=\"" + item.quantity + "\" data-merch-quantity=\"" + html(merchCartKey(item.product.key, item.size)) + "\"></label>"
         + "<button type=\"button\" class=\"text-button subtle\" data-merch-remove=\"" + html(merchCartKey(item.product.key, item.size)) + "\">Remove</button>"
