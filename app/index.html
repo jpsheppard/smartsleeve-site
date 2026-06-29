@@ -10,6 +10,8 @@
   <meta name="sqts-analytics-endpoint" content="__SQTS_SITE_ANALYTICS_ENDPOINT__">
   <meta name="smartsleeve-auth-endpoint" content="https://smartsleeve-auth.jpsheppard88.workers.dev">
   <meta name="smartsleeve-order-intent-endpoint" content="https://smartsleeve-auth.jpsheppard88.workers.dev/order-intents">
+  <meta name="smartsleeve-merch-checkout-endpoint" content="https://smartsleeve-merch-checkout.jpsheppard88.workers.dev/checkout">
+  <meta name="smartsleeve-merch-catalog-endpoint" content="https://smartsleeve-merch-checkout.jpsheppard88.workers.dev/catalog">
   <!-- SmartSleeve Console Prototype: secure backend integration surface. Custom Sage (Grand Sage). -->
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
@@ -36,6 +38,7 @@
         <a href="#recommendations" data-nav="recommendations">Recs</a>
         <a href="#trade" data-nav="trade">Trade Center</a>
         <a href="#reallocation" data-nav="reallocation">Reallocation</a>
+        <a href="#shop" data-nav="shop">Shop</a>
         <a href="#sage" data-nav="sage">Sage</a>
         <a href="#diagnostics" data-nav="diagnostics">Diagnostics</a>
       </nav>
@@ -770,6 +773,55 @@
         </article>
       </section>
 
+      <section id="shop" class="panel" data-section="shop">
+        <div class="section-heading">
+          <p class="eyebrow">SmartSleeve Merch</p>
+          <h2>SS and SQTS apparel is back online</h2>
+          <p>All listed apparel now uses the common approved SS front or the common approved SQTS front, with fulfillment through the SmartSleeve Printful checkout pipeline.</p>
+        </div>
+
+        <div class="shop-layout">
+          <article class="panel-card merch-catalog-card">
+            <div class="card-head">
+              <div>
+                <span>Catalog</span>
+                <h2>Printful designs</h2>
+              </div>
+              <span class="status-chip" id="merch-catalog-status">Loading</span>
+            </div>
+            <div class="merch-filter-row" role="group" aria-label="Merch filters">
+              <button type="button" class="text-button active" data-merch-filter="all">All</button>
+              <button type="button" class="text-button subtle" data-merch-filter="ss">SS</button>
+              <button type="button" class="text-button subtle" data-merch-filter="sqts">SQTS</button>
+            </div>
+            <div id="merch-product-grid" class="merch-product-grid" aria-live="polite"></div>
+          </article>
+
+          <aside class="panel-card merch-cart-card" aria-label="Shopping cart">
+            <div class="card-head">
+              <div>
+                <span>Cart</span>
+                <h2>Shopping cart</h2>
+              </div>
+              <span class="status-chip" id="merch-cart-count">Empty</span>
+            </div>
+            <div id="merch-cart-items" class="merch-cart-items"></div>
+            <dl class="merch-cart-totals">
+              <div>
+                <dt>Subtotal</dt>
+                <dd id="merch-cart-subtotal">$0.00</dd>
+              </div>
+              <div>
+                <dt>Shipping</dt>
+                <dd>Calculated at checkout</dd>
+              </div>
+            </dl>
+            <button type="button" class="primary merch-checkout-button" id="merch-checkout-button" disabled>Checkout</button>
+            <p class="billing-note" id="merch-cart-note">Add an item to start a Stripe-hosted checkout. Payments stay off this static page.</p>
+          </aside>
+        </div>
+      </section>
+
       <section id="diagnostics" class="panel" data-section="diagnostics">
         <div class="section-heading">
           <p class="eyebrow">Diagnostics</p>
@@ -847,6 +899,7 @@
     <a href="#recommendations" data-nav="recommendations">Recs</a>
     <a href="#trade" data-nav="trade">Trade</a>
     <a href="#reallocation" data-nav="reallocation">Reallocate</a>
+    <a href="#shop" data-nav="shop">Shop</a>
     <a href="#sage" data-nav="sage">Sage</a>
     <a href="#diagnostics" data-nav="diagnostics">Health</a>
   </nav>

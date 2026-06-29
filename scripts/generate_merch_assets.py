@@ -653,47 +653,56 @@ def make_ss_v2_mark() -> Image.Image:
 
 
 def make_sqts_llc_front_art() -> None:
-    logo = Image.open(ROOT / "sqts-logo-green-llc.png").convert("RGBA")
+    source = transparentize_dark_background(
+        Image.open(ROOT / "sqts-logo-green-original.png").convert("RGBA"),
+        threshold=48,
+        green_floor=24,
+    )
+    logo = transparentize_dark_background(source.crop((0, 0, 1200, 342)), threshold=48, green_floor=24)
+    logo = crop_green_subject(logo, margin=18)
+
     art = Image.new("RGBA", (4500, 5400), TRANSPARENT)
-    logo = logo.resize((4000, 1707), Image.Resampling.LANCZOS)
-    centered_paste(art, logo, 2250, 500)
-    slogan_font = fit_font(ImageDraw.Draw(art), SLOGAN, 4100, 235, min_size=100)
-    draw_centered_glow_text(art, SLOGAN, 2250, 2145, slogan_font, WHITE, glow_fill=(255, 255, 255, 255))
+    logo_width = 3850
+    logo = logo.resize((logo_width, round(logo.height * logo_width / logo.width)), Image.Resampling.LANCZOS)
+    logo_top = 500
+    centered_paste(art, logo, 2250, logo_top)
+
+    draw = ImageDraw.Draw(art)
+    company = "SmartSleeve Quantitative Trading Systems, LLC"
+    company_font = fit_font(draw, company, 4100, 223, min_size=110)
+    company_y = logo_top + logo.height + 72
+    draw_centered_glow_text(art, company, 2250, company_y, company_font, GREEN, glow_fill=GREEN)
+    art.save(OUT / "sqts-llc-common-front-print.png")
     art.save(OUT / "sqts-llc-front-print.png")
 
 
 def make_ss_short_front_art() -> None:
-    icon = make_ss_v2_mark()
-    for filename, vertical_shift, lockup_lift in (
-        ("smartsleeve-ss-short-front-print.png", 0, 0),
-        ("smartsleeve-ss-tank-front-print.png", 320, 95),
-    ):
-        art = Image.new("RGBA", (4500, 5400), TRANSPARENT)
-        icon_width = 3500
-        placed_icon = icon.resize((icon_width, round(icon.height * (icon_width / icon.width))), Image.Resampling.LANCZOS)
-        centered_paste(art, placed_icon, 2250, 360 + vertical_shift)
-        draw_neon_lockup_text(
-            art,
-            "SmartSleeve",
-            1815 + vertical_shift - lockup_lift,
-            max_width=4000,
-            start_size=395,
-            line_left=430,
-            line_right=4070,
-            top_line_gap=55,
-            bottom_line_gap=145,
-        )
-        slogan_font = fit_font(ImageDraw.Draw(art), SLOGAN, 4100, 230, min_size=100)
-        draw_centered_glow_text(
-            art,
-            SLOGAN,
-            2250,
-            2420 + vertical_shift - lockup_lift,
-            slogan_font,
-            WHITE,
-            glow_fill=(255, 255, 255, 255),
-        )
-        art.save(OUT / filename)
+    source = transparentize_dark_background(
+        Image.open(ROOT / "brand" / "smartsleeve-ss-clean-banner-v2-no-lines.png").convert("RGBA"),
+        threshold=42,
+        green_floor=18,
+    )
+    bbox = source.getbbox()
+    if bbox:
+        left, top, right, bottom = bbox
+        source = source.crop((max(0, left - 28), max(0, top - 28), min(source.width, right + 28), min(source.height, bottom + 28)))
+    base = Image.new("RGBA", (4500, 5400), TRANSPARENT)
+    source_width = 3900
+    source = source.resize((source_width, round(source.height * (source_width / source.width))), Image.Resampling.LANCZOS)
+    centered_paste(base, source, 2250, 520)
+
+    art = Image.new("RGBA", base.size, TRANSPARENT)
+    name_shift = 130
+    art.alpha_composite(base.crop((0, 0, base.width, 2115 - name_shift)), (0, 0))
+    art.alpha_composite(base.crop((0, 2080, base.width, 2450)), (0, 2080 - name_shift))
+
+    draw = ImageDraw.Draw(art)
+    slogan_font = fit_font(draw, SLOGAN, 4100, round(230 * 1.25), min_size=100)
+    draw_centered_glow_text(art, SLOGAN, 2250, 2625 - name_shift, slogan_font, WHITE, glow_fill=(255, 255, 255, 255))
+
+    art.save(OUT / "smartsleeve-ss-common-front-print.png")
+    art.save(OUT / "smartsleeve-ss-short-front-print.png")
+    art.save(OUT / "smartsleeve-ss-tank-front-print.png")
 
 
 def make_back_art() -> None:
