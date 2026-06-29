@@ -4071,6 +4071,7 @@
     var parts = String(key || "").split("::");
     var gender = parts[0] || "Merch";
     var cut = parts[1] || "Apparel";
+    if (gender === "Women" && cut === "Tank Top") return "Women's Racerback Tanks";
     var plural = cut === "T-Shirt" ? "T-Shirts" : cut === "Tank Top" ? "Tank Tops" : cut === "Muscle Tee" ? "Muscle Tees" : cut;
     if (gender === "All") return plural;
     return gender + "'s " + plural;
