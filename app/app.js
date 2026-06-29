@@ -8,8 +8,6 @@
   var principalEmail = normalizeEmail(params.get("principal_email") || "");
   var authEndpoint = metaContent("smartsleeve-auth-endpoint");
   var orderIntentEndpoint = metaContent("smartsleeve-order-intent-endpoint") || (authEndpoint ? authEndpoint.replace(/\/$/, "") + "/order-intents" : "");
-  var merchCheckoutEndpoint = metaContent("smartsleeve-merch-checkout-endpoint");
-  var merchCatalogEndpoint = metaContent("smartsleeve-merch-catalog-endpoint");
   var appFeedEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/api/app-feed" : "";
   var appFeedRefreshEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/api/app-feed/refresh" : "";
   var loginEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/login" : "";
@@ -43,10 +41,6 @@
     selectedTradeId: null,
     orderNotificationSeen: {},
     orderNotificationPrimed: false,
-    merchProducts: [],
-    merchCart: [],
-    merchFilter: "all",
-    merchCatalogSource: "loading",
     activeScrubChart: null,
     feedRefreshTimer: null,
     pullRefresh: {
@@ -220,11 +214,6 @@
     return String(window.location.hash || "#dashboard").replace("#", "").split("?")[0] || "dashboard";
   }
 
-  function isMerchRoute(section) {
-    var target = String(section || currentHashSection()).split("?")[0];
-    return target === "shop" || target === "shop-success" || target === "shop-cancel" || target === "store";
-  }
-
   function removeAuthGate() {
     var existing = $("auth-gate");
     if (existing) {
@@ -233,10 +222,6 @@
   }
 
   function showAuthGate(message) {
-    if (isMerchRoute()) {
-      removeAuthGate();
-      return;
-    }
     if ($("auth-gate")) {
       text("auth-gate-message", message || "Sign in to load your private SmartSleeve data.");
       return;
@@ -4012,327 +3997,6 @@
     }
   }
 
-  function merchBrand(product) {
-    return /sqts/i.test(product.name || product.key || "") ? "sqts" : "ss";
-  }
-
-  function merchFrontLabel(product) {
-    return merchBrand(product) === "sqts" ? "SQTS" : "SS";
-  }
-
-  function merchGender(product) {
-    var value = String(product.name || product.key || "").toLowerCase();
-    return value.indexOf("women") !== -1 ? "Women" : "Men";
-  }
-
-  function merchBackType(product) {
-    var value = String(product.name || product.key || "").toLowerCase();
-    if (value.indexOf("website+qr") !== -1 || value.indexOf("website-qr") !== -1) return "Website + QR";
-    if (value.indexOf("website") !== -1) return "Website";
-    return "Black";
-  }
-
-  function merchCut(product) {
-    var value = String(product.name || product.key || "").toLowerCase();
-    if (value.indexOf("muscle") !== -1) return "Muscle Tee";
-    if (value.indexOf("tank") !== -1) return "Tank Top";
-    return "T-Shirt";
-  }
-
-  function merchPreviewFor(product) {
-    if (product && product.preview) return product.preview;
-    var brand = merchBrand(product) === "sqts" ? "sqts-llc" : "smartsleeve-ss";
-    var cut = merchCut(product) === "Tank Top" || merchCut(product) === "Muscle Tee" ? "tank" : "tee";
-    var back = merchBackType(product) === "Website + QR" ? "promo" : merchBackType(product) === "Website" ? "website" : "brand";
-    return "/merch/" + brand + "-" + cut + "-" + back + "-preview.png";
-  }
-
-  function merchFrontImage(product) {
-    return product.front_mockup || product.front_print_preview || merchPreviewFor(product);
-  }
-
-  function merchBackImage(product) {
-    return product.back_mockup || product.back_print_preview || "";
-  }
-
-  function merchDefaultSize(product) {
-    var sizes = product && product.sizes ? product.sizes : [];
-    if (sizes.indexOf("L") !== -1) return "L";
-    if (sizes.indexOf("M") !== -1) return "M";
-    return sizes[0] || "M";
-  }
-
-  function merchPrice(product, size) {
-    var prices = product && product.prices ? product.prices : {};
-    var raw = prices[size] || prices[merchDefaultSize(product)] || String(product.price_label || "").replace(/[^0-9.]/g, "");
-    var number = Number(raw);
-    return Number.isFinite(number) ? number : 0;
-  }
-
-  function merchCartKey(productKey, size) {
-    return productKey + "::" + size;
-  }
-
-  function merchCleanName(name) {
-    var clean = String(name || "SmartSleeve merch").replace(/^SmartSleeve\s+/i, "");
-    clean = clean.replace(/\s*-\s*(Plain|Blank|Website|Website\+QR)\s+Back$/i, "");
-    clean = clean.replace(/\s+(Plain|Blank|Website|Website\+QR)\s+Back$/i, "");
-    return clean;
-  }
-
-  function merchSortValue(value, order) {
-    var index = order.indexOf(value);
-    return index === -1 ? order.length : index;
-  }
-
-  function merchProductSort(a, b) {
-    var genderOrder = ["Men", "Women"];
-    var typeOrder = ["T-Shirt", "Tank Top", "Muscle Tee"];
-    var frontOrder = ["SS", "SQTS"];
-    var backOrder = ["Black", "Website", "Website + QR"];
-    return merchSortValue(merchGender(a), genderOrder) - merchSortValue(merchGender(b), genderOrder)
-      || merchSortValue(merchCut(a), typeOrder) - merchSortValue(merchCut(b), typeOrder)
-      || merchSortValue(merchFrontLabel(a), frontOrder) - merchSortValue(merchFrontLabel(b), frontOrder)
-      || merchSortValue(merchBackType(a), backOrder) - merchSortValue(merchBackType(b), backOrder)
-      || String(a.name || "").localeCompare(String(b.name || ""));
-  }
-
-  function merchGroupKey(product) {
-    if (merchCut(product) === "Muscle Tee") return "All::Muscle Tee";
-    return merchGender(product) + "::" + merchCut(product);
-  }
-
-  function merchGroupSortKey(key) {
-    var parts = String(key || "").split("::");
-    var groupOrder = {
-      "Men::T-Shirt": 0,
-      "Men::Tank Top": 1,
-      "All::Muscle Tee": 2,
-      "Women::T-Shirt": 3,
-      "Women::Tank Top": 4
-    };
-    return groupOrder[key] == null ? 99 : groupOrder[key];
-  }
-
-  function merchGroupTitle(key) {
-    var parts = String(key || "").split("::");
-    var gender = parts[0] || "Merch";
-    var cut = parts[1] || "Apparel";
-    if (gender === "Women" && cut === "Tank Top") return "Women's Racerback Tanks";
-    var plural = cut === "T-Shirt" ? "T-Shirts" : cut === "Tank Top" ? "Tank Tops" : cut === "Muscle Tee" ? "Muscle Tees" : cut;
-    if (gender === "All") return plural;
-    return gender + "'s " + plural;
-  }
-
-  function merchCard(product) {
-    var size = merchDefaultSize(product);
-    var backImage = merchBackImage(product);
-    var options = (product.sizes || []).map(function (item) {
-      return "<option value=\"" + html(item) + "\"" + (item === size ? " selected" : "") + ">" + html(item) + "</option>";
-    }).join("");
-    return "<article class=\"merch-product-card\" data-merch-product-card=\"" + html(product.key) + "\">"
-      + "<div class=\"merch-product-images\">"
-      + "<figure><img src=\"" + html(merchFrontImage(product)) + "\" alt=\"" + html(merchCleanName(product.name)) + " front\" loading=\"lazy\"><figcaption>Front</figcaption></figure>"
-      + "<figure>" + (backImage
-        ? "<img src=\"" + html(backImage) + "\" alt=\"" + html(merchCleanName(product.name)) + " back\" loading=\"lazy\">"
-        : "<div class=\"merch-blank-back\"><span>Black back</span></div>")
-      + "<figcaption>Back</figcaption></figure>"
-      + "</div>"
-      + "<div class=\"merch-product-copy\">"
-      + "<h4>" + html(merchCleanName(product.name)) + "</h4>"
-      + "<div class=\"merch-chip-row\"><span>Front: " + html(merchFrontLabel(product)) + "</span><span>Back: " + html(merchBackType(product)) + "</span></div>"
-      + "<div class=\"merch-buy-row\">"
-      + "<strong>" + html(product.price_label || money(merchPrice(product, size))) + "</strong>"
-      + "<label>Size <select data-merch-size=\"" + html(product.key) + "\">" + options + "</select></label>"
-      + "<button type=\"button\" class=\"primary\" data-merch-add=\"" + html(product.key) + "\">Add to cart</button>"
-      + "</div>"
-      + "</div>"
-      + "</article>";
-  }
-
-  function renderMerchCatalog() {
-    var grid = $("merch-product-grid");
-    if (!grid) return;
-    var products = (state.merchProducts || []).slice().sort(merchProductSort);
-    text("merch-catalog-status", products.length ? products.length + " items" : "Loading");
-    if (!products.length) {
-      grid.innerHTML = emptyItem("Loading shop", " ");
-      return;
-    }
-    var groups = {};
-    products.forEach(function (product) {
-      var key = merchGroupKey(product);
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(product);
-    });
-    grid.innerHTML = Object.keys(groups).sort(function (a, b) {
-      return merchGroupSortKey(a) - merchGroupSortKey(b) || a.localeCompare(b);
-    }).map(function (key) {
-      return "<section class=\"merch-product-group\"><h3>" + html(merchGroupTitle(key)) + "</h3><div class=\"merch-product-row\">"
-        + groups[key].map(merchCard).join("")
-        + "</div></section>";
-    }).join("");
-  }
-
-  function renderMerchCart() {
-    var list = $("merch-cart-items");
-    if (!list) return;
-    var count = state.merchCart.reduce(function (sum, item) { return sum + item.quantity; }, 0);
-    var subtotal = state.merchCart.reduce(function (sum, item) { return sum + merchPrice(item.product, item.size) * item.quantity; }, 0);
-    text("merch-cart-count", count ? count + " item" + (count === 1 ? "" : "s") : "Empty");
-    text("merch-cart-subtotal", money(subtotal));
-    var checkout = $("merch-checkout-button");
-    if (checkout) checkout.disabled = !count || !merchCheckoutEndpoint;
-    if (!state.merchCart.length) {
-      list.innerHTML = "<article class=\"merch-cart-empty\">Your cart is empty</article>";
-      return;
-    }
-    list.innerHTML = state.merchCart.map(function (item) {
-      return "<article class=\"merch-cart-item\" data-merch-cart-item=\"" + html(merchCartKey(item.product.key, item.size)) + "\">"
-        + "<img src=\"" + html(merchFrontImage(item.product)) + "\" alt=\"\" loading=\"lazy\">"
-        + "<div><b>" + html(merchCleanName(item.product.name)) + "</b><span>Size " + html(item.size) + " · " + money(merchPrice(item.product, item.size)) + "</span></div>"
-        + "<label>Qty <input type=\"number\" min=\"1\" max=\"9\" value=\"" + item.quantity + "\" data-merch-quantity=\"" + html(merchCartKey(item.product.key, item.size)) + "\"></label>"
-        + "<button type=\"button\" class=\"text-button subtle\" data-merch-remove=\"" + html(merchCartKey(item.product.key, item.size)) + "\">Remove</button>"
-        + "</article>";
-    }).join("");
-  }
-
-  function renderMerchShop() {
-    renderMerchCatalog();
-    renderMerchCart();
-  }
-
-  function setMerchButtonFeedback(productKey, label) {
-    var button = document.querySelector("[data-merch-add=\"" + cssEscape(productKey) + "\"]");
-    if (!button) return;
-    var original = button.getAttribute("data-default-label") || button.textContent || "Add to cart";
-    button.setAttribute("data-default-label", original);
-    button.textContent = label;
-    button.classList.add("merch-added");
-    window.clearTimeout(button.feedbackTimer);
-    button.feedbackTimer = window.setTimeout(function () {
-      button.textContent = original;
-      button.classList.remove("merch-added");
-    }, 1100);
-  }
-
-  function addMerchToCart(productKey) {
-    var product = state.merchProducts.find(function (item) { return item.key === productKey; });
-    if (!product) return;
-    var select = document.querySelector("[data-merch-size=\"" + cssEscape(productKey) + "\"]");
-    var size = select && select.value ? select.value : merchDefaultSize(product);
-    var key = merchCartKey(product.key, size);
-    var item = state.merchCart.find(function (cartItem) { return merchCartKey(cartItem.product.key, cartItem.size) === key; });
-    if (item) {
-      item.quantity = Math.min(9, item.quantity + 1);
-    } else {
-      state.merchCart.push({product: product, size: size, quantity: 1});
-    }
-    renderMerchCart();
-    setMerchButtonFeedback(productKey, "Added");
-    text("merch-cart-note", "Shipping and taxes are calculated at checkout.");
-  }
-
-  function removeMerchCartItem(key) {
-    state.merchCart = state.merchCart.filter(function (item) {
-      return merchCartKey(item.product.key, item.size) !== key;
-    });
-    renderMerchCart();
-    toast("Removed from cart.");
-  }
-
-  function updateMerchQuantity(key, quantity) {
-    var item = state.merchCart.find(function (cartItem) { return merchCartKey(cartItem.product.key, cartItem.size) === key; });
-    if (!item) return;
-    item.quantity = Math.max(1, Math.min(9, Number(quantity) || 1));
-    renderMerchCart();
-  }
-
-  function loadMerchCatalog() {
-    var liveUrl = merchCatalogEndpoint;
-    var fallbackUrl = "/merch/printful-storefront-catalog.json";
-    function productsFrom(payload) {
-      return ((payload && payload.products) || []).filter(function (product) {
-        return product && product.key && product.name && product.sizes && product.sizes.length;
-      });
-    }
-    function mergeCatalogProducts(primary, fallback) {
-      var previewByKey = {};
-      productsFrom(fallback).forEach(function (product) {
-        if (product.preview) previewByKey[product.key] = product.preview;
-      });
-      return productsFrom(primary).map(function (product) {
-        if (!product.preview && previewByKey[product.key]) {
-          return Object.assign({}, product, {preview: previewByKey[product.key]});
-        }
-        return product;
-      });
-    }
-    function applyProducts(products, source) {
-      state.merchProducts = products;
-      state.merchCatalogSource = source;
-      renderMerchShop();
-    }
-    var live = liveUrl ? fetch(liveUrl, {cache: "no-store"}).then(function (response) {
-      if (!response.ok) throw new Error("Catalog HTTP " + response.status);
-      return response.json();
-    }) : Promise.reject(new Error("No live catalog configured."));
-    var fallback = fetch(fallbackUrl, {cache: "no-store"}).then(function (response) {
-      if (!response.ok) throw new Error("Fallback catalog HTTP " + response.status);
-      return response.json();
-    });
-    Promise.allSettled([live, fallback]).then(function (results) {
-      var livePayload = results[0].status === "fulfilled" ? results[0].value : null;
-      var fallbackPayload = results[1].status === "fulfilled" ? results[1].value : null;
-      if (fallbackPayload) {
-        applyProducts(mergeCatalogProducts(fallbackPayload, livePayload), livePayload ? "live" : "snapshot");
-      } else if (livePayload) {
-        applyProducts(productsFrom(livePayload), "live");
-      } else {
-        throw results[0].reason || results[1].reason || new Error("Catalog unavailable");
-      }
-    }).catch(function () {
-      text("merch-catalog-status", "Unavailable");
-      var grid = $("merch-product-grid");
-      if (grid) grid.innerHTML = emptyItem("Shop unavailable", "Please try again soon.");
-    });
-  }
-
-  function startMerchCheckout() {
-    if (!state.merchCart.length || !merchCheckoutEndpoint) return;
-    var button = $("merch-checkout-button");
-    var note = $("merch-cart-note");
-    if (button) {
-      button.disabled = true;
-      button.textContent = "Opening checkout...";
-    }
-    if (note) note.textContent = "Opening checkout...";
-    fetch(merchCheckoutEndpoint, {
-      method: "POST",
-      mode: "cors",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({
-        items: state.merchCart.map(function (item) {
-          return {product_key: item.product.key, size: item.size, quantity: item.quantity};
-        })
-      })
-    }).then(function (response) {
-      return response.json().catch(function () { return {}; }).then(function (payload) {
-        if (!response.ok || payload.ok === false || !payload.checkout_url) {
-          throw new Error(payload.error || "Checkout session was not created.");
-        }
-        window.location.href = payload.checkout_url;
-      });
-    }).catch(function (error) {
-      if (button) {
-        button.disabled = false;
-        button.textContent = "Checkout";
-      }
-      if (note) note.textContent = "Checkout unavailable: " + error.message;
-      toast("Merch checkout unavailable.");
-    });
-  }
-
   function renderAll() {
     state.sleeves = buildSleeves(state.accounts);
     state.recommendations = buildRecommendations();
@@ -4347,7 +4011,6 @@
     renderTradeCenter();
     renderSage();
     renderRisk();
-    renderMerchShop();
   }
 
   function stackItem(title, meta, body, progress, className) {
@@ -5067,9 +4730,8 @@
 
   function handleNav(section) {
     var target = String(section || "dashboard").split("?")[0];
-    var aliases = {overview: "dashboard", portfolio: "dashboard", command: "trade", trades: "trade", picks: "stock-picks", stock: "stock-picks", recs: "recommendations", recommend: "recommendations", recommendations: "recommendations", store: "shop", "shop-success": "shop", "shop-cancel": "shop", health: "diagnostics", risk: "diagnostics"};
+    var aliases = {overview: "dashboard", portfolio: "dashboard", command: "trade", trades: "trade", picks: "stock-picks", stock: "stock-picks", recs: "recommendations", recommend: "recommendations", recommendations: "recommendations", health: "diagnostics", risk: "diagnostics"};
     target = aliases[target] || target;
-    document.body.classList.toggle("public-shop", target === "shop");
     $all("[data-section]").forEach(function (panel) {
       panel.classList.toggle("active", panel.getAttribute("data-section") === target);
     });
@@ -5086,7 +4748,6 @@
       recommendations: ["Recs", "Actionable Sage recommendations ready for review or draft trade tickets."],
       trade: ["Trade Center", "Draft, review, approve, reject, and audit trade decisions."],
       reallocation: ["Reallocation", "Estimate basis cost, settlement friction, and patience before drafting a trade."],
-      shop: ["Merch Shop", ""],
       sage: ["Sage", "Agent controls, recommendations, decision feed, and execution diagnostics."],
       diagnostics: ["Diagnostics", "Broker health, margin clarity, account coverage, and sync gaps."]
     };
@@ -5101,7 +4762,7 @@
     }
     text("page-title", (titles[target] || titles.dashboard)[0]);
     text("page-subtitle", (titles[target] || titles.dashboard)[1]);
-    document.title = target === "shop" ? "Merch Shop | SmartSleeve" : "SmartSleeve Portfolio OS";
+    document.title = "SmartSleeve Portfolio OS";
     scrollActiveBottomNavIntoView();
   }
 
@@ -5112,7 +4773,7 @@
         var section = link.getAttribute("data-nav");
         history.replaceState(null, "", "#" + section);
         handleNav(section);
-        if (!isMerchRoute(section) && !state.payload) loadFeed();
+        if (!state.payload) loadFeed();
       });
     });
     $all("[data-nav-button]").forEach(function (button) {
@@ -5120,7 +4781,7 @@
         var section = button.getAttribute("data-nav-button");
         history.replaceState(null, "", "#" + section);
         handleNav(section);
-        if (!isMerchRoute(section) && !state.payload) loadFeed();
+        if (!state.payload) loadFeed();
       });
     });
     var sort = $("holdings-sort");
@@ -5168,25 +4829,7 @@
           .catch(function () { toast("Clipboard unavailable in this browser."); });
       });
     }
-    var merchCheckout = $("merch-checkout-button");
-    if (merchCheckout) merchCheckout.addEventListener("click", startMerchCheckout);
     document.addEventListener("click", function (event) {
-      var merchFilter = event.target.closest("[data-merch-filter]");
-      if (merchFilter) {
-        state.merchFilter = merchFilter.getAttribute("data-merch-filter") || "all";
-        renderMerchCatalog();
-        return;
-      }
-      var merchAdd = event.target.closest("[data-merch-add]");
-      if (merchAdd) {
-        addMerchToCart(merchAdd.getAttribute("data-merch-add"));
-        return;
-      }
-      var merchRemove = event.target.closest("[data-merch-remove]");
-      if (merchRemove) {
-        removeMerchCartItem(merchRemove.getAttribute("data-merch-remove"));
-        return;
-      }
       var orderButton = event.target.closest("[data-order-action]");
       if (orderButton) {
         var order = state.draftOrders.find(function (item) { return item.id === orderButton.getAttribute("data-order-id"); });
@@ -5320,10 +4963,6 @@
       if (chart && !state.activeScrubChart) resetChartScrub(chart);
     }, true);
     document.addEventListener("change", function (event) {
-      if (event.target && event.target.matches("[data-merch-quantity]")) {
-        updateMerchQuantity(event.target.getAttribute("data-merch-quantity"), event.target.value);
-        return;
-      }
       if (event.target && event.target.id === "developer-user-filter") {
         state.selectedOwnerEmail = normalizeEmail(event.target.value || "all") || "all";
         state.selectedAccountId = "all";
@@ -5605,11 +5244,6 @@
           state.sleeves = [];
           state.recommendations = [recommendation("feed-failed", "Reconnect cloud feed", "Broker sync", "SmartSleeve", "Data", 0, error.message, "No portfolio decisions should be made until current holdings are available.", "EXTERNAL_BROKER_SYNC")];
           renderAll();
-          if (isMerchRoute()) {
-            removeAuthGate();
-            handleNav(currentHashSection());
-            return false;
-          }
           if (error.authRequired) {
             clearStoredSession();
             showAuthGate(error.message);
@@ -5630,11 +5264,6 @@
     restoreOrderNotificationSeen();
     renderSession();
     wireEvents();
-    loadMerchCatalog();
-    if (isMerchRoute()) {
-      handleNav(currentHashSection());
-    } else {
-      loadFeed();
-    }
+    loadFeed();
   });
 })();

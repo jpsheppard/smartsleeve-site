@@ -10,14 +10,12 @@
   <meta name="sqts-analytics-endpoint" content="__SQTS_SITE_ANALYTICS_ENDPOINT__">
   <meta name="smartsleeve-auth-endpoint" content="https://smartsleeve-auth.jpsheppard88.workers.dev">
   <meta name="smartsleeve-order-intent-endpoint" content="https://smartsleeve-auth.jpsheppard88.workers.dev/order-intents">
-  <meta name="smartsleeve-merch-checkout-endpoint" content="https://smartsleeve-merch-checkout.jpsheppard88.workers.dev/checkout">
-  <meta name="smartsleeve-merch-catalog-endpoint" content="https://smartsleeve-merch-checkout.jpsheppard88.workers.dev/catalog">
   <!-- SmartSleeve Console Prototype: secure backend integration surface. Custom Sage (Grand Sage). -->
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
   <link rel="manifest" href="/site.webmanifest">
-  <link rel="stylesheet" href="/app/styles.css?v=20260629-dense-etrade-charts">
+  <link rel="stylesheet" href="/app/styles.css?v=20260629-dense-etrade-app">
 </head>
 <body>
   <div class="app-shell">
@@ -38,7 +36,6 @@
         <a href="#recommendations" data-nav="recommendations">Recs</a>
         <a href="#trade" data-nav="trade">Trade Center</a>
         <a href="#reallocation" data-nav="reallocation">Reallocation</a>
-        <a href="#shop" data-nav="shop">Shop</a>
         <a href="#sage" data-nav="sage">Sage</a>
         <a href="#diagnostics" data-nav="diagnostics">Diagnostics</a>
       </nav>
@@ -773,56 +770,6 @@
         </article>
       </section>
 
-      <section id="shop" class="panel" data-section="shop">
-        <div class="shop-public-header">
-          <a class="shop-brand" href="/" aria-label="SmartSleeve home">
-            <img src="/brand/smartsleeve-apparel-logo-cropped.png" alt="SmartSleeve">
-          </a>
-          <a class="text-button subtle shop-private-link" href="/app/">Private Login</a>
-        </div>
-
-        <div class="section-heading merch-heading">
-          <p class="eyebrow">SmartSleeve</p>
-          <h2>Merch Shop</h2>
-        </div>
-
-        <div class="shop-layout">
-          <article class="panel-card merch-catalog-card">
-            <div class="card-head">
-              <div>
-                <span>Apparel</span>
-                <h2>Shop by style</h2>
-              </div>
-              <span class="status-chip" id="merch-catalog-status">Loading</span>
-            </div>
-            <div id="merch-product-grid" class="merch-product-grid" aria-live="polite"></div>
-          </article>
-
-          <aside class="panel-card merch-cart-card" aria-label="Shopping cart">
-            <div class="card-head">
-              <div>
-                <span>Cart</span>
-                <h2>Shopping cart</h2>
-              </div>
-              <span class="status-chip" id="merch-cart-count">Empty</span>
-            </div>
-            <div id="merch-cart-items" class="merch-cart-items"></div>
-            <dl class="merch-cart-totals">
-              <div>
-                <dt>Subtotal</dt>
-                <dd id="merch-cart-subtotal">$0.00</dd>
-              </div>
-              <div>
-                <dt>Shipping</dt>
-                <dd>Calculated at checkout</dd>
-              </div>
-            </dl>
-            <button type="button" class="primary merch-checkout-button" id="merch-checkout-button" disabled>Checkout</button>
-            <p class="billing-note" id="merch-cart-note">Shipping and taxes are calculated at checkout.</p>
-          </aside>
-        </div>
-      </section>
-
       <section id="diagnostics" class="panel" data-section="diagnostics">
         <div class="section-heading">
           <p class="eyebrow">Diagnostics</p>
@@ -900,12 +847,11 @@
     <a href="#recommendations" data-nav="recommendations">Recs</a>
     <a href="#trade" data-nav="trade">Trade</a>
     <a href="#reallocation" data-nav="reallocation">Reallocate</a>
-    <a href="#shop" data-nav="shop">Shop</a>
     <a href="#sage" data-nav="sage">Sage</a>
     <a href="#diagnostics" data-nav="diagnostics">Health</a>
   </nav>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="/app/app.js?v=20260629-dense-etrade-charts" defer></script>
+  <script src="/app/app.js?v=20260629-dense-etrade-app" defer></script>
 </body>
 </html>
