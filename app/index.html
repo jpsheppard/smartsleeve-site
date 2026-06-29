@@ -17,7 +17,7 @@
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
   <link rel="manifest" href="/site.webmanifest">
-  <link rel="stylesheet" href="/app/styles.css?v=20260629-broker-provenance-et">
+  <link rel="stylesheet" href="/app/styles.css?v=20260629-merch-shop-public">
 </head>
 <body>
   <div class="app-shell">
@@ -774,25 +774,26 @@
       </section>
 
       <section id="shop" class="panel" data-section="shop">
-        <div class="section-heading">
-          <p class="eyebrow">SmartSleeve Merch</p>
-          <h2>SS and SQTS apparel is back online</h2>
-          <p>All listed apparel now uses the common approved SS front or the common approved SQTS front, with fulfillment through the SmartSleeve Printful checkout pipeline.</p>
+        <div class="shop-public-header">
+          <a class="shop-brand" href="/" aria-label="SmartSleeve home">
+            <img src="/brand/smartsleeve-apparel-logo-cropped.png" alt="SmartSleeve">
+          </a>
+          <a class="text-button subtle shop-private-link" href="/app/">Private Login</a>
+        </div>
+
+        <div class="section-heading merch-heading">
+          <p class="eyebrow">SmartSleeve</p>
+          <h2>Merch Shop</h2>
         </div>
 
         <div class="shop-layout">
           <article class="panel-card merch-catalog-card">
             <div class="card-head">
               <div>
-                <span>Catalog</span>
-                <h2>Printful designs</h2>
+                <span>Apparel</span>
+                <h2>Shop by style</h2>
               </div>
               <span class="status-chip" id="merch-catalog-status">Loading</span>
-            </div>
-            <div class="merch-filter-row" role="group" aria-label="Merch filters">
-              <button type="button" class="text-button active" data-merch-filter="all">All</button>
-              <button type="button" class="text-button subtle" data-merch-filter="ss">SS</button>
-              <button type="button" class="text-button subtle" data-merch-filter="sqts">SQTS</button>
             </div>
             <div id="merch-product-grid" class="merch-product-grid" aria-live="polite"></div>
           </article>
@@ -817,7 +818,7 @@
               </div>
             </dl>
             <button type="button" class="primary merch-checkout-button" id="merch-checkout-button" disabled>Checkout</button>
-            <p class="billing-note" id="merch-cart-note">Add an item to start a Stripe-hosted checkout. Payments stay off this static page.</p>
+            <p class="billing-note" id="merch-cart-note">Shipping and taxes are calculated at checkout.</p>
           </aside>
         </div>
       </section>
@@ -905,6 +906,6 @@
   </nav>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="/app/app.js?v=20260629-broker-provenance-et" defer></script>
+  <script src="/app/app.js?v=20260629-merch-shop-public" defer></script>
 </body>
 </html>
