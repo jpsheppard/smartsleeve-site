@@ -1,6 +1,6 @@
 {
   "currency": "USD",
-  "generated_at": "2026-06-29T21:39:10.739516+00:00",
+  "generated_at": "2026-06-29T21:49:45.452777+00:00",
   "products": [
     {
       "front_print_preview": "https://files.cdn.printful.com/files/fda/fdaafbb579a50b80a328ec2e99ab51eb_preview.png",
@@ -325,7 +325,7 @@
     },
     {
       "back_print_preview": "https://files.cdn.printful.com/files/6e8/6e82b38888e06f0842ac4bcab3fab8e8_preview.png",
-      "front_print_preview": "https://files.cdn.printful.com/printfile-preview/1008749226/1778c48cafc460077ef916bf16a011d9_preview.png",
+      "front_print_preview": "https://files.cdn.printful.com/files/fda/fdaafbb579a50b80a328ec2e99ab51eb_preview.png",
       "key": "printful-440238145-smartsleeve-ss-men-s-tank-website-back",
       "name": "SmartSleeve SS - Men's Tank - Website Back",
       "preview": "https://files.cdn.printful.com/files/6c9/6c9e170cbe8a620e7d8fecc061cba39e_preview.png",
