@@ -1067,11 +1067,12 @@
     if (appEdition !== "developer") {
       return accounts;
     }
+    var selectedAccountId = canonicalAccountId(state.selectedAccountId);
     return accounts.filter(function (account) {
       var owner = rowOwnerEmail(account);
-      var accountId = String(account.id || account.accountId || account.account_id || "");
+      var accountId = canonicalAccountId(account.id || account.accountId || account.account_id || "");
       return (state.selectedOwnerEmail === "all" || owner === state.selectedOwnerEmail)
-        && (state.selectedAccountId === "all" || accountId === state.selectedAccountId);
+        && (state.selectedAccountId === "all" || accountId === selectedAccountId);
     });
   }
 
@@ -1079,12 +1080,35 @@
     if (appEdition !== "developer") {
       return rows;
     }
+    var selectedAccountId = canonicalAccountId(state.selectedAccountId);
     return rows.filter(function (row) {
       var owner = rowOwnerEmail(row);
-      var accountId = String(row.accountId || row.account_id || row.id || "");
+      var accountId = rowAccountId(row);
       return (state.selectedOwnerEmail === "all" || owner === state.selectedOwnerEmail)
-        && (state.selectedAccountId === "all" || accountId === state.selectedAccountId);
+        && (state.selectedAccountId === "all" || accountId === selectedAccountId);
     });
+  }
+
+  var accountIdAliases = {
+    etrade: "john-etrade",
+    "etrade-brokerage": "john-etrade",
+    "john-etrade-brokerage": "john-etrade",
+    john: "john-rh",
+    "john-rh-agentic": "john-rh",
+    "john-ibkr-margin": "U25739525",
+    "john-ibkr-roth": "U25815215"
+  };
+
+  function canonicalAccountId(value) {
+    var key = String(value || "").trim();
+    return accountIdAliases[key] || key;
+  }
+
+  function includeVisibleAccountId(ids, value) {
+    var raw = String(value || "").trim();
+    var canonical = canonicalAccountId(raw);
+    if (raw) ids[raw] = true;
+    if (canonical) ids[canonical] = true;
   }
 
   function visibleAccountIdSet(accounts) {
@@ -1096,15 +1120,14 @@
         account.account_id,
         account.account
       ].forEach(function (value) {
-        var key = String(value || "").trim();
-        if (key) ids[key] = true;
+        includeVisibleAccountId(ids, value);
       });
     });
     return ids;
   }
 
   function rowAccountId(row) {
-    return String(row && (row.accountId || row.account_id || row.id || row.account || "") || "").trim();
+    return canonicalAccountId(row && (row.accountId || row.account_id || row.id || row.account || ""));
   }
 
   function scopedRowsForVisibleAccounts(rows, visibleIds) {
@@ -2127,7 +2150,7 @@
   }
 
   function positionPriceHistoryPoints(account, position) {
-    var accountId = String(account.id || "");
+    var accountId = canonicalAccountId(account.id || "");
     var symbol = String(position.symbol || "").toUpperCase();
     var rows = (state.history.positions || []).filter(function (point) {
       return rowAccountId(point) === accountId && String(point.symbol || point.ticker || "").toUpperCase() === symbol;
@@ -2292,8 +2315,9 @@
   }
 
   function accountHistoryPoints(account) {
+    var accountId = canonicalAccountId(account.id || "");
     var rows = (state.history.accounts || []).filter(function (row) {
-      return rowAccountId(row) === account.id;
+      return rowAccountId(row) === accountId;
     }).map(function (row) {
       var source = String(row.source || row.portfolioSource || row.portfolio_source || "").toLowerCase();
       if (source === "positions_plus_cash_yfinance"
@@ -2670,7 +2694,9 @@
     var holdingTarget = $("holding-value-charts");
     if (accountTarget) {
       accountTarget.innerHTML = state.accounts.map(function (account) {
-        var points = state.history.accounts.filter(function (row) { return row.accountId === account.id; });
+        var points = accountHistoryPoints(account).map(function (point) {
+          return {at: point.at, equity: point.value, source: point.source};
+        });
         var accountAsOf = accountMarketDataTimestamp(account);
         if (!points.length && numeric(account.equity) != null && accountAsOf) {
           points = [{at: accountAsOf, equity: account.equity}];
@@ -2686,22 +2712,35 @@
       var latestByKey = {};
       state.accounts.forEach(function (account) {
         (account.positions || []).forEach(function (position) {
-          var key = account.id + "::" + position.symbol;
+          var key = canonicalAccountId(account.id) + "::" + position.symbol;
           latestByKey[key] = {account: account, position: position, value: numeric(position.value) || 0};
         });
       });
       var rows = Object.keys(latestByKey).map(function (key) { return latestByKey[key]; }).sort(function (a, b) { return b.value - a.value; }).slice(0, 8);
       holdingTarget.innerHTML = rows.map(function (row) {
         var points = state.history.positions.filter(function (point) {
-          return point.accountId === row.account.id && point.symbol === row.position.symbol;
+          return rowAccountId(point) === canonicalAccountId(row.account.id)
+            && String(point.symbol || point.ticker || "").toUpperCase() === String(row.position.symbol || "").toUpperCase();
+        }).map(function (point) {
+          return {
+            at: point.at || point.timestamp || point.generatedAt || point.generated_at,
+            value: numeric(point.value != null ? point.value : point.marketValue != null ? point.marketValue : point.market_value_usd),
+            shares: numeric(point.shares != null ? point.shares : point.quantity),
+            price: numeric(point.price != null ? point.price : point.markPrice != null ? point.markPrice : point.market_price != null ? point.market_price : point.currentPrice != null ? point.currentPrice : point.current_price),
+            source: point.source || point.portfolioSource || point.portfolio_source
+          };
         });
         points = deglitchHoldingHistory(points, row.position.value);
         var holdingAsOf = positionMarketDataTimestamp(row.position) || accountMarketDataTimestamp(row.account);
         if (!points.length && numeric(row.position.value) != null && holdingAsOf) {
           points = [{at: holdingAsOf, value: row.position.value}];
         }
+        if (numeric(row.position.value) != null && holdingAsOf) {
+          points.push({at: holdingAsOf, value: row.position.value, source: "current_position"});
+        }
+        points = dedupeChartPoints(points, "value");
         var title = row.position.symbol + " / " + row.account.account;
-        var meta = (row.position.name || tickerNames[row.position.symbol] || row.position.symbol) + " holding value / market data ET " + (holdingAsOf ? shortTimestamp(holdingAsOf) : "needs timestamp");
+        var meta = (row.position.name || tickerNames[row.position.symbol] || row.position.symbol) + " holding value / yfinance 1m and broker sync points";
         return lineChartCard(title, meta, points, "value", "Stock value", row.position.totalPnl);
       }).join("") || emptyItem("No holding history", "Stock holding charts appear after private feed history syncs.");
     }
