@@ -231,6 +231,7 @@
     gate.className = "auth-gate";
     gate.innerHTML = [
       "<form class=\"auth-card\" id=\"auth-gate-form\" data-mode=\"login\">",
+      "<button type=\"button\" class=\"auth-exit-button\" id=\"auth-exit-button\" aria-label=\"Exit private login\" title=\"Exit\">&times;</button>",
       "<img src=\"/brand/smartsleeve-apparel-logo-cropped.png\" alt=\"SmartSleeve\">",
       "<h2>Private SmartSleeve Access</h2>",
       "<p id=\"auth-gate-message\">" + html(message || "Sign in to load your private SmartSleeve data.") + "</p>",
@@ -272,6 +273,9 @@
       button.addEventListener("click", function () {
         setAuthMode(button.getAttribute("data-auth-mode") || "login");
       });
+    });
+    $("auth-exit-button").addEventListener("click", function () {
+      window.location.assign("/");
     });
     $("auth-reset-button").addEventListener("click", requestPasswordResetFromGate);
     wireAuthFieldFocus(gate);
