@@ -5,7 +5,7 @@
   var catalogEndpoint = meta("smartsleeve-merch-catalog-endpoint");
   var authEndpoint = meta("smartsleeve-auth-endpoint");
   var registerEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/register" : "";
-  var merchImageVersion = "20260630-womens-tee-backs";
+  var merchImageVersion = "20260630-merch-descriptive-names";
   var state = {
     products: [],
     cart: [],
@@ -154,12 +154,13 @@
 
   function merchCleanName(name) {
     var clean = String(name || "SmartSleeve merch").trim();
-    clean = clean.replace(/\s*-\s*(Plain|Blank|Website|Website\+QR)\s+Back$/i, "");
-    clean = clean.replace(/\s+(Plain|Blank|Website|Website\+QR)\s+Back$/i, "");
     clean = clean.replace(/^SmartSleeve\s+SS\s*[- ]\s*/i, "SmartSleeve ");
     clean = clean.replace(/^SS\s*[- ]\s*/i, "SmartSleeve ");
     clean = clean.replace(/\bSS\b/g, "SmartSleeve");
     clean = clean.replace(/^SmartSleeve\s+SQTS\b/i, "SQTS");
+    clean = clean.replace(/\bWebsite\s*\+\s*QR\b/ig, "Website + QR");
+    clean = clean.replace(/\bWebsite\s+QR\b/ig, "Website + QR");
+    clean = clean.replace(/\bBlank Back\b/ig, "Plain Back");
     clean = clean.replace(/\s{2,}/g, " ").trim();
     return clean;
   }
