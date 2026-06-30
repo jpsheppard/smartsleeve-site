@@ -40,9 +40,10 @@
 
     body {
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
-      padding: 18px;
+      padding: 18px 18px 48px;
       background:
         radial-gradient(circle at 50% 5%, rgba(57, 255, 20, 0.10), transparent 34%),
         radial-gradient(circle at 82% 24%, rgba(34, 211, 238, 0.08), transparent 28%),
@@ -148,6 +149,18 @@
       background: rgba(15, 23, 42, 0.48);
     }
 
+    .site-footer {
+      position: fixed;
+      right: 18px;
+      bottom: 14px;
+      left: 18px;
+      color: rgba(159, 181, 167, 0.78);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.4;
+      text-align: center;
+    }
+
     @media (max-width: 860px) {
       body {
         display: flex;
@@ -183,6 +196,7 @@
       <div class="coming-soon">COMING SOON</div>
     </main>
   </div>
+  <footer class="site-footer">© 2026 SmartSleeve Quantitative Trading Systems, LLC.</footer>
   <script>
     (function () {
       var meta = document.querySelector('meta[name="sqts-analytics-endpoint"]');

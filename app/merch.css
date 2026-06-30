@@ -24,16 +24,10 @@ body.public-shop main {
 
 .shop-public-header {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 16px;
   align-items: center;
-  margin-bottom: 22px;
-}
-
-.shop-brand img {
-  display: block;
-  width: min(360px, 58vw);
-  height: auto;
+  margin-bottom: 12px;
 }
 
 .shop-private-link {

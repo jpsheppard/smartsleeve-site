@@ -528,6 +528,18 @@ main {
   display: block;
 }
 
+.site-footer {
+  width: min(900px, 100%);
+  margin: 28px auto 0;
+  padding: 14px 0 4px;
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
+  color: var(--muted-2);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: center;
+}
+
 .section-heading {
   display: grid;
   gap: 8px;
