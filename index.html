@@ -39,11 +39,12 @@
     }
 
     body {
+      min-height: 100vh;
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
-      padding: 18px 18px 48px;
+      justify-content: flex-start;
+      padding: 18px;
       background:
         radial-gradient(circle at 50% 5%, rgba(57, 255, 20, 0.10), transparent 34%),
         radial-gradient(circle at 82% 24%, rgba(34, 211, 238, 0.08), transparent 28%),
@@ -53,6 +54,7 @@
     }
 
     .landing-shell {
+      flex: 1 0 auto;
       display: grid;
       grid-template-columns: minmax(96px, 116px) minmax(0, 1000px);
       align-items: center;
@@ -150,10 +152,10 @@
     }
 
     .site-footer {
-      position: fixed;
-      right: 18px;
-      bottom: 14px;
-      left: 18px;
+      flex: 0 0 auto;
+      width: min(1180px, 100%);
+      margin: 16px auto 0;
+      padding: 0 0 2px;
       color: rgba(159, 181, 167, 0.78);
       font-size: 12px;
       font-weight: 700;

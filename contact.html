@@ -29,9 +29,12 @@
     }
 
     body {
-      display: grid;
-      place-items: center;
-      padding: 18px 18px 48px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 18px;
       background:
         radial-gradient(circle at 50% 5%, rgba(57, 255, 20, 0.10), transparent 34%),
         radial-gradient(circle at 82% 24%, rgba(34, 211, 238, 0.08), transparent 28%),
@@ -42,6 +45,7 @@
 
     main {
       width: min(860px, 100%);
+      margin: auto 0;
       padding: clamp(26px, 5vw, 62px);
       border: 1px solid rgba(57, 255, 20, 0.22);
       border-radius: 28px;
@@ -116,10 +120,10 @@
     }
 
     .site-footer {
-      position: fixed;
-      right: 18px;
-      bottom: 14px;
-      left: 18px;
+      flex: 0 0 auto;
+      width: min(860px, 100%);
+      margin: 16px auto 0;
+      padding: 0 0 2px;
       color: rgba(159, 181, 167, 0.78);
       font-size: 12px;
       font-weight: 700;
