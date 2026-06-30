@@ -5,6 +5,7 @@
   var catalogEndpoint = meta("smartsleeve-merch-catalog-endpoint");
   var authEndpoint = meta("smartsleeve-auth-endpoint");
   var registerEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/register" : "";
+  var merchImageVersion = "20260630-womens-tee-backs";
   var state = {
     products: [],
     cart: [],
@@ -90,7 +91,7 @@
   }
 
   function merchFrontLabel(product) {
-    return merchBrand(product) === "sqts" ? "SQTS" : "SS";
+    return merchBrand(product) === "sqts" ? "SQTS" : "SmartSleeve";
   }
 
   function merchGender(product) {
@@ -127,6 +128,12 @@
     return product.back_mockup || product.back_print_preview || "";
   }
 
+  function merchImageSrc(value) {
+    var url = String(value || "");
+    if (url.indexOf("/merch/mockups/") === -1) return url;
+    return url + (url.indexOf("?") === -1 ? "?" : "&") + "v=" + merchImageVersion;
+  }
+
   function merchDefaultSize(product) {
     var sizes = product && product.sizes ? product.sizes : [];
     if (sizes.indexOf("L") !== -1) return "L";
@@ -146,9 +153,14 @@
   }
 
   function merchCleanName(name) {
-    var clean = String(name || "SmartSleeve merch").replace(/^SmartSleeve\s+/i, "");
+    var clean = String(name || "SmartSleeve merch").trim();
     clean = clean.replace(/\s*-\s*(Plain|Blank|Website|Website\+QR)\s+Back$/i, "");
     clean = clean.replace(/\s+(Plain|Blank|Website|Website\+QR)\s+Back$/i, "");
+    clean = clean.replace(/^SmartSleeve\s+SS\s*[- ]\s*/i, "SmartSleeve ");
+    clean = clean.replace(/^SS\s*[- ]\s*/i, "SmartSleeve ");
+    clean = clean.replace(/\bSS\b/g, "SmartSleeve");
+    clean = clean.replace(/^SmartSleeve\s+SQTS\b/i, "SQTS");
+    clean = clean.replace(/\s{2,}/g, " ").trim();
     return clean;
   }
 
@@ -160,7 +172,7 @@
   function sortProduct(a, b) {
     return sortValue(merchGender(a), ["Men", "Women"]) - sortValue(merchGender(b), ["Men", "Women"])
       || sortValue(merchCut(a), ["T-Shirt", "Tank Top", "Muscle Tee"]) - sortValue(merchCut(b), ["T-Shirt", "Tank Top", "Muscle Tee"])
-      || sortValue(merchFrontLabel(a), ["SS", "SQTS"]) - sortValue(merchFrontLabel(b), ["SS", "SQTS"])
+      || sortValue(merchFrontLabel(a), ["SmartSleeve", "SQTS"]) - sortValue(merchFrontLabel(b), ["SmartSleeve", "SQTS"])
       || sortValue(merchBackType(a), ["Black", "Website", "Website + QR"]) - sortValue(merchBackType(b), ["Black", "Website", "Website + QR"])
       || String(a.name || "").localeCompare(String(b.name || ""));
   }
@@ -198,8 +210,8 @@
     }).join("");
     return "<article class=\"merch-product-card\" data-merch-product-card=\"" + html(product.key) + "\">"
       + "<div class=\"merch-product-images" + (backImage ? "" : " single-view") + "\">"
-      + "<figure><img src=\"" + html(merchFrontImage(product)) + "\" alt=\"" + html(merchCleanName(product.name)) + " front\" loading=\"lazy\"><figcaption>Front</figcaption></figure>"
-      + (backImage ? "<figure><img src=\"" + html(backImage) + "\" alt=\"" + html(merchCleanName(product.name)) + " back\" loading=\"lazy\"><figcaption>Back</figcaption></figure>" : "")
+      + "<figure><img src=\"" + html(merchImageSrc(merchFrontImage(product))) + "\" alt=\"" + html(merchCleanName(product.name)) + " front\" loading=\"lazy\"><figcaption>Front</figcaption></figure>"
+      + (backImage ? "<figure><img src=\"" + html(merchImageSrc(backImage)) + "\" alt=\"" + html(merchCleanName(product.name)) + " back\" loading=\"lazy\"><figcaption>Back</figcaption></figure>" : "")
       + "</div>"
       + "<div class=\"merch-product-copy\">"
       + "<h4>" + html(merchCleanName(product.name)) + "</h4>"
@@ -342,7 +354,7 @@
     }
     list.innerHTML = state.cart.map(function (item) {
       return "<article class=\"merch-cart-item\" data-merch-cart-item=\"" + html(merchCartKey(item.product.key, item.size)) + "\">"
-        + "<img src=\"" + html(merchFrontImage(item.product)) + "\" alt=\"\" loading=\"lazy\">"
+        + "<img src=\"" + html(merchImageSrc(merchFrontImage(item.product))) + "\" alt=\"\" loading=\"lazy\">"
         + "<div><b>" + html(merchCleanName(item.product.name)) + "</b><span>Size " + html(item.size) + " &middot; " + money(merchPrice(item.product, item.size)) + "</span></div>"
         + "<label>Qty <input type=\"number\" min=\"1\" max=\"9\" value=\"" + item.quantity + "\" data-merch-quantity=\"" + html(merchCartKey(item.product.key, item.size)) + "\"></label>"
         + "<button type=\"button\" class=\"text-button subtle\" data-merch-remove=\"" + html(merchCartKey(item.product.key, item.size)) + "\">Remove</button>"

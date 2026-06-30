@@ -76,7 +76,7 @@ body.public-shop main {
 
 .merch-product-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(235px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -350,7 +350,7 @@ body.public-shop main {
 
 @media (max-width: 820px) {
   .merch-product-row {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
