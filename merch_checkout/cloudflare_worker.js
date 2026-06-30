@@ -266,9 +266,14 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
-function productImageUrl(env, productKey) {
+function productMockupUrl(env, productKey, side = "front") {
   const normalized = normalizeProductKey(productKey);
-  return normalized ? `${siteUrl(env)}/merch/mockups/${normalized}-front.jpg` : "";
+  const normalizedSide = side === "back" ? "back" : "front";
+  return normalized ? `${siteUrl(env)}/merch/mockups/${normalized}-${normalizedSide}.jpg` : "";
+}
+
+function productImageUrl(env, productKey) {
+  return productMockupUrl(env, productKey, "front");
 }
 
 function allowedOrigins(env) {
@@ -781,19 +786,21 @@ function publicCatalog(env) {
     sizes: SIZE_OPTIONS,
     products: Array.from(products.entries()).map(([key, product]) => {
       const sizes = availableSizesForProduct(env, product);
-      const imageUrl = productImageUrl(env, key);
+      const frontMockupUrl = productMockupUrl(env, key, "front");
+      const backMockupUrl = productMockupUrl(env, key, "back");
       return {
-      key,
-      name: product.name,
-      description: product.description,
-      price_label: priceLabelForProduct(env, product),
-      preview: imageUrl,
-      front_mockup: imageUrl,
-      sizes,
-      prices: sizes.reduce((acc, size) => {
-        acc[size] = (productUnitAmountForSize(env, product, size) / 100).toFixed(2);
-        return acc;
-      }, {}),
+        key,
+        name: product.name,
+        description: product.description,
+        price_label: priceLabelForProduct(env, product),
+        preview: frontMockupUrl,
+        front_mockup: frontMockupUrl,
+        back_mockup: backMockupUrl,
+        sizes,
+        prices: sizes.reduce((acc, size) => {
+          acc[size] = (productUnitAmountForSize(env, product, size) / 100).toFixed(2);
+          return acc;
+        }, {}),
       };
     }),
   };

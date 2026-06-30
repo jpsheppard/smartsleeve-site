@@ -124,7 +124,7 @@
   }
 
   function merchBackImage(product) {
-    return product.back_print_preview || "";
+    return product.back_mockup || product.back_print_preview || "";
   }
 
   function merchDefaultSize(product) {
@@ -227,8 +227,9 @@
       var fallbackProduct = fallbackByKey[product.key] || {};
       seen[product.key] = true;
       return Object.assign({}, fallbackProduct, product, {
-        preview: product.preview || fallbackProduct.preview || fallbackProduct.front_mockup,
+        preview: product.preview || product.front_mockup || fallbackProduct.preview || fallbackProduct.front_mockup,
         front_mockup: product.front_mockup || fallbackProduct.front_mockup,
+        back_mockup: product.back_mockup || fallbackProduct.back_mockup,
         back_print_preview: product.back_print_preview || fallbackProduct.back_print_preview || ""
       });
     });

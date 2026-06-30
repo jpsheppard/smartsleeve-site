@@ -32,6 +32,7 @@ DEFAULT_CATALOG_OUT = ROOT / "merch" / "printful-storefront-catalog.json"
 DEFAULT_VARS_OUT = ROOT / "merch_checkout" / "printful-sync-variants.generated.toml"
 DEFAULT_MAP = ROOT / "merch" / "printful-product-map.json"
 DEFAULT_ENV_FILE = ROOT / ".env.printful.local"
+DEFAULT_MOCKUPS_DIR = ROOT / "merch" / "mockups"
 API_BASE = "https://api.printful.com"
 SIZES = ("XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL")
 MACOS_SYSTEM_CA_FILE = Path("/private/etc/ssl/cert.pem")
@@ -432,6 +433,15 @@ def print_file_previews(variants: list[dict[str, Any]]) -> dict[str, str]:
     return previews
 
 
+def mockup_paths_for_key(key: str, mockups_dir: Path = DEFAULT_MOCKUPS_DIR) -> dict[str, str]:
+    mockups: dict[str, str] = {}
+    for side in ("front", "back"):
+        path = mockups_dir / f"{key}-{side}.jpg"
+        if path.exists():
+            mockups[f"{side}_mockup"] = f"/merch/mockups/{key}-{side}.jpg"
+    return mockups
+
+
 def variant_prices_and_ids(variants: list[dict[str, Any]]) -> tuple[dict[str, str], dict[str, int]]:
     prices: dict[str, str] = {}
     sync_variant_ids: dict[str, int] = {}
@@ -485,16 +495,18 @@ def public_product(
     print_previews: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     sizes = ordered_sizes(prices)
+    mockups = mockup_paths_for_key(key)
     product = {
         "key": key,
         "name": name,
         "printful_name": sync_product.get("name") or name,
         "printful_product_id": product_id,
-        "preview": preview or preview_url(sync_product, matched),
+        "preview": mockups.get("front_mockup") or preview or preview_url(sync_product, matched),
         "price_label": price_label(prices),
         "sizes": sizes,
         "prices": {size: prices[size] for size in sizes},
     }
+    product.update(mockups)
     if print_previews:
         product.update(print_previews)
     return product
