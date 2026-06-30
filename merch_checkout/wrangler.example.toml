@@ -11,12 +11,27 @@ compatibility_date = "2026-06-01"
 MERCH_SITE_URL = "https://smartsleeve.ai"
 MERCH_SUCCESS_PATH = "/app/#shop-success"
 MERCH_CANCEL_PATH = "/app/#shop"
-MERCH_SHIPPING_USD = "4.99"
+MERCH_SHIPPING_USD = "0.00"
+MERCH_INCLUDED_SHIPPING_USD = "0.00"
 MERCH_ALLOWED_ORIGINS = "https://smartsleeve.ai,https://www.smartsleeve.ai"
+MERCH_RECEIPT_FROM_EMAIL = "SmartSleeve Shop <shop@smartsleeve.ai>"
+MERCH_RECEIPT_REPLY_TO_EMAIL = "SmartSleeve Shop <shop@smartsleeve.ai>"
+MERCH_FULFILLMENT_BUSINESS_DAYS_MIN = "2"
+MERCH_FULFILLMENT_BUSINESS_DAYS_MAX = "7"
+MERCH_DOMESTIC_SHIPPING_BUSINESS_DAYS_MIN = "3"
+MERCH_DOMESTIC_SHIPPING_BUSINESS_DAYS_MAX = "8"
 
 # Leave fulfillment disabled until Stripe test checkout and webhook storage work.
 MERCH_FULFILLMENT_PROVIDER = "none"
 PRINTFUL_CONFIRM_ORDERS = "false"
+
+# Required for customer receipt emails.
+# wrangler secret put RESEND_API_KEY
+
+# Required for Printful shipment/delivery lifecycle webhooks.
+# Add this token to the Printful webhook URL as ?token=<secret>, or send it as
+# x-smartsleeve-webhook-secret.
+# wrangler secret put PRINTFUL_WEBHOOK_SECRET
 
 # Prefer Printful sync variant ids from your already-published products.
 # Generate these with:

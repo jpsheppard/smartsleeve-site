@@ -8,6 +8,7 @@
 //   STRIPE_SECRET_KEY
 //   STRIPE_WEBHOOK_SECRET
 //   MERCH_ADMIN_TOKEN, for manual fulfillment recovery
+//   RESEND_API_KEY, for SmartSleeve Shop customer receipts
 //
 // Optional Worker bindings/secrets:
 //   MERCH_ORDERS KV binding
@@ -16,6 +17,7 @@
 //   MERCH_SUCCESS_PATH
 //   MERCH_CANCEL_PATH
 //   MERCH_SHIPPING_USD
+//   MERCH_INCLUDED_SHIPPING_USD
 //   MERCH_PRICE_USD_<PRODUCT_KEY>
 //   MERCH_FULFILLMENT_PROVIDER=printful
 //   PRINTFUL_API_KEY
@@ -36,17 +38,24 @@
 //   PRINTFUL_FILE_URL_SHARED_TANK_BACK
 //   PRINTFUL_FILE_URL_SHARED_TANK_BACK_QR
 //   PRINTFUL_CONFIRM_ORDERS=true
+//   PRINTFUL_WEBHOOK_SECRET
+//   MERCH_RECEIPT_FROM_EMAIL="SmartSleeve Shop <shop@smartsleeve.ai>"
+//   MERCH_RECEIPT_REPLY_TO_EMAIL="SmartSleeve Shop <shop@smartsleeve.ai>"
 //
 // Routes:
 //   GET  /health
 //   GET  /catalog
 //   POST /checkout
 //   POST /stripe-webhook
+//   POST /printful-webhook
 //   POST /admin/retry-printful
+//   POST /admin/send-receipt
 
 const DEFAULT_SITE = "https://smartsleeve.ai";
 const DEFAULT_SUCCESS_PATH = "/app/#shop-success";
 const DEFAULT_CANCEL_PATH = "/app/#shop";
+const DEFAULT_RECEIPT_FROM_EMAIL = "SmartSleeve Shop <shop@smartsleeve.ai>";
+const DEFAULT_RECEIPT_REPLY_TO_EMAIL = "SmartSleeve Shop <shop@smartsleeve.ai>";
 const MAX_QUANTITY = 6;
 const MAX_CART_LINES = 30;
 const SIZE_OPTIONS = ["XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL"];
@@ -202,14 +211,64 @@ function isPublicSqtsProduct(productKey, product) {
   return key.includes("sqts") || name.includes("sqts");
 }
 
+function isPublicMerchProduct(productKey, product) {
+  return Boolean(normalizeProductKey(productKey) && product && product.name);
+}
+
 function catalogProduct(env, productKey) {
   const normalized = normalizeProductKey(productKey);
   const product = PRODUCT_CATALOG[normalized] || dynamicProductFromEnv(env, normalized);
-  return isPublicSqtsProduct(normalized, product) ? product : null;
+  return isPublicMerchProduct(normalized, product) ? product : null;
 }
 
 function siteUrl(env) {
   return String(env.MERCH_SITE_URL || DEFAULT_SITE).replace(/\/$/, "");
+}
+
+function normalizeEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isValidEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(value));
+}
+
+function normalizedCheckoutMode(value) {
+  return String(value || "").trim().toLowerCase() === "create_account" ? "create_account" : "guest";
+}
+
+function safeMetadataValue(value, maxLength = 450) {
+  return String(value || "").trim().slice(0, maxLength);
+}
+
+function centsFromUsd(value, fallback = 0) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount < 0) {
+    return fallback;
+  }
+  return Math.round(amount * 100);
+}
+
+function formatMoney(cents, currency = "usd") {
+  const amount = Math.max(0, Math.round(Number(cents) || 0)) / 100;
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: String(currency || "usd").toUpperCase(),
+  }).format(amount);
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function productImageUrl(env, productKey) {
+  const normalized = normalizeProductKey(productKey);
+  return normalized ? `${siteUrl(env)}/merch/mockups/${normalized}-front.jpg` : "";
 }
 
 function allowedOrigins(env) {
@@ -313,17 +372,18 @@ function productUnitAmount(env, product) {
 
 function productUnitAmountForSize(env, product, size) {
   const normalizedSize = normalizeSize(size);
+  const includedShippingCents = centsFromUsd(env.MERCH_INCLUDED_SHIPPING_USD, 0);
   const sizePriceEnv = `MERCH_PRICE_USD_${envSlug(product.fulfillment_sku)}_${normalizedSize}`;
   const sizePriceUsd = Number(env[sizePriceEnv] || 0);
   if (Number.isFinite(sizePriceUsd) && sizePriceUsd > 0) {
-    return Math.round(sizePriceUsd * 100);
+    return Math.round(sizePriceUsd * 100) + includedShippingCents;
   }
   const priceEnv = `MERCH_PRICE_USD_${envSlug(product.fulfillment_sku)}`;
   const priceUsd = Number(env[priceEnv] || 0);
   if (Number.isFinite(priceUsd) && priceUsd > 0) {
-    return Math.round(priceUsd * 100);
+    return Math.round(priceUsd * 100) + includedShippingCents;
   }
-  return product.unit_amount;
+  return product.unit_amount + includedShippingCents;
 }
 
 function availableSizesForProduct(env, product) {
@@ -433,7 +493,13 @@ async function createStripeCheckoutSession(request, env) {
   if (items.length === 0) {
     return jsonResponse(request, env, { error: "Cart is empty or contains unknown merch products" }, 400);
   }
-  const shippingCents = Math.max(0, Math.round(Number(env.MERCH_SHIPPING_USD || 4.99) * 100));
+  const customerEmail = normalizeEmail(body.customer_email || body.email);
+  if (!isValidEmail(customerEmail)) {
+    return jsonResponse(request, env, { error: "A valid customer email is required for merch receipts" }, 400);
+  }
+  const checkoutMode = normalizedCheckoutMode(body.checkout_mode);
+  const accountUsername = safeMetadataValue(body.account_username || body.username, 64);
+  const shippingCents = centsFromUsd(env.MERCH_SHIPPING_USD, 0);
   const base = siteUrl(env);
   const successPath = String(env.MERCH_SUCCESS_PATH || DEFAULT_SUCCESS_PATH);
   const cancelPath = String(env.MERCH_CANCEL_PATH || DEFAULT_CANCEL_PATH);
@@ -441,17 +507,27 @@ async function createStripeCheckoutSession(request, env) {
     mode: "payment",
     success_url: `${base}${successPath}?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${base}${cancelPath}`,
+    customer_email: customerEmail,
     "shipping_address_collection[allowed_countries][0]": "US",
     "metadata[cart_mode]": items.length > 1 ? "cart" : "single",
     "metadata[item_count]": String(items.length),
+    "metadata[customer_email]": customerEmail,
+    "metadata[checkout_mode]": checkoutMode,
   };
+  if (accountUsername) {
+    params["metadata[account_username]"] = accountUsername;
+  }
   items.forEach((item, index) => {
     const metadata = stripeLineItemProductMetadata(item);
+    const imageUrl = productImageUrl(env, item.product_key);
     params[`line_items[${index}][quantity]`] = item.quantity;
     params[`line_items[${index}][price_data][currency]`] = item.product.currency;
     params[`line_items[${index}][price_data][unit_amount]`] = item.unit_amount;
     params[`line_items[${index}][price_data][product_data][name]`] = `${item.product.name} - ${item.size}`;
     params[`line_items[${index}][price_data][product_data][description]`] = item.product.description;
+    if (imageUrl) {
+      params[`line_items[${index}][price_data][product_data][images][0]`] = imageUrl;
+    }
     Object.entries(metadata).forEach(([key, value]) => {
       params[`line_items[${index}][price_data][product_data][metadata][${key}]`] = value;
     });
@@ -594,18 +670,41 @@ async function fetchStripeCheckoutLineItems(env, sessionId) {
   return payload.data;
 }
 
-async function fetchStripeCheckoutSession(env, sessionId) {
+async function fetchStripeCheckoutSession(env, sessionId, expand = []) {
   if (!env.STRIPE_SECRET_KEY || !sessionId) {
     return null;
   }
-  const response = await fetch(
-    `https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sessionId)}`,
-    {
-      headers: {
-        Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
-      },
+  const url = new URL(`https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sessionId)}`);
+  expand.forEach((item) => {
+    if (item) {
+      url.searchParams.append("expand[]", item);
+    }
+  });
+  const response = await fetch(url.toString(), {
+    headers: {
+      Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
     },
-  );
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    return { error: payload.error || payload, http_status: response.status };
+  }
+  return payload;
+}
+
+async function fetchStripePaymentIntent(env, paymentIntentId) {
+  const id = typeof paymentIntentId === "object" && paymentIntentId ? paymentIntentId.id : paymentIntentId;
+  if (!env.STRIPE_SECRET_KEY || !id) {
+    return null;
+  }
+  const url = new URL(`https://api.stripe.com/v1/payment_intents/${encodeURIComponent(id)}`);
+  url.searchParams.append("expand[]", "latest_charge");
+  url.searchParams.append("expand[]", "payment_method");
+  const response = await fetch(url.toString(), {
+    headers: {
+      Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
+    },
+  });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     return { error: payload.error || payload, http_status: response.status };
@@ -658,7 +757,7 @@ function publicCatalog(env) {
   const hasSyncedPrintfulProducts = Object.keys(env).some((key) => key.startsWith("PRINTFUL_SYNC_PRODUCT_ID_"));
   if (!hasSyncedPrintfulProducts) {
     Object.entries(PRODUCT_CATALOG).forEach(([key, product]) => {
-      if (isPublicSqtsProduct(key, product)) {
+      if (isPublicMerchProduct(key, product)) {
         products.set(key, product);
       }
     });
@@ -671,7 +770,7 @@ function publicCatalog(env) {
     const slug = match[1];
     const productKey = normalizeProductKey(env[`MERCH_PRODUCT_KEY_${slug}`] || slug.toLowerCase().replace(/_/g, "-"));
     const product = dynamicProductFromEnv(env, productKey);
-    if (product && isPublicSqtsProduct(productKey, product)) {
+    if (product && isPublicMerchProduct(productKey, product)) {
       products.set(productKey, product);
     }
   });
@@ -682,11 +781,14 @@ function publicCatalog(env) {
     sizes: SIZE_OPTIONS,
     products: Array.from(products.entries()).map(([key, product]) => {
       const sizes = availableSizesForProduct(env, product);
+      const imageUrl = productImageUrl(env, key);
       return {
       key,
       name: product.name,
       description: product.description,
       price_label: priceLabelForProduct(env, product),
+      preview: imageUrl,
+      front_mockup: imageUrl,
       sizes,
       prices: sizes.reduce((acc, size) => {
         acc[size] = (productUnitAmountForSize(env, product, size) / 100).toFixed(2);
@@ -821,10 +923,814 @@ async function maybeFulfill(env, session) {
   return { status: "skipped", reason: "MERCH_FULFILLMENT_PROVIDER not configured" };
 }
 
-async function storeOrder(env, session, fulfillment) {
+function sessionShippingDetails(session) {
+  return session.shipping_details
+    || (session.collected_information && session.collected_information.shipping_details)
+    || {};
+}
+
+function addressLines(contact, fallbackName = "") {
+  const address = contact && contact.address ? contact.address : {};
+  const lines = [];
+  const name = String((contact && contact.name) || fallbackName || "").trim();
+  if (name) {
+    lines.push(name);
+  }
+  if (address.line1) {
+    lines.push(address.line1);
+  }
+  if (address.line2) {
+    lines.push(address.line2);
+  }
+  const cityStateZip = [
+    [address.city, address.state].filter(Boolean).join(", "),
+    address.postal_code,
+  ].filter(Boolean).join(" ");
+  if (cityStateZip) {
+    lines.push(cityStateZip);
+  }
+  if (address.country) {
+    lines.push(address.country);
+  }
+  return lines.length ? lines : ["Address not provided"];
+}
+
+function addressHtml(lines) {
+  return lines.map((line) => escapeHtml(line)).join("<br>");
+}
+
+function addressText(lines) {
+  return lines.join("\n");
+}
+
+function titleCasePaymentType(value) {
+  return String(value || "payment method")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function cardDescriptor(card) {
+  const last4 = card && String(card.last4 || "").replace(/\D/g, "").slice(-4);
+  if (!last4) {
+    return "";
+  }
+  const brand = titleCasePaymentType(card.brand || "Card");
+  return `${brand} ********${last4}`;
+}
+
+function paymentDescriptor(paymentIntent) {
+  if (!paymentIntent || paymentIntent.error) {
+    return "Payment method recorded by Stripe";
+  }
+  const charge = paymentIntent.latest_charge && typeof paymentIntent.latest_charge === "object"
+    ? paymentIntent.latest_charge
+    : {};
+  const details = charge.payment_method_details || {};
+  const cardFromCharge = details.card ? cardDescriptor(details.card) : "";
+  if (cardFromCharge) {
+    return cardFromCharge;
+  }
+  const method = paymentIntent.payment_method && typeof paymentIntent.payment_method === "object"
+    ? paymentIntent.payment_method
+    : {};
+  const cardFromMethod = method.card ? cardDescriptor(method.card) : "";
+  if (cardFromMethod) {
+    return cardFromMethod;
+  }
+  const type = details.type || method.type;
+  return type ? titleCasePaymentType(type) : "Payment method recorded by Stripe";
+}
+
+function envInt(env, key, fallback) {
+  const value = Number(env[key]);
+  return Number.isFinite(value) && value >= 0 ? Math.round(value) : fallback;
+}
+
+function orderDate(session) {
+  const created = Number(session && session.created);
+  return Number.isFinite(created) && created > 0
+    ? new Date(created * 1000)
+    : new Date();
+}
+
+function addBusinessDays(date, days) {
+  const result = new Date(date.getTime());
+  let remaining = Math.max(0, Math.round(days));
+  while (remaining > 0) {
+    result.setUTCDate(result.getUTCDate() + 1);
+    const day = result.getUTCDay();
+    if (day !== 0 && day !== 6) {
+      remaining -= 1;
+    }
+  }
+  return result;
+}
+
+function formatReceiptDate(date) {
+  return date.toLocaleDateString("en-US", {
+    timeZone: "America/Los_Angeles",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function formatReceiptDateRange(start, end) {
+  if (!(start instanceof Date) || Number.isNaN(start.getTime())) {
+    return "";
+  }
+  if (!(end instanceof Date) || Number.isNaN(end.getTime())) {
+    return formatReceiptDate(start);
+  }
+  if (start.toDateString() === end.toDateString()) {
+    return formatReceiptDate(start);
+  }
+  const sameMonth = start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth();
+  if (sameMonth) {
+    return `${start.toLocaleDateString("en-US", { timeZone: "America/Los_Angeles", month: "long" })} ${start.getDate()}-${end.getDate()}, ${end.getFullYear()}`;
+  }
+  return `${formatReceiptDate(start)}-${formatReceiptDate(end)}`;
+}
+
+function parseReceiptDate(value) {
+  if (!value) {
+    return null;
+  }
+  const parsed = new Date(String(value).trim());
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function metadataValue(session, keys) {
+  const metadata = session && session.metadata ? session.metadata : {};
+  for (const key of keys) {
+    const value = metadata[key];
+    if (value !== undefined && value !== null && String(value).trim()) {
+      return String(value).trim();
+    }
+  }
+  return "";
+}
+
+function objectValuesByKey(value, keyPattern, depth = 0, found = []) {
+  if (!value || depth > 5 || found.length > 10) {
+    return found;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item) => objectValuesByKey(item, keyPattern, depth + 1, found));
+    return found;
+  }
+  if (typeof value !== "object") {
+    return found;
+  }
+  Object.entries(value).forEach(([key, child]) => {
+    if (keyPattern.test(key) && child !== undefined && child !== null && String(child).trim()) {
+      found.push(String(child).trim());
+    }
+    objectValuesByKey(child, keyPattern, depth + 1, found);
+  });
+  return found;
+}
+
+function publicCustomerUrl(value) {
+  const text = String(value || "").trim();
+  if (!/^https:\/\/.+/i.test(text)) {
+    return "";
+  }
+  try {
+    const url = new URL(text);
+    const host = url.hostname.toLowerCase();
+    const path = url.pathname.toLowerCase();
+    if (host === "dashboard.stripe.com" || host === "api.stripe.com") {
+      return "";
+    }
+    if (host === "www.printful.com" && path.startsWith("/dashboard")) {
+      return "";
+    }
+    if (host === "api.printful.com") {
+      return "";
+    }
+    return url.toString();
+  } catch (_err) {
+    return "";
+  }
+}
+
+function firstPublicUrl(values) {
+  for (const value of values) {
+    const url = publicCustomerUrl(value);
+    if (url) {
+      return url;
+    }
+  }
+  return "";
+}
+
+function fulfillmentResult(fulfillment) {
+  const response = fulfillment && fulfillment.provider_response ? fulfillment.provider_response : {};
+  return response.result || response.data || response;
+}
+
+function fulfillmentStatusText(fulfillment) {
+  if (!fulfillment) {
+    return "SmartSleeve is waiting for order fulfillment.";
+  }
+  if (fulfillment.status === "submitted") {
+    return "SmartSleeve is waiting for order fulfillment.";
+  }
+  if (fulfillment.status === "failed") {
+    return "SmartSleeve is reviewing the order status.";
+  }
+  return "SmartSleeve is processing the order.";
+}
+
+function fulfillmentTrackingUrl(session, fulfillment) {
+  return firstPublicUrl([
+    metadataValue(session, ["tracking_url", "shipment_tracking_url", "carrier_tracking_url"]),
+    ...objectValuesByKey(fulfillmentResult(fulfillment), /tracking.*url|tracking_url|shipment.*url/i),
+  ]);
+}
+
+function fulfillmentStatusUrl(session, fulfillment) {
+  return firstPublicUrl([
+    metadataValue(session, ["order_status_url", "status_url", "customer_order_url", "customer_status_url"]),
+    ...objectValuesByKey(fulfillmentResult(fulfillment), /status.*url|order.*url|tracking.*url/i),
+  ]);
+}
+
+function explicitDateRange(session, fulfillment, prefixPattern) {
+  const fromKeys = prefixPattern === "delivery"
+    ? ["estimated_delivery_from", "delivery_from", "delivery_estimate_from"]
+    : ["estimated_fulfillment_from", "fulfillment_from", "fulfillment_estimate_from"];
+  const toKeys = prefixPattern === "delivery"
+    ? ["estimated_delivery_to", "delivery_to", "delivery_estimate_to"]
+    : ["estimated_fulfillment_to", "fulfillment_to", "fulfillment_estimate_to"];
+  const singleKeys = prefixPattern === "delivery"
+    ? ["estimated_delivery_date", "estimated_delivery", "delivery_estimate"]
+    : ["estimated_fulfillment_date", "estimated_fulfillment", "fulfillment_estimate"];
+  const data = fulfillmentResult(fulfillment);
+  const from = parseReceiptDate(metadataValue(session, fromKeys))
+    || parseReceiptDate(objectValuesByKey(data, new RegExp(`${prefixPattern}.*(from|start|begin)`, "i"))[0]);
+  const to = parseReceiptDate(metadataValue(session, toKeys))
+    || parseReceiptDate(objectValuesByKey(data, new RegExp(`${prefixPattern}.*(to|end)`, "i"))[0]);
+  const single = metadataValue(session, singleKeys)
+    || objectValuesByKey(data, new RegExp(`estimated.*${prefixPattern}|${prefixPattern}.*estimate|${prefixPattern}.*date`, "i"))[0];
+  const singleDate = parseReceiptDate(single);
+  if (from || to) {
+    return { start: from || to, end: to || from, source: prefixPattern };
+  }
+  if (singleDate) {
+    return { start: singleDate, end: singleDate, source: prefixPattern };
+  }
+  if (single && /\d/.test(single)) {
+    return { label: single, source: prefixPattern };
+  }
+  return null;
+}
+
+function estimatedDeliveryDetails(env, session, fulfillment) {
+  const delivery = explicitDateRange(session, fulfillment, "delivery");
+  if (delivery) {
+    return {
+      label: delivery.label || formatReceiptDateRange(delivery.start, delivery.end),
+      basis: "carrier/vendor delivery estimate",
+    };
+  }
+  const shippingMin = envInt(env, "MERCH_DOMESTIC_SHIPPING_BUSINESS_DAYS_MIN", 3);
+  const shippingMax = envInt(env, "MERCH_DOMESTIC_SHIPPING_BUSINESS_DAYS_MAX", 8);
+  const fulfillmentRange = explicitDateRange(session, fulfillment, "fulfillment");
+  if (fulfillmentRange && fulfillmentRange.start) {
+    return {
+      label: formatReceiptDateRange(
+        addBusinessDays(fulfillmentRange.start, shippingMin),
+        addBusinessDays(fulfillmentRange.end || fulfillmentRange.start, shippingMax),
+      ),
+      basis: "estimated fulfillment plus domestic shipping",
+    };
+  }
+  const fulfillmentMin = envInt(env, "MERCH_FULFILLMENT_BUSINESS_DAYS_MIN", 2);
+  const fulfillmentMax = envInt(env, "MERCH_FULFILLMENT_BUSINESS_DAYS_MAX", 7);
+  return {
+    label: formatReceiptDateRange(
+      addBusinessDays(orderDate(session), fulfillmentMin + shippingMin),
+      addBusinessDays(orderDate(session), fulfillmentMax + shippingMax),
+    ),
+    basis: "best available 80% estimated range",
+  };
+}
+
+function trackingText(env, session, fulfillment) {
+  const url = fulfillmentTrackingUrl(session, fulfillment);
+  if (url) {
+    return `Track shipment: ${url}`;
+  }
+  const delivery = estimatedDeliveryDetails(env, session, fulfillment);
+  return `${fulfillmentStatusText(fulfillment)} Estimated delivery: ${delivery.label} (${delivery.basis}). Tracking will be available after the order ships.`;
+}
+
+function trackingHtml(env, session, fulfillment) {
+  const url = fulfillmentTrackingUrl(session, fulfillment);
+  if (url) {
+    return `<a href="${escapeHtml(url)}">${escapeHtml(url)}</a>`;
+  }
+  return escapeHtml(trackingText(env, session, fulfillment));
+}
+
+function orderStatusText(session, fulfillment) {
+  const url = fulfillmentStatusUrl(session, fulfillment);
+  const status = fulfillmentStatusText(fulfillment);
+  return url ? `${status} ${url}` : status;
+}
+
+function orderStatusHtml(session, fulfillment) {
+  const url = fulfillmentStatusUrl(session, fulfillment);
+  const status = fulfillmentStatusText(fulfillment);
+  return url
+    ? `${escapeHtml(status)} <a href="${escapeHtml(url)}">${escapeHtml(url)}</a>`
+    : escapeHtml(status);
+}
+
+async function receiptItemsForSession(env, session) {
+  const lineItems = await fetchStripeCheckoutLineItems(env, session.id);
+  return lineItems.map((lineItem) => {
+    const price = lineItem.price || {};
+    const productData = price.product && typeof price.product === "object" ? price.product : {};
+    const metadata = productData.metadata || {};
+    const quantity = Math.max(1, Number(lineItem.quantity) || 1);
+    const productKey = normalizeProductKey(metadata.product_key);
+    const unitAmount = Math.max(0, Number(price.unit_amount) || Math.round((Number(lineItem.amount_subtotal) || 0) / quantity));
+    const amountSubtotal = Math.max(0, Number(lineItem.amount_subtotal) || unitAmount * quantity);
+    const amountTotal = Math.max(0, Number(lineItem.amount_total) || amountSubtotal);
+    const imageUrl = Array.isArray(productData.images) && productData.images[0]
+      ? productData.images[0]
+      : productImageUrl(env, productKey);
+    return {
+      name: productData.name || lineItem.description || "SmartSleeve merch",
+      description: productData.description || "",
+      product_key: productKey,
+      size: normalizeSize(metadata.shirt_size),
+      quantity,
+      unit_amount: unitAmount,
+      amount_subtotal: amountSubtotal,
+      amount_total: amountTotal,
+      currency: lineItem.currency || price.currency || session.currency || "usd",
+      image_url: imageUrl,
+    };
+  });
+}
+
+function receiptTotals(session, items) {
+  const itemSubtotal = items.reduce((sum, item) => sum + item.amount_subtotal, 0);
+  const totalDetails = session.total_details || {};
+  const subtotal = Math.max(0, Number(session.amount_subtotal) || itemSubtotal);
+  const tax = Math.max(0, Number(totalDetails.amount_tax) || 0);
+  const shipping = Math.max(0, Number(totalDetails.amount_shipping) || 0);
+  const discount = Math.max(0, Number(totalDetails.amount_discount) || 0);
+  const total = Math.max(0, Number(session.amount_total) || (subtotal + tax + shipping - discount));
+  return { subtotal, tax, shipping, discount, total, currency: session.currency || "usd" };
+}
+
+function receiptOrderNumber(session) {
+  return printfulExternalId(session.id);
+}
+
+function itemSummaryHtml(items) {
+  return items.map((item) => `
+    <tr>
+      <td style="padding:10px;border-bottom:1px solid #e5e7eb;">${escapeHtml(item.name)}</td>
+      <td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:center;">${escapeHtml(item.size)}</td>
+      <td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:center;">${item.quantity}</td>
+    </tr>
+  `).join("");
+}
+
+function itemSummaryText(items) {
+  return items.map((item) => `- ${item.name} | Size ${item.size} | Qty ${item.quantity}`).join("\n");
+}
+
+function lifecycleCopy(stage, env, session, fulfillment) {
+  const trackingUrl = fulfillmentTrackingUrl(session, fulfillment);
+  const statusUrl = fulfillmentStatusUrl(session, fulfillment);
+  const delivery = estimatedDeliveryDetails(env, session, fulfillment);
+  if (stage === "delivered") {
+    return {
+      subject: "Your SmartSleeve merch order was delivered",
+      heading: "Your order was delivered",
+      intro: "SmartSleeve has received a delivery update for your merch order.",
+      detail: trackingUrl
+        ? "Carrier tracking details are linked below."
+        : "If the package is not where you expect it, check around the delivery address and contact SmartSleeve if it still cannot be found.",
+      trackingLabel: trackingUrl ? "Delivery tracking" : "Tracking",
+      trackingText: trackingUrl || "The carrier reported this order delivered.",
+      trackingUrl,
+      statusUrl,
+    };
+  }
+  return {
+    subject: "Your SmartSleeve merch order has shipped",
+    heading: "Your order has shipped",
+    intro: "Your SmartSleeve merch order is on its way.",
+    detail: trackingUrl
+      ? "Use the tracking link below for the latest carrier updates."
+      : `Estimated delivery: ${delivery.label} (${delivery.basis}).`,
+    trackingLabel: trackingUrl ? "Track shipment" : "Estimated delivery",
+    trackingText: trackingUrl || `${delivery.label} (${delivery.basis})`,
+    trackingUrl,
+    statusUrl,
+  };
+}
+
+function buildLifecycleEmailHtml(env, session, items, fulfillment, stage) {
+  const customer = session.customer_details || {};
+  const shipping = sessionShippingDetails(session);
+  const customerName = shipping.name || customer.name || "SmartSleeve customer";
+  const shippingLines = addressLines(shipping, customerName);
+  const copy = lifecycleCopy(stage, env, session, fulfillment);
+  const tracking = copy.trackingUrl
+    ? `<a href="${escapeHtml(copy.trackingUrl)}">${escapeHtml(copy.trackingUrl)}</a>`
+    : escapeHtml(copy.trackingText);
+  const status = copy.statusUrl
+    ? `<a href="${escapeHtml(copy.statusUrl)}">${escapeHtml(copy.statusUrl)}</a>`
+    : escapeHtml(orderStatusText(session, fulfillment));
+  return `<!doctype html>
+<html>
+  <body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;color:#111827;">
+    <div style="max-width:720px;margin:0 auto;padding:28px 16px;">
+      <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+        <div style="padding:24px;background:#020617;color:#f8fafc;">
+          <div style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#39ff14;font-weight:700;">SmartSleeve Shop</div>
+          <h1 style="margin:8px 0 4px;font-size:26px;line-height:1.2;">${escapeHtml(copy.heading)}</h1>
+          <div style="font-size:14px;color:#cbd5e1;">Order ${escapeHtml(receiptOrderNumber(session))}</div>
+        </div>
+        <div style="padding:22px;">
+          <p style="margin:0 0 12px;color:#374151;">${escapeHtml(copy.intro)}</p>
+          <p style="margin:0 0 18px;color:#374151;">${escapeHtml(copy.detail)}</p>
+          <div style="border:1px solid #e5e7eb;border-radius:10px;padding:14px;line-height:1.55;margin-bottom:18px;">
+            <div><strong>${escapeHtml(copy.trackingLabel)}:</strong> ${tracking}</div>
+            <div><strong>Order status:</strong> ${status}</div>
+          </div>
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
+            <thead>
+              <tr style="background:#f9fafb;">
+                <th style="padding:10px;text-align:left;font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:.06em;">Item</th>
+                <th style="padding:10px;text-align:center;font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:.06em;">Size</th>
+                <th style="padding:10px;text-align:center;font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:.06em;">Qty</th>
+              </tr>
+            </thead>
+            <tbody>${itemSummaryHtml(items)}</tbody>
+          </table>
+          <div style="margin-top:18px;border:1px solid #e5e7eb;border-radius:10px;padding:14px;">
+            <div style="font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;font-weight:700;">Shipping address</div>
+            <div style="margin-top:8px;line-height:1.5;">${addressHtml(shippingLines)}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>`;
+}
+
+function buildLifecycleEmailText(env, session, items, fulfillment, stage) {
+  const customer = session.customer_details || {};
+  const shipping = sessionShippingDetails(session);
+  const customerName = shipping.name || customer.name || "SmartSleeve customer";
+  const copy = lifecycleCopy(stage, env, session, fulfillment);
+  return [
+    copy.heading,
+    `Order: ${receiptOrderNumber(session)}`,
+    "",
+    copy.intro,
+    copy.detail,
+    "",
+    `${copy.trackingLabel}: ${copy.trackingText}`,
+    `Order status: ${orderStatusText(session, fulfillment)}`,
+    "",
+    "Items:",
+    itemSummaryText(items),
+    "",
+    "Shipping Address:",
+    addressText(addressLines(shipping, customerName)),
+  ].join("\n");
+}
+
+function buildReceiptHtml(env, session, items, paymentIntent, fulfillment) {
+  const totals = receiptTotals(session, items);
+  const customer = session.customer_details || {};
+  const shipping = sessionShippingDetails(session);
+  const customerName = shipping.name || customer.name || "SmartSleeve customer";
+  const shippingLines = addressLines(shipping, customerName);
+  const billingLines = addressLines(customer.address ? customer : shipping, customerName);
+  const orderNumber = receiptOrderNumber(session);
+  const orderDate = new Date((session.created || Math.floor(Date.now() / 1000)) * 1000);
+  const itemRows = items.map((item) => `
+    <tr>
+      <td style="padding:12px 10px;border-bottom:1px solid #e5e7eb;width:76px;">
+        ${item.image_url ? `<img src="${escapeHtml(item.image_url)}" alt="" width="64" height="64" style="display:block;width:64px;height:64px;object-fit:cover;border-radius:8px;background:#f8fafc;">` : ""}
+      </td>
+      <td style="padding:12px 10px;border-bottom:1px solid #e5e7eb;">
+        <div style="font-weight:700;color:#111827;">${escapeHtml(item.name)}</div>
+        <div style="font-size:13px;color:#6b7280;">Size ${escapeHtml(item.size)} &middot; Qty ${item.quantity}</div>
+      </td>
+      <td style="padding:12px 10px;border-bottom:1px solid #e5e7eb;text-align:right;white-space:nowrap;color:#111827;">${escapeHtml(formatMoney(item.unit_amount, item.currency))}</td>
+      <td style="padding:12px 10px;border-bottom:1px solid #e5e7eb;text-align:right;white-space:nowrap;font-weight:700;color:#111827;">${escapeHtml(formatMoney(item.amount_total, item.currency))}</td>
+    </tr>
+  `).join("");
+  const discountRow = totals.discount > 0 ? `
+    <tr>
+      <td style="padding:6px 0;color:#6b7280;">Discounts</td>
+      <td style="padding:6px 0;text-align:right;color:#111827;">-${escapeHtml(formatMoney(totals.discount, totals.currency))}</td>
+    </tr>
+  ` : "";
+  return `<!doctype html>
+<html>
+  <body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;color:#111827;">
+    <div style="max-width:760px;margin:0 auto;padding:28px 16px;">
+      <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+        <div style="padding:24px;background:#020617;color:#f8fafc;">
+          <div style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#39ff14;font-weight:700;">SmartSleeve Shop</div>
+          <h1 style="margin:8px 0 4px;font-size:26px;line-height:1.2;">Your merch receipt</h1>
+          <div style="font-size:14px;color:#cbd5e1;">Order ${escapeHtml(orderNumber)} &middot; ${escapeHtml(orderDate.toLocaleString("en-US", { timeZone: "America/Los_Angeles", dateStyle: "medium", timeStyle: "short" }))} PT</div>
+        </div>
+        <div style="padding:22px;">
+          <p style="margin:0 0 18px;color:#374151;">Thanks, ${escapeHtml(customerName)}. Here are the details for your SmartSleeve merch purchase.</p>
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
+            <thead>
+              <tr style="background:#f9fafb;">
+                <th style="padding:10px;text-align:left;font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:.06em;">Image</th>
+                <th style="padding:10px;text-align:left;font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:.06em;">Item</th>
+                <th style="padding:10px;text-align:right;font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:.06em;">Unit</th>
+                <th style="padding:10px;text-align:right;font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:.06em;">Line total</th>
+              </tr>
+            </thead>
+            <tbody>${itemRows}</tbody>
+          </table>
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:18px;border-collapse:collapse;">
+            <tr>
+              <td style="padding:6px 0;color:#6b7280;">Subtotal</td>
+              <td style="padding:6px 0;text-align:right;color:#111827;">${escapeHtml(formatMoney(totals.subtotal, totals.currency))}</td>
+            </tr>
+            ${discountRow}
+            <tr>
+              <td style="padding:6px 0;color:#6b7280;">Taxes</td>
+              <td style="padding:6px 0;text-align:right;color:#111827;">${escapeHtml(formatMoney(totals.tax, totals.currency))}</td>
+            </tr>
+            <tr>
+              <td style="padding:6px 0;color:#6b7280;">Shipping</td>
+              <td style="padding:6px 0;text-align:right;color:#111827;">${totals.shipping > 0 ? escapeHtml(formatMoney(totals.shipping, totals.currency)) : "Free"}</td>
+            </tr>
+            <tr>
+              <td style="padding:12px 0 0;border-top:1px solid #e5e7eb;font-weight:800;font-size:18px;">Total</td>
+              <td style="padding:12px 0 0;border-top:1px solid #e5e7eb;text-align:right;font-weight:800;font-size:18px;">${escapeHtml(formatMoney(totals.total, totals.currency))}</td>
+            </tr>
+          </table>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:22px;">
+            <div style="border:1px solid #e5e7eb;border-radius:10px;padding:14px;">
+              <div style="font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;font-weight:700;">Shipping address</div>
+              <div style="margin-top:8px;line-height:1.5;">${addressHtml(shippingLines)}</div>
+            </div>
+            <div style="border:1px solid #e5e7eb;border-radius:10px;padding:14px;">
+              <div style="font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;font-weight:700;">Billing address</div>
+              <div style="margin-top:8px;line-height:1.5;">${addressHtml(billingLines)}</div>
+            </div>
+          </div>
+          <div style="margin-top:18px;border:1px solid #e5e7eb;border-radius:10px;padding:14px;line-height:1.55;">
+            <div><strong>Payment:</strong> ${escapeHtml(paymentDescriptor(paymentIntent))}</div>
+            <div><strong>Stripe payment:</strong> ${escapeHtml(typeof session.payment_intent === "object" ? session.payment_intent.id : session.payment_intent || "Recorded")}</div>
+            <div><strong>Order status:</strong> ${orderStatusHtml(session, fulfillment)}</div>
+            <div><strong>Tracking:</strong> ${trackingHtml(env, session, fulfillment)}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>`;
+}
+
+function buildReceiptText(env, session, items, paymentIntent, fulfillment) {
+  const totals = receiptTotals(session, items);
+  const customer = session.customer_details || {};
+  const shipping = sessionShippingDetails(session);
+  const customerName = shipping.name || customer.name || "SmartSleeve customer";
+  const shippingLines = addressLines(shipping, customerName);
+  const billingLines = addressLines(customer.address ? customer : shipping, customerName);
+  const lines = [
+    "SmartSleeve Merch Shop Receipt",
+    `Order: ${receiptOrderNumber(session)}`,
+    "",
+    "Items:",
+    ...items.map((item) => `- ${item.name} | Size ${item.size} | Qty ${item.quantity} | ${formatMoney(item.unit_amount, item.currency)} each | ${formatMoney(item.amount_total, item.currency)}`),
+    "",
+    `Subtotal: ${formatMoney(totals.subtotal, totals.currency)}`,
+    totals.discount > 0 ? `Discounts: -${formatMoney(totals.discount, totals.currency)}` : "",
+    `Taxes: ${formatMoney(totals.tax, totals.currency)}`,
+    `Shipping: ${totals.shipping > 0 ? formatMoney(totals.shipping, totals.currency) : "Free"}`,
+    `Total: ${formatMoney(totals.total, totals.currency)}`,
+    "",
+    "Shipping Address:",
+    addressText(shippingLines),
+    "",
+    "Billing Address:",
+    addressText(billingLines),
+    "",
+    `Payment: ${paymentDescriptor(paymentIntent)}`,
+    `Order status: ${orderStatusText(session, fulfillment)}`,
+    `Tracking: ${trackingText(env, session, fulfillment)}`,
+  ];
+  return lines.filter((line) => line !== "").join("\n");
+}
+
+async function sendResendEmail(env, message) {
+  if (!env.RESEND_API_KEY) {
+    return { status: "skipped", reason: "RESEND_API_KEY not configured" };
+  }
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(message),
+  });
+  const payload = await response.json().catch(() => ({}));
+  return {
+    status: response.ok ? "sent" : "failed",
+    http_status: response.status,
+    provider_response: payload,
+  };
+}
+
+async function sendCustomerReceipt(env, session, options = {}) {
+  const fullSession = session.id && (!session.total_details || typeof session.payment_intent === "string")
+    ? await fetchStripeCheckoutSession(env, session.id, ["payment_intent.latest_charge", "payment_intent.payment_method"])
+    : session;
+  if (!fullSession || fullSession.error) {
+    return { status: "failed", reason: "Stripe session lookup failed", stripe_error: fullSession && fullSession.error };
+  }
+  const customer = fullSession.customer_details || {};
+  const to = normalizeEmail(options.to || customer.email || (fullSession.metadata && fullSession.metadata.customer_email));
+  if (!isValidEmail(to)) {
+    return { status: "skipped", reason: "No valid customer email available" };
+  }
+  const items = await receiptItemsForSession(env, fullSession);
+  if (items.length === 0) {
+    return { status: "skipped", reason: "No receipt line items available" };
+  }
+  const paymentIntent = typeof fullSession.payment_intent === "object"
+    ? fullSession.payment_intent
+    : await fetchStripePaymentIntent(env, fullSession.payment_intent);
+  const subject = options.subject || "Your SmartSleeve Merch Shop Receipt";
+  const message = {
+    from: String(env.MERCH_RECEIPT_FROM_EMAIL || DEFAULT_RECEIPT_FROM_EMAIL),
+    to,
+    reply_to: String(env.MERCH_RECEIPT_REPLY_TO_EMAIL || DEFAULT_RECEIPT_REPLY_TO_EMAIL),
+    subject,
+    html: buildReceiptHtml(env, fullSession, items, paymentIntent, options.fulfillment),
+    text: buildReceiptText(env, fullSession, items, paymentIntent, options.fulfillment),
+  };
+  const result = await sendResendEmail(env, message);
+  return Object.assign(result, {
+    to,
+    subject,
+    item_count: items.length,
+    order_number: receiptOrderNumber(fullSession),
+    payment_method: paymentDescriptor(paymentIntent),
+  });
+}
+
+async function sendLifecycleEmail(env, session, stage, fulfillment, options = {}) {
+  const fullSession = session.id && (!session.customer_details || !session.total_details)
+    ? await fetchStripeCheckoutSession(env, session.id, ["payment_intent.latest_charge", "payment_intent.payment_method"])
+    : session;
+  if (!fullSession || fullSession.error) {
+    return { status: "failed", reason: "Stripe session lookup failed", stripe_error: fullSession && fullSession.error };
+  }
+  const customer = fullSession.customer_details || {};
+  const to = normalizeEmail(options.to || customer.email || (fullSession.metadata && fullSession.metadata.customer_email));
+  if (!isValidEmail(to)) {
+    return { status: "skipped", reason: "No valid customer email available" };
+  }
+  const items = await receiptItemsForSession(env, fullSession);
+  if (items.length === 0) {
+    return { status: "skipped", reason: "No order line items available" };
+  }
+  const copy = lifecycleCopy(stage, env, fullSession, fulfillment);
+  const message = {
+    from: String(env.MERCH_RECEIPT_FROM_EMAIL || DEFAULT_RECEIPT_FROM_EMAIL),
+    to,
+    reply_to: String(env.MERCH_RECEIPT_REPLY_TO_EMAIL || DEFAULT_RECEIPT_REPLY_TO_EMAIL),
+    subject: options.subject || copy.subject,
+    html: buildLifecycleEmailHtml(env, fullSession, items, fulfillment, stage),
+    text: buildLifecycleEmailText(env, fullSession, items, fulfillment, stage),
+  };
+  const result = await sendResendEmail(env, message);
+  return Object.assign(result, {
+    to,
+    subject: message.subject,
+    stage,
+    item_count: items.length,
+    order_number: receiptOrderNumber(fullSession),
+  });
+}
+
+function printfulExternalIndexKey(externalId) {
+  return `printful:external:${String(externalId || "").trim()}`;
+}
+
+function printfulOrderIndexKey(orderId) {
+  return `printful:order:${String(orderId || "").trim()}`;
+}
+
+function notificationKey(sessionId, stage) {
+  return `stripe:session:${sessionId}:notification:${stage}`;
+}
+
+function printfulOrderIdentifiersFromFulfillment(session, fulfillment) {
+  const result = fulfillmentResult(fulfillment);
+  const externalIds = new Set([
+    printfulExternalId(session && session.id),
+    ...objectValuesByKey(result, /external_id/i),
+  ].filter(Boolean));
+  const orderIds = new Set(objectValuesByKey(result, /(^id$|order_id|printful_order_id)/i).filter(Boolean));
+  return { externalIds: Array.from(externalIds), orderIds: Array.from(orderIds) };
+}
+
+async function storePrintfulIndexes(env, session, fulfillment) {
+  if (!env.MERCH_ORDERS || !session || !session.id || !fulfillment || fulfillment.provider !== "printful") {
+    return;
+  }
+  const identifiers = printfulOrderIdentifiersFromFulfillment(session, fulfillment);
+  await Promise.all([
+    ...identifiers.externalIds.map((externalId) => env.MERCH_ORDERS.put(printfulExternalIndexKey(externalId), session.id)),
+    ...identifiers.orderIds.map((orderId) => env.MERCH_ORDERS.put(printfulOrderIndexKey(orderId), session.id)),
+  ]);
+}
+
+function printfulWebhookStage(payload) {
+  const text = [
+    payload && payload.type,
+    payload && payload.event,
+    payload && payload.event_type,
+    payload && payload.status,
+    ...objectValuesByKey(payload, /status|type|event/i),
+  ].join(" ").toLowerCase();
+  if (/\bdelivered\b/.test(text)) {
+    return "delivered";
+  }
+  if (/\b(shipped|shipment_sent|sent|in_transit|fulfilled)\b/.test(text)) {
+    return "shipped";
+  }
+  return "";
+}
+
+async function sessionIdForPrintfulPayload(env, payload) {
+  if (!env.MERCH_ORDERS) {
+    return "";
+  }
+  const externalIds = objectValuesByKey(payload, /external_id/i).filter(Boolean);
+  for (const externalId of externalIds) {
+    if (/^cs_(test|live)_/i.test(externalId)) {
+      return externalId;
+    }
+    const sessionId = await env.MERCH_ORDERS.get(printfulExternalIndexKey(externalId));
+    if (sessionId) {
+      return sessionId;
+    }
+  }
+  const orderIds = objectValuesByKey(payload, /(^id$|order_id|printful_order_id)/i).filter(Boolean);
+  for (const orderId of orderIds) {
+    const sessionId = await env.MERCH_ORDERS.get(printfulOrderIndexKey(orderId));
+    if (sessionId) {
+      return sessionId;
+    }
+  }
+  return "";
+}
+
+function printfulWebhookFulfillment(payload, stage) {
+  return {
+    status: stage === "delivered" ? "delivered" : "shipped",
+    provider: "printful",
+    provider_response: payload,
+  };
+}
+
+function isPrintfulWebhookAuthorized(request, env, url) {
+  const secret = String(env.PRINTFUL_WEBHOOK_SECRET || "").trim();
+  if (!secret) {
+    return false;
+  }
+  const header = request.headers.get("x-smartsleeve-webhook-secret")
+    || request.headers.get("x-printful-webhook-secret")
+    || request.headers.get("authorization")
+    || "";
+  const token = url.searchParams.get("token") || url.searchParams.get("secret") || "";
+  return header === secret || header === `Bearer ${secret}` || token === secret;
+}
+
+async function storeOrder(env, session, fulfillment, receipt) {
   if (!env.MERCH_ORDERS || !session.id) {
     return;
   }
+  await storePrintfulIndexes(env, session, fulfillment);
   await env.MERCH_ORDERS.put(
     orderKey(session.id),
     JSON.stringify({
@@ -837,8 +1743,83 @@ async function storeOrder(env, session, fulfillment) {
       customer_email: session.customer_details && session.customer_details.email,
       size: customFieldValue(session, "shirt_size"),
       fulfillment,
+      receipt,
     }),
   );
+}
+
+async function recordOrderNotification(env, sessionId, stage, notification) {
+  if (!env.MERCH_ORDERS || !sessionId || !stage) {
+    return;
+  }
+  const storedAt = new Date().toISOString();
+  await env.MERCH_ORDERS.put(
+    notificationKey(sessionId, stage),
+    JSON.stringify({ stored_at: storedAt, stage, notification }),
+  );
+  const existingRaw = await env.MERCH_ORDERS.get(orderKey(sessionId));
+  if (!existingRaw) {
+    return;
+  }
+  try {
+    const existing = JSON.parse(existingRaw);
+    const notifications = existing.notifications && typeof existing.notifications === "object"
+      ? existing.notifications
+      : {};
+    notifications[stage] = { stored_at: storedAt, notification };
+    await env.MERCH_ORDERS.put(orderKey(sessionId), JSON.stringify(Object.assign(existing, { notifications })));
+  } catch (_err) {
+    // Keep the idempotency record even if the historical order payload is malformed.
+  }
+}
+
+async function handlePrintfulWebhook(request, env) {
+  const url = new URL(request.url);
+  if (!isPrintfulWebhookAuthorized(request, env, url)) {
+    return jsonResponse(request, env, { error: "Unauthorized Printful webhook" }, 401);
+  }
+  const payload = await readJson(request);
+  const stage = printfulWebhookStage(payload);
+  if (!stage) {
+    return jsonResponse(request, env, { received: true, ignored: true });
+  }
+  const sessionId = await sessionIdForPrintfulPayload(env, payload);
+  if (!sessionId) {
+    return jsonResponse(request, env, {
+      received: true,
+      queued: false,
+      reason: "No SmartSleeve order mapping found for Printful webhook",
+      stage,
+    }, 202);
+  }
+  const alreadySent = env.MERCH_ORDERS
+    ? await env.MERCH_ORDERS.get(notificationKey(sessionId, stage))
+    : null;
+  if (alreadySent) {
+    return jsonResponse(request, env, { received: true, duplicate: true, stage, session_id: sessionId });
+  }
+  const session = await fetchStripeCheckoutSession(env, sessionId, ["payment_intent.latest_charge", "payment_intent.payment_method"]);
+  if (!session || session.error) {
+    return jsonResponse(request, env, {
+      error: "Stripe Checkout session lookup failed",
+      stripe_error: session && session.error,
+      stage,
+      session_id: sessionId,
+    }, 502);
+  }
+  const fulfillment = printfulWebhookFulfillment(payload, stage);
+  const notification = await sendLifecycleEmail(env, session, stage, fulfillment);
+  if (notification.status === "failed") {
+    console.error("SmartSleeve lifecycle email failed", JSON.stringify({
+      stripe_session_id: sessionId,
+      stage,
+      http_status: notification.http_status,
+      reason: notification.reason,
+    }));
+    return jsonResponse(request, env, { received: true, stage, session_id: sessionId, notification }, 502);
+  }
+  await recordOrderNotification(env, sessionId, stage, notification);
+  return jsonResponse(request, env, { received: true, stage, session_id: sessionId, notification });
 }
 
 async function handleStripeWebhook(request, env) {
@@ -861,7 +1842,17 @@ async function handleStripeWebhook(request, env) {
   const fulfillment = paymentStatus === "paid"
     ? await maybeFulfill(env, session)
     : { status: "skipped", reason: `payment_status=${paymentStatus || "unknown"}` };
-  await storeOrder(env, session, fulfillment);
+  const receipt = paymentStatus === "paid"
+    ? await sendCustomerReceipt(env, session, { fulfillment })
+    : { status: "skipped", reason: `payment_status=${paymentStatus || "unknown"}` };
+  if (receipt.status === "failed") {
+    console.error("SmartSleeve receipt email failed", JSON.stringify({
+      stripe_session_id: session.id,
+      http_status: receipt.http_status,
+      reason: receipt.reason,
+    }));
+  }
+  await storeOrder(env, session, fulfillment, receipt);
   const fulfillmentFailed = paymentStatus === "paid"
     && String(env.MERCH_FULFILLMENT_PROVIDER || "none").toLowerCase() === "printful"
     && fulfillment.status !== "submitted";
@@ -875,7 +1866,7 @@ async function handleStripeWebhook(request, env) {
     }));
     return jsonResponse(request, env, { received: true, fulfillment }, 502);
   }
-  return jsonResponse(request, env, { received: true, fulfillment });
+  return jsonResponse(request, env, { received: true, fulfillment, receipt });
 }
 
 async function retryPrintfulOrder(request, env) {
@@ -902,9 +1893,40 @@ async function retryPrintfulOrder(request, env) {
     }, 409);
   }
   const fulfillment = await maybeFulfill(env, session);
-  await storeOrder(env, session, fulfillment);
+  await storeOrder(env, session, fulfillment, { status: "skipped", reason: "retry_printful_only" });
   const status = fulfillment.status === "submitted" ? 200 : 502;
   return jsonResponse(request, env, { retried: true, session_id: sessionId, fulfillment }, status);
+}
+
+async function sendReceiptForOrder(request, env) {
+  if (!isAdminAuthorized(request, env)) {
+    return jsonResponse(request, env, { error: "Unauthorized" }, 401);
+  }
+  const body = await readJson(request);
+  const sessionId = String(body.session_id || "").trim();
+  if (!/^cs_(test|live)_[A-Za-z0-9]+/.test(sessionId)) {
+    return jsonResponse(request, env, { error: "A valid Stripe Checkout session_id is required" }, 400);
+  }
+  const session = await fetchStripeCheckoutSession(env, sessionId, ["payment_intent.latest_charge", "payment_intent.payment_method"]);
+  if (!session || session.error) {
+    return jsonResponse(request, env, {
+      error: "Stripe Checkout session lookup failed",
+      stripe_error: session && session.error,
+    }, 502);
+  }
+  const paymentStatus = String(session.payment_status || "").toLowerCase();
+  if (paymentStatus !== "paid") {
+    return jsonResponse(request, env, {
+      error: "Stripe session is not paid",
+      payment_status: paymentStatus || "unknown",
+    }, 409);
+  }
+  const receipt = await sendCustomerReceipt(env, session, {
+    to: body.to,
+    subject: body.subject || "Your SmartSleeve Merch Shop Receipt",
+  });
+  const status = receipt.status === "failed" ? 502 : 200;
+  return jsonResponse(request, env, { sent: receipt.status === "sent", session_id: sessionId, receipt }, status);
 }
 
 export default {
@@ -922,6 +1944,9 @@ export default {
         printful_api_configured: Boolean(env.PRINTFUL_API_KEY),
         printful_store_configured: Boolean(env.PRINTFUL_STORE_ID),
         admin_retry_configured: Boolean(env.MERCH_ADMIN_TOKEN),
+        resend_configured: Boolean(env.RESEND_API_KEY),
+        printful_webhook_configured: Boolean(env.PRINTFUL_WEBHOOK_SECRET),
+        receipt_from_email: String(env.MERCH_RECEIPT_FROM_EMAIL || DEFAULT_RECEIPT_FROM_EMAIL),
         fulfillment_provider: env.MERCH_FULFILLMENT_PROVIDER || "none",
         printful_confirm_orders: String(env.PRINTFUL_CONFIRM_ORDERS || "").toLowerCase() === "true",
         products: publicCatalog(env).products.map((product) => product.key),
@@ -936,8 +1961,14 @@ export default {
     if (request.method === "POST" && url.pathname === "/stripe-webhook") {
       return handleStripeWebhook(request, env);
     }
+    if (request.method === "POST" && url.pathname === "/printful-webhook") {
+      return handlePrintfulWebhook(request, env);
+    }
     if (request.method === "POST" && url.pathname === "/admin/retry-printful") {
       return retryPrintfulOrder(request, env);
+    }
+    if (request.method === "POST" && url.pathname === "/admin/send-receipt") {
+      return sendReceiptForOrder(request, env);
     }
     return jsonResponse(request, env, { error: "Not found" }, 404);
   },

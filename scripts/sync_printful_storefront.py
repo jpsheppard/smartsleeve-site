@@ -445,6 +445,15 @@ def variant_prices_and_ids(variants: list[dict[str, Any]]) -> tuple[dict[str, st
     return prices, sync_variant_ids
 
 
+def prices_with_included_shipping(prices: dict[str, str], included_shipping_usd: float) -> dict[str, str]:
+    if included_shipping_usd <= 0:
+        return dict(prices)
+    return {
+        size: f"{float(price) + included_shipping_usd:.2f}"
+        for size, price in prices.items()
+    }
+
+
 def append_product_vars(
     vars_lines: list[str],
     key: str,
@@ -535,6 +544,7 @@ def finalized_catalog_outputs(
 def build_catalog_and_vars_for_all_products(
     products: list[dict[str, Any]],
     client: PrintfulClient,
+    included_shipping_usd: float = 0,
 ) -> tuple[dict[str, Any], str, list[str]]:
     entries: list[dict[str, Any]] = []
     warnings: list[str] = []
@@ -553,14 +563,15 @@ def build_catalog_and_vars_for_all_products(
         if not prices:
             warnings.append(f"No priced size variants found for Printful product {product_id} ({name})")
             continue
+        customer_prices = prices_with_included_shipping(prices, included_shipping_usd)
         key = product_key(product_id, name)
         entries.append({
             "key": key,
             "name": name,
             "product_id": product_id,
-            "prices": prices,
+            "prices": customer_prices,
             "sync_variant_ids": sync_variant_ids,
-            "public": public_product(key, name, product_id, prices, sync_product, product, print_previews=print_file_previews(variants)),
+            "public": public_product(key, name, product_id, customer_prices, sync_product, product, print_previews=print_file_previews(variants)),
         })
         time.sleep(0.1)
 
@@ -580,6 +591,7 @@ def build_catalog_and_vars(
     products: list[dict[str, Any]],
     client: PrintfulClient,
     mapping: dict[str, Any],
+    included_shipping_usd: float = 0,
 ) -> tuple[dict[str, Any], str, list[str]]:
     entries: list[dict[str, Any]] = []
     warnings: list[str] = []
@@ -600,13 +612,14 @@ def build_catalog_and_vars(
         if not prices:
             warnings.append(f"No priced size variants found for {target.key} ({sync_product.get('name')})")
             continue
+        customer_prices = prices_with_included_shipping(prices, included_shipping_usd)
         entries.append({
             "key": target.key,
             "name": target.name,
             "product_id": product_id,
-            "prices": prices,
+            "prices": customer_prices,
             "sync_variant_ids": sync_variant_ids,
-            "public": public_product(target.key, target.name, product_id, prices, sync_product, matched, target.preview, print_file_previews(variants)),
+            "public": public_product(target.key, target.name, product_id, customer_prices, sync_product, matched, target.preview, print_file_previews(variants)),
         })
         time.sleep(0.1)
 
@@ -634,6 +647,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--list-stores", action="store_true", help="List Printful stores visible to the token and exit.")
     parser.add_argument("--list-products", action="store_true", help="List synced Printful products for the selected store and exit.")
     parser.add_argument("--manifest-only", action="store_true", help="Only sync products listed in the launch manifest.")
+    parser.add_argument(
+        "--included-shipping-usd",
+        type=float,
+        default=float(os.environ.get("MERCH_INCLUDED_SHIPPING_USD", "0.00") or 0),
+        help="Amount to add to every customer-facing product price so Stripe shipping can remain free.",
+    )
     parser.add_argument("--fail-on-warning", action="store_true")
     args = parser.parse_args(argv)
 
@@ -654,9 +673,9 @@ def main(argv: list[str] | None = None) -> int:
         print_sync_products(products)
         return 0
     if args.manifest_only:
-        catalog, vars_text, warnings = build_catalog_and_vars(targets, products, client, mapping)
+        catalog, vars_text, warnings = build_catalog_and_vars(targets, products, client, mapping, args.included_shipping_usd)
     else:
-        catalog, vars_text, warnings = build_catalog_and_vars_for_all_products(products, client)
+        catalog, vars_text, warnings = build_catalog_and_vars_for_all_products(products, client, args.included_shipping_usd)
 
     args.catalog_out.parent.mkdir(parents=True, exist_ok=True)
     args.vars_out.parent.mkdir(parents=True, exist_ok=True)
@@ -665,6 +684,8 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"Wrote public storefront catalog: {args.catalog_out}")
     print(f"Wrote private Worker vars: {args.vars_out}")
+    if args.included_shipping_usd > 0:
+        print(f"Included ${args.included_shipping_usd:.2f} shipping in every customer-facing product price.")
     for warning in warnings:
         print(f"WARNING: {warning}", file=sys.stderr)
     if warnings and args.fail_on_warning:

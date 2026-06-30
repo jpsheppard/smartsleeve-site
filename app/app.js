@@ -5264,6 +5264,8 @@
     restoreOrderNotificationSeen();
     renderSession();
     wireEvents();
-    loadFeed();
+    if (["shop", "shop-success", "shop-cancel", "store"].indexOf(String(window.location.hash || "").replace("#", "").split("?")[0]) === -1) {
+      loadFeed();
+    }
   });
 })();
