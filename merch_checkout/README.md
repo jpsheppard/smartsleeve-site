@@ -119,6 +119,8 @@ This writes:
 
 Production checkout treats each Printful retail price as the final customer-facing item price. Keep `MERCH_INCLUDED_SHIPPING_USD = "0.00"` unless you intentionally want the Worker to add an extra runtime surcharge on top of Printful prices. If you do use `--included-shipping-usd`, do not also bake that increment into the Printful retail prices or Worker `MERCH_PRICE_USD_*` vars.
 
+When the Worker submits a paid Stripe order to Printful, it sends Printful the Stripe Checkout subtotal, tax, shipping, discounts, and total as `retail_costs`. This keeps Printful's merchant-side "customer pays" pricing breakdown aligned with what SmartSleeve actually charged, including free customer shipping.
+
 If the script cannot confidently match your product names, copy:
 
 ```bash

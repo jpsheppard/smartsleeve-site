@@ -257,6 +257,30 @@ function formatMoney(cents, currency = "usd") {
   }).format(amount);
 }
 
+function printfulMoney(cents) {
+  return (Math.max(0, Math.round(Number(cents) || 0)) / 100).toFixed(2);
+}
+
+function printfulRetailCostsForSession(session, checkoutItems) {
+  const itemSubtotal = checkoutItems.reduce((sum, item) => {
+    return sum + (Math.max(0, Number(item.unit_amount) || 0) * Math.max(1, Number(item.quantity) || 1));
+  }, 0);
+  const totalDetails = session.total_details || {};
+  const subtotal = Math.max(0, Number(session.amount_subtotal) || itemSubtotal);
+  const tax = Math.max(0, Number(totalDetails.amount_tax) || 0);
+  const shipping = Math.max(0, Number(totalDetails.amount_shipping) || 0);
+  const discount = Math.max(0, Number(totalDetails.amount_discount) || 0);
+  const total = Math.max(0, Number(session.amount_total) || (subtotal + tax + shipping - discount));
+  return {
+    currency: String(session.currency || "usd").toUpperCase(),
+    subtotal: printfulMoney(subtotal),
+    discount: printfulMoney(discount),
+    shipping: printfulMoney(shipping),
+    tax: printfulMoney(tax),
+    total: printfulMoney(total),
+  };
+}
+
 function escapeHtml(value) {
   return String(value || "")
     .replace(/&/g, "&amp;")
@@ -890,6 +914,7 @@ async function submitPrintfulOrder(env, session) {
       zip: address.postal_code || "",
     },
     items: printfulItems,
+    retail_costs: printfulRetailCostsForSession(session, checkoutItems),
   };
   const confirm = String(env.PRINTFUL_CONFIRM_ORDERS || "").toLowerCase() === "true";
   const storeId = String(env.PRINTFUL_STORE_ID || "").trim();
