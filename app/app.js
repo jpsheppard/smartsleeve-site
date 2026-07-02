@@ -2067,6 +2067,7 @@
         + miniMetric("Positions", String((account.positions || []).length))
         + miniMetric("Last sync", accountFreshnessLabel(account))
         + "</div>"
+        + pendingTransitionStrip(account)
         + "<div class=\"recommendation-actions\"><button type=\"button\" class=\"text-button\" data-account-detail=\"" + html(account.id) + "\">Open details</button></div>"
         + "</article>";
     }).join("") || emptyItem("No visible accounts", "Sign in with an email that has SmartSleeve account access.");
@@ -2120,6 +2121,62 @@
     }).join("") + "</div>";
   }
 
+  function accountPendingTransitions(account) {
+    return (account.pendingTransitions || account.pending_transitions || []).filter(function (row) {
+      return row && typeof row === "object";
+    });
+  }
+
+  function pendingTransitionLabel(row) {
+    var source = displayLabel(row.sourceSymbol || row.source_symbol, "source");
+    var target = displayLabel(row.targetSymbol || row.target_symbol, "target");
+    return source + " -> " + target;
+  }
+
+  function pendingTransitionMeta(row) {
+    var reflected = row.expectedAccountReflectionDate || row.expected_account_reflection_date;
+    var submitted = row.submittedAt || row.submitted_at || row.recordedAt || row.recorded_at;
+    if (reflected) return "Expected reflection " + reflected;
+    if (submitted) return "Submitted " + shortTimestamp(submitted);
+    return "Pending plan processing";
+  }
+
+  function pendingTransitionBody(row) {
+    var source = displayLabel(row.sourceFundName || row.source_fund_name || row.sourceSymbol || row.source_symbol, "source fund");
+    var target = displayLabel(row.targetFundName || row.target_fund_name || row.targetSymbol || row.target_symbol, "target fund");
+    var confirmation = row.confirmationNumber || row.confirmation_number;
+    var notional = numeric(row.notionalUsd != null ? row.notionalUsd : row.notional_usd);
+    var reflectionState = displayLabel(row.reflectionState || row.reflection_state, "");
+    var pieces = [
+      "Submitted by user through the retirement-plan browser flow.",
+      "Current holdings remain unsettled until the plan confirms account reflection.",
+      source + " to " + target + (notional != null ? " for " + money(notional) : "") + "."
+    ];
+    if (confirmation) pieces.push("Confirmation " + confirmation + ".");
+    if (reflectionState) pieces.push("State: " + reflectionState.replace(/_/g, " ") + ".");
+    return pieces.join(" ");
+  }
+
+  function pendingTransitionStrip(account) {
+    var rows = accountPendingTransitions(account);
+    if (!rows.length) return "";
+    return "<div class=\"account-position-strip pending-transition-strip\">"
+      + rows.slice(0, 2).map(function (row) {
+        return "<span><b>Pending</b> " + html(pendingTransitionLabel(row)) + " / " + html(pendingTransitionMeta(row)) + "</span>";
+      }).join("")
+      + "</div>";
+  }
+
+  function accountPendingTransitionsPanel(account) {
+    var rows = accountPendingTransitions(account);
+    if (!rows.length) return "";
+    return "<article class=\"panel-card wide-card\"><div class=\"card-head\"><div><span>Pending retirement transfers</span><h2>Plan processing state</h2></div><span class=\"status-chip warning\">" + rows.length + " pending</span></div><div class=\"stack-list\">"
+      + rows.map(function (row) {
+        return stackItem(pendingTransitionLabel(row), pendingTransitionMeta(row), pendingTransitionBody(row), null, "compact-stack");
+      }).join("")
+      + "</div></article>";
+  }
+
   function findAccountById(id) {
     return state.accounts.find(function (account) { return String(account.id) === String(id); }) || state.accounts[0] || null;
   }
@@ -2156,6 +2213,7 @@
         + (emptyAccountWarning ? stackItem("Live holdings missing", "Awaiting broker export", "This configured account has no synced positions or equity in the current app feed, so do not treat it as a true zero-balance account.") : "")
       + "</div></article>",
       accountDetailValueChart(account),
+      accountPendingTransitionsPanel(account),
       accountDetailHoldingCharts(account, holdings),
       "<article class=\"panel-card\"><div class=\"card-head\"><div><span>Sleeves</span><h2>Active sleeve coverage</h2></div><button type=\"button\" class=\"text-button\" data-nav-button=\"sleeves\">All sleeves</button></div><div class=\"stack-list\">"
         + (sleeveCoverage.active.length ? sleeveCoverage.active.map(function (sleeve) {
