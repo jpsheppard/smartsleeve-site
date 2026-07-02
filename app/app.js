@@ -1653,17 +1653,87 @@
     return "/favicon-32x32.png";
   }
 
+  function isExecutedTradeNotification(order) {
+    var status = String(orderStatusLabel(order)).toLowerCase();
+    return Boolean(
+      order.executedAt
+      || order.executed_at
+      || order.filledAt
+      || order.filled_at
+      || order.completedAt
+      || order.completed_at
+      || status.indexOf("fill") !== -1
+      || status.indexOf("execut") !== -1
+      || status.indexOf("complete") !== -1
+    );
+  }
+
+  function tradeNotificationBrokerPrefix(order) {
+    var textValue = [order.broker, order.account, order.accountId, order.account_id].join(" ").toLowerCase();
+    if (textValue.indexOf("robinhood") !== -1 || /\brh\b/.test(textValue)) return "RH";
+    if (textValue.indexOf("ibkr") !== -1 || textValue.indexOf("interactive") !== -1) return "IBKR";
+    if (textValue.indexOf("e*trade") !== -1 || textValue.indexOf("etrade") !== -1) return "E*TRADE";
+    if (textValue.indexOf("schwab") !== -1) return "Schwab";
+    return order.account || order.accountId || "Account";
+  }
+
+  function tradeNotificationSleeve(order) {
+    var label = sleeveLabel(order.sleeve || order.sleeveId || order.sleeve_id || order.tradingSystem || order.trading_system || order.origin, "");
+    if (!label || label === "Sage-directed order") return originLabel(order);
+    return label;
+  }
+
+  function tradeSidePastTense(order) {
+    var side = String(order.side || order.action || "").toLowerCase();
+    if (side === "buy" || side === "bought") return "bought";
+    if (side === "sell" || side === "sold") return "sold";
+    if (side === "short") return "shorted";
+    if (side === "cover") return "covered";
+    return "traded";
+  }
+
+  function tradeQuantityText(order) {
+    var quantity = numeric(order.filledQuantity != null ? order.filledQuantity : order.filled_quantity != null ? order.filled_quantity : order.quantity);
+    if (quantity == null || quantity <= 0) return "";
+    if (Math.abs(quantity - Math.round(quantity)) < 0.000001) return String(Math.round(quantity));
+    return quantity.toLocaleString("en-US", {maximumFractionDigits: 6});
+  }
+
+  function tradeExecutionPrice(order) {
+    var price = numeric(order.averageFillPrice != null ? order.averageFillPrice : order.average_fill_price);
+    if (price != null) return price;
+    price = numeric(order.filledAvgPrice != null ? order.filledAvgPrice : order.filled_avg_price);
+    if (price != null) return price;
+    return orderSharePrice(order);
+  }
+
+  function tradeExecutionNotificationText(order) {
+    var broker = tradeNotificationBrokerPrefix(order);
+    var sleeve = tradeNotificationSleeve(order);
+    var side = tradeSidePastTense(order);
+    var quantity = tradeQuantityText(order);
+    var symbol = String(order.symbol || order.ticker || "?").split(" ")[0].toUpperCase();
+    var price = tradeExecutionPrice(order);
+    var pieces = [broker + ":", sleeve, side];
+    if (quantity) pieces.push(quantity);
+    pieces.push(symbol);
+    if (price != null) pieces.push("@ " + money(price));
+    return pieces.join(" ");
+  }
+
   function orderNotificationKey(order) {
     return orderLifecycleId(order) + "|" + orderStatusLabel(order);
   }
 
   function orderNotificationTitle(order, verb) {
+    if (isExecutedTradeNotification(order)) return "SmartSleeve trade";
     var actor = originLabel(order);
     var titleVerb = verb || orderStatusLabel(order);
     return actor + " order " + titleVerb;
   }
 
   function orderNotificationBody(order) {
+    if (isExecutedTradeNotification(order)) return tradeExecutionNotificationText(order);
     var symbol = String(order.symbol || order.ticker || "?").split(" ")[0].toUpperCase();
     var account = order.account || order.accountId || "Account";
     var side = orderTypeLabel(order);
@@ -1740,16 +1810,11 @@
       return;
     }
     orders.slice(0, 25).forEach(function (order) {
+      if (!isExecutedTradeNotification(order)) return;
       var key = orderNotificationKey(order);
       if (state.orderNotificationSeen[key]) return;
-      var status = String(orderStatusLabel(order)).toLowerCase();
-      var verb = status.indexOf("fill") !== -1 || status.indexOf("execut") !== -1 || status.indexOf("complete") !== -1
-        ? "executed"
-        : status.indexOf("cancel") !== -1
-          ? "canceled"
-          : "placed";
       state.orderNotificationSeen[key] = Date.now();
-      sendOrderNotification(order, verb);
+      sendOrderNotification(order, "executed");
     });
     persistOrderNotificationSeen();
   }
