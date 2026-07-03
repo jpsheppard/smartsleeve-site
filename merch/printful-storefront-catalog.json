@@ -1,6 +1,6 @@
 {
   "currency": "USD",
-  "generated_at": "2026-06-30T00:47:17.459670+00:00",
+  "generated_at": "2026-07-03T01:39:26.505099+00:00",
   "products": [
     {
       "back_mockup": "/merch/mockups/printful-440236989-smartsleeve-ss-men-s-tee-plain-back-back.jpg",
@@ -564,9 +564,138 @@
         "L",
         "XL"
       ]
+    },
+    {
+      "front_print_preview": "https://files.cdn.printful.com/printfile-preview/1010241092/0c2d5da097f95ae1a1d618994f9bfa7e_preview.png",
+      "key": "printful-444481857-smartsleeve-windbreaker",
+      "name": "SmartSleeve Windbreaker",
+      "preview": "https://files.cdn.printful.com/files/474/474fa510909c341c79159c3d934d5ed0_preview.png",
+      "price_label": "$61.99",
+      "prices": {
+        "2XL": "61.99",
+        "3XL": "61.99",
+        "L": "61.99",
+        "M": "61.99",
+        "S": "61.99",
+        "XL": "61.99",
+        "XS": "61.99"
+      },
+      "printful_name": "SmartSleeve Windbreaker",
+      "printful_product_id": 444481857,
+      "sizes": [
+        "XS",
+        "S",
+        "M",
+        "L",
+        "XL",
+        "2XL",
+        "3XL"
+      ]
+    },
+    {
+      "front_print_preview": "https://files.cdn.printful.com/printfile-preview/1010241790/36e1bb742dd40505158d1c2342245a15_preview.png",
+      "key": "printful-444482059-sqts-windbreaker",
+      "name": "SQTS Windbreaker",
+      "preview": "https://files.cdn.printful.com/files/978/97868b35f9bdaaa30e45b4ceefe13452_preview.png",
+      "price_label": "$61.99",
+      "prices": {
+        "2XL": "61.99",
+        "3XL": "61.99",
+        "L": "61.99",
+        "M": "61.99",
+        "S": "61.99",
+        "XL": "61.99",
+        "XS": "61.99"
+      },
+      "printful_name": "SQTS Windbreaker",
+      "printful_product_id": 444482059,
+      "sizes": [
+        "XS",
+        "S",
+        "M",
+        "L",
+        "XL",
+        "2XL",
+        "3XL"
+      ]
+    },
+    {
+      "key": "printful-444483126-smartsleeve-fleece-jacket",
+      "name": "SmartSleeve Fleece Jacket",
+      "preview": "https://files.cdn.printful.com/files/137/137979f7bda152cdab2fd4f4a766dc2c_preview.png",
+      "price_label": "$80.99",
+      "prices": {
+        "2XL": "80.99",
+        "L": "80.99",
+        "M": "80.99",
+        "S": "80.99",
+        "XL": "80.99"
+      },
+      "printful_name": "SmartSleeve Fleece Jacket",
+      "printful_product_id": 444483126,
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL",
+        "2XL"
+      ]
+    },
+    {
+      "key": "printful-444482748-sqts-fleece-jacket",
+      "name": "SQTS Fleece Jacket",
+      "preview": "https://files.cdn.printful.com/files/1cc/1ccb2ec897400d5e818c45f2b001c9dc_preview.png",
+      "price_label": "$80.99",
+      "prices": {
+        "2XL": "80.99",
+        "L": "80.99",
+        "M": "80.99",
+        "S": "80.99",
+        "XL": "80.99"
+      },
+      "printful_name": "SQTS Fleece Jacket",
+      "printful_product_id": 444482748,
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL",
+        "2XL"
+      ]
+    },
+    {
+      "front_print_preview": "https://files.cdn.printful.com/files/d5a/d5a14fab93b2e02b2f8ff7f9b4ffd1ef_preview.png",
+      "key": "printful-444481747-smartsleeve-mouse-pad",
+      "name": "SmartSleeve Mouse Pad",
+      "preview": "https://files.cdn.printful.com/files/b45/b459f3b4e0fdd433fa65eb944c2ddfdd_preview.png",
+      "price_label": "$14.99",
+      "prices": {
+        "OS": "14.99"
+      },
+      "printful_name": "SmartSleeve Mouse Pad",
+      "printful_product_id": 444481747,
+      "sizes": [
+        "OS"
+      ]
+    },
+    {
+      "front_print_preview": "https://files.cdn.printful.com/files/e72/e726c83c3db09250d4fd659c7d95345e_preview.png",
+      "key": "printful-444481585-sqts-mouse-pad",
+      "name": "SQTS Mouse Pad",
+      "preview": "https://files.cdn.printful.com/files/d4b/d4bfcb547d3f86a4eb309d6384ed3d98_preview.png",
+      "price_label": "$14.99",
+      "prices": {
+        "OS": "14.99"
+      },
+      "printful_name": "SQTS Mouse Pad",
+      "printful_product_id": 444481585,
+      "sizes": [
+        "OS"
+      ]
     }
   ],
   "sizes": [
+    "OS",
     "XS",
     "S",
     "M",
