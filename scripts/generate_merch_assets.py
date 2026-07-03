@@ -996,14 +996,65 @@ def crop_visible_subject(image: Image.Image, margin: int = 28) -> Image.Image:
 
 
 def make_sqts_embroidery_wordmark() -> Image.Image:
-    """Clean embroidery-safe SQTS wordmark with no fragile circuit artifacts."""
+    """Custom solid SQTS trace mark: tech-forward, readable, and embroidery-safe."""
     mark = Image.new("RGBA", (1500, 470), TRANSPARENT)
     draw = ImageDraw.Draw(mark)
-    font = fit_tracked_font(draw, "SQTS", 1320, 392, SQTS_FONT_PATHS, tracking=18, min_size=180)
-    bbox = draw.textbbox((0, 0), "SQTS", font=font)
-    y = round((mark.height - (bbox[3] - bbox[1])) / 2 - bbox[1] - 4)
-    draw_tracked_centered_text(mark, "SQTS", mark.width // 2, y, font, GREEN, tracking=18)
-    return crop_visible_subject(mark, margin=28)
+    top = 70
+    height = 300
+    stroke = 70
+    gap = 55
+
+    def terminal(x: int, y: int, radius: int = 18) -> None:
+        draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=GREEN)
+
+    def draw_s(x: int) -> int:
+        width = 260
+        points = [
+            (x + width - 18, top),
+            (x + 45, top),
+            (x + 20, top + 24),
+            (x + 20, top + height // 2),
+            (x + width - 34, top + height // 2),
+            (x + width - 10, top + height // 2 + 24),
+            (x + width - 10, top + height - 20),
+            (x + 34, top + height - 20),
+        ]
+        draw.line(points, fill=GREEN, width=stroke, joint="curve")
+        terminal(x + width - 18, top)
+        terminal(x + 34, top + height - 20)
+        return width
+
+    def draw_q(x: int) -> int:
+        width = 300
+        draw.rounded_rectangle(
+            (x + 30, top, x + width - 30, top + height - 20),
+            radius=46,
+            outline=GREEN,
+            width=stroke,
+        )
+        draw.line(
+            (x + width - 98, top + height - 96, x + width + 6, top + height + 8),
+            fill=GREEN,
+            width=stroke,
+            joint="curve",
+        )
+        return width
+
+    def draw_t(x: int) -> int:
+        width = 270
+        draw.line((x + 18, top, x + width - 18, top), fill=GREEN, width=stroke, joint="curve")
+        draw.line((x + width // 2, top, x + width // 2, top + height - 20), fill=GREEN, width=stroke, joint="curve")
+        terminal(x + 18, top)
+        terminal(x + width - 18, top)
+        terminal(x + width // 2, top + height - 20)
+        return width
+
+    x = 72
+    x += draw_s(x) + gap
+    x += draw_q(x) + gap
+    x += draw_t(x) + gap
+    draw_s(x)
+    return crop_visible_subject(mark, margin=30)
 
 
 def make_sqts_jacket_lockup(output_name: str) -> None:
@@ -1014,8 +1065,9 @@ def make_sqts_jacket_lockup(output_name: str) -> None:
 
     draw = ImageDraw.Draw(canvas)
     y = 28 + logo.height + 28
-    for line in ("SmartSleeve Quantitative", "Trading Systems, LLC"):
-        font = fit_font_from_paths(draw, line, 1260, 154, COMPANY_FONT_PATHS, min_size=72)
+    company_lines = ("SmartSleeve Quantitative", "Trading Systems, LLC")
+    font = fit_font_from_paths(draw, company_lines[0], 1260, 154, COMPANY_FONT_PATHS, min_size=72)
+    for line in company_lines:
         bbox = draw.textbbox((0, 0), line, font=font)
         draw.text((round((canvas.width - (bbox[2] - bbox[0])) / 2), y), line, font=font, fill=WHITE_SOFT)
         y += (bbox[3] - bbox[1]) + 16
