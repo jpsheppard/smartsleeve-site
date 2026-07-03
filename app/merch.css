@@ -48,6 +48,7 @@ body.public-shop main {
 }
 
 .merch-product-grid,
+.merch-umbrella-group,
 .merch-product-group,
 .merch-cart-items,
 .merch-checkout-form,
@@ -58,14 +59,28 @@ body.public-shop main {
 }
 
 .merch-product-grid {
-  gap: 18px;
+  gap: 24px;
 }
 
-.merch-product-group h3 {
+.merch-umbrella-group {
+  gap: 16px;
+}
+
+.merch-umbrella-group > h3 {
   margin: 0;
-  padding-bottom: 7px;
+  padding-bottom: 9px;
   border-bottom: 1px solid rgba(148, 163, 184, 0.16);
-  font-size: 20px;
+  color: var(--text);
+  font-size: 24px;
+}
+
+.merch-product-group h4 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
 }
 
 .merch-product-row {
