@@ -34,7 +34,7 @@ DEFAULT_MAP = ROOT / "merch" / "printful-product-map.json"
 DEFAULT_ENV_FILE = ROOT / ".env.printful.local"
 DEFAULT_MOCKUPS_DIR = ROOT / "merch" / "mockups"
 API_BASE = "https://api.printful.com"
-SIZES = ("XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL")
+SIZES = ("OS", "SM", "LXL", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL")
 MACOS_SYSTEM_CA_FILE = Path("/private/etc/ssl/cert.pem")
 
 
@@ -96,10 +96,20 @@ def merch_gender_rank(product: dict[str, Any]) -> int:
 
 def merch_apparel_rank(product: dict[str, Any]) -> int:
     text = product_display_text(product)
+    if "sock" in text:
+        return 8
     if "muscle tee" in text or "muscle shirt" in text:
+        return 2
+    if "polo" in text:
         return 1
     if "tank" in text:
-        return 2
+        return 3
+    if "windbreaker" in text:
+        return 6
+    if "fleece" in text or "jacket" in text:
+        return 5
+    if "mouse pad" in text or "mousepad" in text:
+        return 9
     if "tee" in text or "t-shirt" in text or "shirt" in text:
         return 0
     return 9
@@ -350,6 +360,12 @@ def variant_size(variant: dict[str, Any]) -> str | None:
     ]
     for candidate in candidates:
         text = str(candidate or "").upper()
+        if re.search(r"(?<![A-Z0-9])(ONE[\s_-]*SIZE|OS)(?![A-Z0-9])", text):
+            return "OS"
+        if re.search(r"(?<![A-Z0-9])(S[\s_/-]*M|SM)(?![A-Z0-9])", text):
+            return "SM"
+        if re.search(r"(?<![A-Z0-9])(L[\s_/-]*XL|LXL)(?![A-Z0-9])", text):
+            return "LXL"
         match = re.search(r"(?<![A-Z0-9])(6XL|5XL|4XL|3XL|2XL|XL|XS|L|M|S)(?![A-Z0-9])", text)
         if match:
             return match.group(1)
@@ -447,6 +463,8 @@ def variant_prices_and_ids(variants: list[dict[str, Any]]) -> tuple[dict[str, st
     sync_variant_ids: dict[str, int] = {}
     for variant in variants:
         size = variant_size(variant)
+        if size is None and len(variants) == 1:
+            size = "OS"
         price = variant_price(variant)
         sync_id = int(variant.get("id") or variant.get("sync_variant_id") or 0)
         if size and price and sync_id:
@@ -471,13 +489,23 @@ def append_product_vars(
     product_id: int,
     prices: dict[str, str],
     sync_variant_ids: dict[str, int],
+    public_product_data: dict[str, Any] | None = None,
 ) -> None:
     slug = env_slug(key)
+    public_product_data = public_product_data or {}
     vars_lines.append("")
     vars_lines.append(f"# {name} -> Printful product {product_id}")
     vars_lines.append(f"MERCH_PRODUCT_KEY_{slug} = {toml_quote(key)}")
     vars_lines.append(f"MERCH_PRODUCT_NAME_{slug} = {toml_quote(name)}")
     vars_lines.append(f"MERCH_PRODUCT_DESCRIPTION_{slug} = {toml_quote('Published Printful product synced for SmartSleeve checkout.')}")
+    if public_product_data.get("preview"):
+        vars_lines.append(f"MERCH_PRODUCT_PREVIEW_{slug} = {toml_quote(public_product_data['preview'])}")
+    if public_product_data.get("front_mockup"):
+        vars_lines.append(f"MERCH_PRODUCT_FRONT_MOCKUP_{slug} = {toml_quote(public_product_data['front_mockup'])}")
+    elif public_product_data.get("preview"):
+        vars_lines.append(f"MERCH_PRODUCT_FRONT_MOCKUP_{slug} = {toml_quote(public_product_data['preview'])}")
+    if public_product_data.get("back_mockup"):
+        vars_lines.append(f"MERCH_PRODUCT_BACK_MOCKUP_{slug} = {toml_quote(public_product_data['back_mockup'])}")
     vars_lines.append(f'PRINTFUL_SYNC_PRODUCT_ID_{slug} = "{product_id}"')
     for size in ordered_sizes(prices):
         vars_lines.append(f'MERCH_PRICE_USD_{slug}_{size} = "{prices[size]}"')
@@ -548,6 +576,7 @@ def finalized_catalog_outputs(
             int(entry["product_id"]),
             dict(entry["prices"]),
             dict(entry["sync_variant_ids"]),
+            dict(entry["public"]),
         )
         public_products.append(dict(entry["public"]))
     return public_products, "\n".join(vars_lines) + "\n"

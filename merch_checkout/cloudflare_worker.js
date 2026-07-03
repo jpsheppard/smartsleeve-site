@@ -50,6 +50,7 @@
 //   POST /printful-webhook
 //   POST /admin/retry-printful
 //   POST /admin/send-receipt
+//   POST /admin/poll-printful
 
 const DEFAULT_SITE = "https://smartsleeve.ai";
 const DEFAULT_SUCCESS_PATH = "/app/#shop-success";
@@ -58,12 +59,16 @@ const DEFAULT_RECEIPT_FROM_EMAIL = "SmartSleeve Shop <shop@smartsleeve.ai>";
 const DEFAULT_RECEIPT_REPLY_TO_EMAIL = "SmartSleeve Shop <shop@smartsleeve.ai>";
 const MAX_QUANTITY = 6;
 const MAX_CART_LINES = 30;
-const SIZE_OPTIONS = ["XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL"];
+const APPAREL_SIZE_OPTIONS = ["XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL"];
+const SOCK_SIZE_OPTIONS = ["SM", "LXL"];
+const SIZE_OPTIONS = ["OS", ...SOCK_SIZE_OPTIONS, ...APPAREL_SIZE_OPTIONS];
 const DEFAULT_SQTS_FRONT_FILE_URL = `${DEFAULT_SITE}/merch/sqts-llc-front-print.png`;
 const DEFAULT_TEE_BACK_FILE_URL = `${DEFAULT_SITE}/merch/ss_and_sqts_tee_back_print.png`;
 const DEFAULT_TEE_BACK_QR_FILE_URL = `${DEFAULT_SITE}/merch/ss_and_sqts_tee_back_qr_print.png`;
 const DEFAULT_TANK_BACK_FILE_URL = `${DEFAULT_SITE}/merch/ss_and_sqts_tank_back_print.png`;
 const DEFAULT_TANK_BACK_QR_FILE_URL = `${DEFAULT_SITE}/merch/ss_and_sqts_tank_back_qr_print.png`;
+const PRINTFUL_POLL_DEFAULT_LIMIT = 75;
+const PRINTFUL_POLL_DEFAULT_LOOKBACK_DAYS = 60;
 
 function envSlug(value) {
   return String(value || "")
@@ -196,6 +201,9 @@ function dynamicProductFromEnv(env, productKey) {
     has_back_print: false,
     back_file_url_env: "",
     default_back_file_url: "",
+    preview_url: String(env[`MERCH_PRODUCT_PREVIEW_${slug}`] || "").trim(),
+    front_mockup_url: String(env[`MERCH_PRODUCT_FRONT_MOCKUP_${slug}`] || env[`MERCH_PRODUCT_PREVIEW_${slug}`] || "").trim(),
+    back_mockup_url: String(env[`MERCH_PRODUCT_BACK_MOCKUP_${slug}`] || "").trim(),
   };
 }
 
@@ -345,7 +353,42 @@ function normalizeProductKey(value) {
 
 function normalizeSize(value) {
   const normalized = String(value || "").trim().toUpperCase();
+  if (/^(OS|ONE[\s_-]*SIZE|ONE SIZE)$/.test(normalized)) {
+    return "OS";
+  }
+  if (/^(S[\s_/-]*M|SM)$/.test(normalized)) {
+    return "SM";
+  }
+  if (/^(L[\s_/-]*XL|LXL)$/.test(normalized)) {
+    return "LXL";
+  }
   return SIZE_OPTIONS.includes(normalized) ? normalized : "M";
+}
+
+function isOneSizeProduct(product) {
+  return /mouse\s*pad|mousepad/i.test(`${product && product.name || ""} ${product && product.fulfillment_sku || ""}`);
+}
+
+function displaySize(size) {
+  const normalized = normalizeSize(size);
+  if (normalized === "OS") {
+    return "One Size";
+  }
+  if (normalized === "SM") {
+    return "S/M";
+  }
+  if (normalized === "LXL") {
+    return "L/XL";
+  }
+  return normalized;
+}
+
+function itemOptionLabel(size) {
+  return normalizeSize(size) === "OS" ? "One Size" : `Size ${displaySize(size)}`;
+}
+
+function productNameWithOption(productName, size) {
+  return `${productName} - ${displaySize(size)}`;
 }
 
 function sizeVariantEnvName(product, size) {
@@ -420,7 +463,10 @@ function availableSizesForProduct(env, product) {
   const sizes = SIZE_OPTIONS.filter((size) => (
     env[`MERCH_PRICE_USD_${slug}_${size}`] || env[`PRINTFUL_SYNC_VARIANT_ID_${slug}_${size}`]
   ));
-  return sizes.length > 0 ? sizes : SIZE_OPTIONS;
+  if (sizes.length > 0) {
+    return sizes;
+  }
+  return isOneSizeProduct(product) ? ["OS"] : APPAREL_SIZE_OPTIONS;
 }
 
 function priceLabelForProduct(env, product) {
@@ -509,6 +555,7 @@ function stripeLineItemProductMetadata(item) {
   return {
     product_key: item.product_key,
     fulfillment_sku: item.product.fulfillment_sku,
+    merch_size: item.size,
     shirt_size: item.size,
   };
 }
@@ -552,7 +599,7 @@ async function createStripeCheckoutSession(request, env) {
     params[`line_items[${index}][quantity]`] = item.quantity;
     params[`line_items[${index}][price_data][currency]`] = item.product.currency;
     params[`line_items[${index}][price_data][unit_amount]`] = item.unit_amount;
-    params[`line_items[${index}][price_data][product_data][name]`] = `${item.product.name} - ${item.size}`;
+    params[`line_items[${index}][price_data][product_data][name]`] = productNameWithOption(item.product.name, item.size);
     params[`line_items[${index}][price_data][product_data][description]`] = item.product.description;
     if (imageUrl) {
       params[`line_items[${index}][price_data][product_data][images][0]`] = imageUrl;
@@ -566,6 +613,7 @@ async function createStripeCheckoutSession(request, env) {
     params["metadata[fulfillment_sku]"] = items[0].product.fulfillment_sku;
     params["metadata[quantity]"] = String(items[0].quantity);
     params["metadata[unit_amount]"] = String(items[0].unit_amount);
+    params["metadata[merch_size]"] = items[0].size;
     params["metadata[shirt_size]"] = items[0].size;
   }
   if (shippingCents > 0) {
@@ -757,9 +805,9 @@ async function checkoutItemsForFulfillment(env, session) {
       return {
         product_key: productKey,
         product,
-        size: normalizeSize(metadata.shirt_size),
+        size: normalizeSize(metadata.merch_size || metadata.shirt_size),
         quantity: clampQuantity(lineItem.quantity),
-        unit_amount: Math.max(0, Number(lineItem.price && lineItem.price.unit_amount) || productUnitAmountForSize(env, product, metadata.shirt_size)),
+        unit_amount: Math.max(0, Number(lineItem.price && lineItem.price.unit_amount) || productUnitAmountForSize(env, product, metadata.merch_size || metadata.shirt_size)),
       };
     })
     .filter(Boolean);
@@ -771,7 +819,7 @@ async function checkoutItemsForFulfillment(env, session) {
   if (!product) {
     return [];
   }
-  const size = normalizeSize(customFieldValue(session, "shirt_size"));
+  const size = normalizeSize(customFieldValue(session, "merch_size") || customFieldValue(session, "shirt_size"));
   return [{
     product_key: productKey,
     product,
@@ -810,14 +858,14 @@ function publicCatalog(env) {
     sizes: SIZE_OPTIONS,
     products: Array.from(products.entries()).map(([key, product]) => {
       const sizes = availableSizesForProduct(env, product);
-      const frontMockupUrl = productMockupUrl(env, key, "front");
-      const backMockupUrl = productMockupUrl(env, key, "back");
+      const frontMockupUrl = product.front_mockup_url || productMockupUrl(env, key, "front");
+      const backMockupUrl = product.back_mockup_url || productMockupUrl(env, key, "back");
       return {
         key,
         name: product.name,
         description: product.description,
         price_label: priceLabelForProduct(env, product),
-        preview: frontMockupUrl,
+        preview: product.preview_url || frontMockupUrl,
         front_mockup: frontMockupUrl,
         back_mockup: backMockupUrl,
         sizes,
@@ -857,7 +905,7 @@ async function submitPrintfulOrder(env, session) {
     const syncVariantId = printfulSyncVariantId(env, product, size);
     const item = {
       quantity,
-      name: `${product.name} - ${size}`,
+      name: productNameWithOption(product.name, size),
       retail_price: (unitAmount / 100).toFixed(2),
     };
     let fulfillmentMode = "sync_variant";
@@ -1166,6 +1214,12 @@ function fulfillmentStatusText(fulfillment) {
   if (!fulfillment) {
     return "SmartSleeve is waiting for order fulfillment.";
   }
+  if (fulfillment.status === "delivered") {
+    return "The carrier reported this SmartSleeve order delivered.";
+  }
+  if (fulfillment.status === "shipped") {
+    return "This SmartSleeve order has shipped.";
+  }
   if (fulfillment.status === "submitted") {
     return "SmartSleeve is waiting for order fulfillment.";
   }
@@ -1299,7 +1353,7 @@ async function receiptItemsForSession(env, session) {
       name: productData.name || lineItem.description || "SmartSleeve merch",
       description: productData.description || "",
       product_key: productKey,
-      size: normalizeSize(metadata.shirt_size),
+      size: normalizeSize(metadata.merch_size || metadata.shirt_size),
       quantity,
       unit_amount: unitAmount,
       amount_subtotal: amountSubtotal,
@@ -1329,14 +1383,14 @@ function itemSummaryHtml(items) {
   return items.map((item) => `
     <tr>
       <td style="padding:10px;border-bottom:1px solid #e5e7eb;">${escapeHtml(item.name)}</td>
-      <td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:center;">${escapeHtml(item.size)}</td>
+      <td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:center;">${escapeHtml(displaySize(item.size))}</td>
       <td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:center;">${item.quantity}</td>
     </tr>
   `).join("");
 }
 
 function itemSummaryText(items) {
-  return items.map((item) => `- ${item.name} | Size ${item.size} | Qty ${item.quantity}`).join("\n");
+  return items.map((item) => `- ${item.name} | ${itemOptionLabel(item.size)} | Qty ${item.quantity}`).join("\n");
 }
 
 function lifecycleCopy(stage, env, session, fulfillment) {
@@ -1460,7 +1514,7 @@ function buildReceiptHtml(env, session, items, paymentIntent, fulfillment) {
       </td>
       <td style="padding:12px 10px;border-bottom:1px solid #e5e7eb;">
         <div style="font-weight:700;color:#111827;">${escapeHtml(item.name)}</div>
-        <div style="font-size:13px;color:#6b7280;">Size ${escapeHtml(item.size)} &middot; Qty ${item.quantity}</div>
+        <div style="font-size:13px;color:#6b7280;">${escapeHtml(itemOptionLabel(item.size))} &middot; Qty ${item.quantity}</div>
       </td>
       <td style="padding:12px 10px;border-bottom:1px solid #e5e7eb;text-align:right;white-space:nowrap;color:#111827;">${escapeHtml(formatMoney(item.unit_amount, item.currency))}</td>
       <td style="padding:12px 10px;border-bottom:1px solid #e5e7eb;text-align:right;white-space:nowrap;font-weight:700;color:#111827;">${escapeHtml(formatMoney(item.amount_total, item.currency))}</td>
@@ -1549,7 +1603,7 @@ function buildReceiptText(env, session, items, paymentIntent, fulfillment) {
     `Order: ${receiptOrderNumber(session)}`,
     "",
     "Items:",
-    ...items.map((item) => `- ${item.name} | Size ${item.size} | Qty ${item.quantity} | ${formatMoney(item.unit_amount, item.currency)} each | ${formatMoney(item.amount_total, item.currency)}`),
+    ...items.map((item) => `- ${item.name} | ${itemOptionLabel(item.size)} | Qty ${item.quantity} | ${formatMoney(item.unit_amount, item.currency)} each | ${formatMoney(item.amount_total, item.currency)}`),
     "",
     `Subtotal: ${formatMoney(totals.subtotal, totals.currency)}`,
     totals.discount > 0 ? `Discounts: -${formatMoney(totals.discount, totals.currency)}` : "",
@@ -1745,6 +1799,328 @@ function printfulWebhookFulfillment(payload, stage) {
   };
 }
 
+function printfulPollingFulfillment(payload, stage) {
+  return {
+    status: stage === "delivered" ? "delivered" : "shipped",
+    provider: "printful",
+    provider_response: {
+      result: Object.assign({ source: "scheduled_printful_poll" }, payload),
+    },
+  };
+}
+
+function positiveEnvInt(env, key, fallback) {
+  const value = Number(env[key]);
+  return Number.isFinite(value) && value > 0 ? Math.round(value) : fallback;
+}
+
+function storedOrderSessionIdFromKey(key) {
+  const match = String(key || "").match(/^stripe:session:(cs_(?:test|live)_[A-Za-z0-9]+)$/);
+  return match ? match[1] : "";
+}
+
+function storedOrderIsPollable(stored, lookbackDays) {
+  if (!stored || typeof stored !== "object") {
+    return false;
+  }
+  const fulfillment = stored.fulfillment || {};
+  if (fulfillment.provider !== "printful") {
+    return false;
+  }
+  if (!["submitted", "shipped"].includes(String(fulfillment.status || ""))) {
+    return false;
+  }
+  const storedAt = parseReceiptDate(stored.stored_at);
+  if (!storedAt || lookbackDays <= 0) {
+    return true;
+  }
+  return Date.now() - storedAt.getTime() <= lookbackDays * 24 * 60 * 60 * 1000;
+}
+
+function storedNotificationExists(stored, stage) {
+  return Boolean(stored && stored.notifications && stored.notifications[stage]);
+}
+
+function uniqueNonEmpty(values) {
+  return Array.from(new Set(values.map((value) => String(value || "").trim()).filter(Boolean)));
+}
+
+function printfulOrderCandidatesForStoredOrder(sessionId, stored) {
+  const result = fulfillmentResult(stored && stored.fulfillment);
+  const order = result && typeof result.order === "object" ? result.order : {};
+  const orderIds = uniqueNonEmpty([
+    result && result.id,
+    result && result.order_id,
+    result && result.printful_order_id,
+    order.id,
+  ]);
+  const externalIds = uniqueNonEmpty([
+    result && result.external_id,
+    result && result.order_external_id,
+    order.external_id,
+    printfulExternalId(sessionId),
+  ]);
+  return [
+    ...orderIds.map((value) => ({ type: "id", value })),
+    ...externalIds.map((value) => ({ type: "external", value: `@${value.replace(/^@/, "")}` })),
+  ];
+}
+
+async function fetchPrintfulV2Shipments(env, candidate) {
+  const storeId = String(env.PRINTFUL_STORE_ID || "").trim();
+  const url = new URL(`https://api.printful.com/v2/orders/${encodeURIComponent(candidate.value)}/shipments`);
+  url.searchParams.set("limit", "100");
+  const response = await fetch(url.toString(), {
+    headers: {
+      Authorization: `Bearer ${env.PRINTFUL_API_KEY}`,
+      ...(storeId ? { "X-PF-Store-Id": storeId } : {}),
+    },
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    return { ok: false, http_status: response.status, payload };
+  }
+  return {
+    ok: true,
+    source: "printful_v2_shipments",
+    candidate,
+    shipments: Array.isArray(payload.data) ? payload.data : [],
+    provider_response: payload,
+  };
+}
+
+async function fetchPrintfulV1OrderShipments(env, candidate) {
+  const storeId = String(env.PRINTFUL_STORE_ID || "").trim();
+  const legacyId = candidate.type === "external" ? candidate.value.replace(/^@/, "") : candidate.value;
+  const response = await fetch(`https://api.printful.com/orders/${encodeURIComponent(legacyId)}`, {
+    headers: {
+      Authorization: `Bearer ${env.PRINTFUL_API_KEY}`,
+      ...(storeId ? { "X-PF-Store-Id": storeId } : {}),
+    },
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    return { ok: false, http_status: response.status, payload };
+  }
+  const result = payload.result || {};
+  return {
+    ok: true,
+    source: "printful_v1_order",
+    candidate,
+    shipments: Array.isArray(result.shipments) ? result.shipments : [],
+    order: result,
+    provider_response: payload,
+  };
+}
+
+async function fetchPrintfulShipmentsForStoredOrder(env, sessionId, stored) {
+  const candidates = printfulOrderCandidatesForStoredOrder(sessionId, stored);
+  const failures = [];
+  for (const candidate of candidates) {
+    const v2 = await fetchPrintfulV2Shipments(env, candidate);
+    if (v2.ok) {
+      return v2;
+    }
+    failures.push({ source: "printful_v2_shipments", candidate, http_status: v2.http_status });
+  }
+  for (const candidate of candidates) {
+    const v1 = await fetchPrintfulV1OrderShipments(env, candidate);
+    if (v1.ok) {
+      return v1;
+    }
+    failures.push({ source: "printful_v1_order", candidate, http_status: v1.http_status });
+  }
+  return { ok: false, failures };
+}
+
+function textFromUnknown(value) {
+  if (value === undefined || value === null) {
+    return "";
+  }
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map(textFromUnknown).join(" ");
+  }
+  if (typeof value === "object") {
+    return Object.values(value).map(textFromUnknown).join(" ");
+  }
+  return "";
+}
+
+function stageFromPrintfulShipments(shipments, order = {}) {
+  const shipmentList = Array.isArray(shipments) ? shipments : [];
+  const combined = textFromUnknown([
+    order && order.status,
+    ...shipmentList.map((shipment) => [
+      shipment.status,
+      shipment.shipment_status,
+      shipment.delivery_status,
+      shipment.delivered_at,
+      shipment.tracking_events,
+    ]),
+  ]).toLowerCase();
+  if (/\bdelivered\b/.test(combined) || shipmentList.some((shipment) => shipment && shipment.delivered_at)) {
+    return "delivered";
+  }
+  if (shipmentList.some((shipment) => shipment && (shipment.shipped_at || shipment.tracking_url || shipment.tracking_number))) {
+    return "shipped";
+  }
+  if (/\b(shipped|shipment_sent|sent|in_transit|fulfilled)\b/.test(combined)) {
+    return "shipped";
+  }
+  return "";
+}
+
+async function sendOrderStageNotification(env, sessionId, stage, fulfillment) {
+  if (!sessionId || !stage) {
+    return { status: "skipped", reason: "missing session id or stage" };
+  }
+  const alreadySent = env.MERCH_ORDERS
+    ? await env.MERCH_ORDERS.get(notificationKey(sessionId, stage))
+    : null;
+  if (alreadySent) {
+    return { status: "duplicate", stage, session_id: sessionId };
+  }
+  const session = await fetchStripeCheckoutSession(env, sessionId, ["payment_intent.latest_charge", "payment_intent.payment_method"]);
+  if (!session || session.error) {
+    return {
+      status: "failed",
+      reason: "Stripe Checkout session lookup failed",
+      stripe_error: session && session.error,
+      stage,
+      session_id: sessionId,
+    };
+  }
+  const notification = await sendLifecycleEmail(env, session, stage, fulfillment);
+  if (notification.status === "failed") {
+    console.error("SmartSleeve lifecycle email failed", JSON.stringify({
+      stripe_session_id: sessionId,
+      stage,
+      http_status: notification.http_status,
+      reason: notification.reason,
+    }));
+    return { status: "failed", stage, session_id: sessionId, notification };
+  }
+  await recordOrderNotification(env, sessionId, stage, notification);
+  return { status: notification.status, stage, session_id: sessionId, notification };
+}
+
+async function markInferredNotification(env, sessionId, stage, reason) {
+  if (!env.MERCH_ORDERS || !sessionId || !stage) {
+    return;
+  }
+  const alreadySent = await env.MERCH_ORDERS.get(notificationKey(sessionId, stage));
+  if (!alreadySent) {
+    await recordOrderNotification(env, sessionId, stage, {
+      status: "inferred",
+      reason,
+      email_sent: false,
+    });
+  }
+}
+
+async function processPolledPrintfulOrder(env, sessionId, stored) {
+  const shippedAlready = storedNotificationExists(stored, "shipped")
+    || (env.MERCH_ORDERS ? await env.MERCH_ORDERS.get(notificationKey(sessionId, "shipped")) : null);
+  const deliveredAlready = storedNotificationExists(stored, "delivered")
+    || (env.MERCH_ORDERS ? await env.MERCH_ORDERS.get(notificationKey(sessionId, "delivered")) : null);
+  if (deliveredAlready) {
+    return { status: "skipped", reason: "delivered notification already recorded", session_id: sessionId };
+  }
+  const shipmentResult = await fetchPrintfulShipmentsForStoredOrder(env, sessionId, stored);
+  if (!shipmentResult.ok) {
+    return { status: "failed", reason: "Printful shipment lookup failed", session_id: sessionId, failures: shipmentResult.failures };
+  }
+  const stage = stageFromPrintfulShipments(shipmentResult.shipments, shipmentResult.order || {});
+  if (!stage) {
+    return { status: "skipped", reason: "no shipped or delivered status yet", session_id: sessionId };
+  }
+  const fulfillment = printfulPollingFulfillment({
+    shipments: shipmentResult.shipments,
+    order: shipmentResult.order,
+    lookup_source: shipmentResult.source,
+    lookup_candidate_type: shipmentResult.candidate && shipmentResult.candidate.type,
+  }, stage);
+  if (stage === "shipped" && shippedAlready) {
+    return { status: "skipped", reason: "shipped notification already recorded", session_id: sessionId };
+  }
+  if (stage === "delivered") {
+    const delivered = await sendOrderStageNotification(env, sessionId, "delivered", fulfillment);
+    if (!shippedAlready && delivered.status !== "failed") {
+      await markInferredNotification(env, sessionId, "shipped", "delivery status was observed before a shipped email was sent");
+    }
+    return delivered;
+  }
+  return sendOrderStageNotification(env, sessionId, "shipped", fulfillment);
+}
+
+async function pollPrintfulShipmentStatuses(env, context = {}) {
+  if (!env.MERCH_ORDERS) {
+    return { status: "skipped", reason: "MERCH_ORDERS KV binding not configured" };
+  }
+  if (!env.PRINTFUL_API_KEY) {
+    return { status: "skipped", reason: "PRINTFUL_API_KEY not configured" };
+  }
+  if (String(env.MERCH_PRINTFUL_POLL_ENABLED || "true").toLowerCase() === "false") {
+    return { status: "skipped", reason: "MERCH_PRINTFUL_POLL_ENABLED=false" };
+  }
+  const limit = Math.min(1000, positiveEnvInt(env, "MERCH_PRINTFUL_POLL_LIMIT", PRINTFUL_POLL_DEFAULT_LIMIT));
+  const lookbackDays = positiveEnvInt(env, "MERCH_PRINTFUL_POLL_LOOKBACK_DAYS", PRINTFUL_POLL_DEFAULT_LOOKBACK_DAYS);
+  let cursor;
+  let scanned = 0;
+  let considered = 0;
+  let notifications = 0;
+  const failures = [];
+  do {
+    const listed = await env.MERCH_ORDERS.list({
+      prefix: "stripe:session:",
+      limit: Math.min(1000, limit - scanned),
+      cursor,
+    });
+    cursor = listed.cursor;
+    for (const key of listed.keys || []) {
+      scanned += 1;
+      const sessionId = storedOrderSessionIdFromKey(key.name);
+      if (!sessionId) {
+        continue;
+      }
+      const raw = await env.MERCH_ORDERS.get(key.name);
+      if (!raw) {
+        continue;
+      }
+      let stored;
+      try {
+        stored = JSON.parse(raw);
+      } catch (_err) {
+        failures.push({ session_id: sessionId, reason: "stored order JSON parse failed" });
+        continue;
+      }
+      if (!storedOrderIsPollable(stored, lookbackDays)) {
+        continue;
+      }
+      considered += 1;
+      const result = await processPolledPrintfulOrder(env, sessionId, stored);
+      if (result.status === "sent") {
+        notifications += 1;
+      }
+      if (result.status === "failed") {
+        failures.push(result);
+      }
+    }
+  } while (cursor && scanned < limit);
+  return {
+    status: failures.length ? "completed_with_failures" : "completed",
+    cron: context.cron,
+    scheduled_time: context.scheduledTime,
+    scanned,
+    considered,
+    notifications,
+    failures: failures.slice(0, 10),
+  };
+}
+
 function isPrintfulWebhookAuthorized(request, env, url) {
   const secret = String(env.PRINTFUL_WEBHOOK_SECRET || "").trim();
   if (!secret) {
@@ -1773,7 +2149,7 @@ async function storeOrder(env, session, fulfillment, receipt) {
       currency: session.currency,
       payment_status: session.payment_status,
       customer_email: session.customer_details && session.customer_details.email,
-      size: customFieldValue(session, "shirt_size"),
+      size: customFieldValue(session, "merch_size") || customFieldValue(session, "shirt_size"),
       fulfillment,
       receipt,
     }),
@@ -1824,34 +2200,23 @@ async function handlePrintfulWebhook(request, env) {
       stage,
     }, 202);
   }
-  const alreadySent = env.MERCH_ORDERS
-    ? await env.MERCH_ORDERS.get(notificationKey(sessionId, stage))
-    : null;
-  if (alreadySent) {
+  const fulfillment = printfulWebhookFulfillment(payload, stage);
+  const result = await sendOrderStageNotification(env, sessionId, stage, fulfillment);
+  if (result.status === "duplicate") {
     return jsonResponse(request, env, { received: true, duplicate: true, stage, session_id: sessionId });
   }
-  const session = await fetchStripeCheckoutSession(env, sessionId, ["payment_intent.latest_charge", "payment_intent.payment_method"]);
-  if (!session || session.error) {
+  if (result.reason === "Stripe Checkout session lookup failed") {
     return jsonResponse(request, env, {
       error: "Stripe Checkout session lookup failed",
-      stripe_error: session && session.error,
+      stripe_error: result.stripe_error,
       stage,
       session_id: sessionId,
     }, 502);
   }
-  const fulfillment = printfulWebhookFulfillment(payload, stage);
-  const notification = await sendLifecycleEmail(env, session, stage, fulfillment);
-  if (notification.status === "failed") {
-    console.error("SmartSleeve lifecycle email failed", JSON.stringify({
-      stripe_session_id: sessionId,
-      stage,
-      http_status: notification.http_status,
-      reason: notification.reason,
-    }));
-    return jsonResponse(request, env, { received: true, stage, session_id: sessionId, notification }, 502);
+  if (result.status === "failed") {
+    return jsonResponse(request, env, { received: true, stage, session_id: sessionId, notification: result.notification }, 502);
   }
-  await recordOrderNotification(env, sessionId, stage, notification);
-  return jsonResponse(request, env, { received: true, stage, session_id: sessionId, notification });
+  return jsonResponse(request, env, { received: true, stage, session_id: sessionId, notification: result.notification });
 }
 
 async function handleStripeWebhook(request, env) {
@@ -1961,6 +2326,15 @@ async function sendReceiptForOrder(request, env) {
   return jsonResponse(request, env, { sent: receipt.status === "sent", session_id: sessionId, receipt }, status);
 }
 
+async function pollPrintfulForOrders(request, env) {
+  if (!isAdminAuthorized(request, env)) {
+    return jsonResponse(request, env, { error: "Unauthorized" }, 401);
+  }
+  const result = await pollPrintfulShipmentStatuses(env, { manual: true });
+  const status = result.status === "completed_with_failures" ? 207 : 200;
+  return jsonResponse(request, env, result, status);
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -1978,6 +2352,9 @@ export default {
         admin_retry_configured: Boolean(env.MERCH_ADMIN_TOKEN),
         resend_configured: Boolean(env.RESEND_API_KEY),
         printful_webhook_configured: Boolean(env.PRINTFUL_WEBHOOK_SECRET),
+        printful_poll_configured: Boolean(env.MERCH_ORDERS && env.PRINTFUL_API_KEY),
+        printful_poll_enabled: String(env.MERCH_PRINTFUL_POLL_ENABLED || "true").toLowerCase() !== "false",
+        printful_poll_limit: positiveEnvInt(env, "MERCH_PRINTFUL_POLL_LIMIT", PRINTFUL_POLL_DEFAULT_LIMIT),
         receipt_from_email: String(env.MERCH_RECEIPT_FROM_EMAIL || DEFAULT_RECEIPT_FROM_EMAIL),
         fulfillment_provider: env.MERCH_FULFILLMENT_PROVIDER || "none",
         printful_confirm_orders: String(env.PRINTFUL_CONFIRM_ORDERS || "").toLowerCase() === "true",
@@ -2002,6 +2379,16 @@ export default {
     if (request.method === "POST" && url.pathname === "/admin/send-receipt") {
       return sendReceiptForOrder(request, env);
     }
+    if (request.method === "POST" && url.pathname === "/admin/poll-printful") {
+      return pollPrintfulForOrders(request, env);
+    }
     return jsonResponse(request, env, { error: "Not found" }, 404);
+  },
+  async scheduled(controller, env) {
+    const result = await pollPrintfulShipmentStatuses(env, {
+      cron: controller && controller.cron,
+      scheduledTime: controller && controller.scheduledTime,
+    });
+    console.log("SmartSleeve Printful shipment poll", JSON.stringify(result));
   },
 };

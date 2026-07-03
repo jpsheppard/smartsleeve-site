@@ -99,18 +99,24 @@
     return /mouse\s*pad|mousepad/i.test(product.name || product.key || "");
   }
 
+  function isSockProduct(product) {
+    return /sock/i.test(product.name || product.key || "");
+  }
+
   function isOuterwearProduct(product) {
     return /windbreaker|fleece|jacket/i.test(product.name || product.key || "");
   }
 
   function merchGender(product) {
-    if (isMousepadProduct(product) || isOuterwearProduct(product)) return "All";
+    if (isMousepadProduct(product) || isOuterwearProduct(product) || isSockProduct(product)) return "All";
     return String(product.name || product.key || "").toLowerCase().indexOf("women") !== -1 ? "Women" : "Men";
   }
 
   function merchBackType(product) {
     if (isMousepadProduct(product)) return "Full-surface print";
+    if (isSockProduct(product)) return "Outside logo";
     if (isOuterwearProduct(product)) return "Right chest logo";
+    if (/polo/i.test(product.name || product.key || "")) return "Left chest logo";
     var value = String(product.name || product.key || "").toLowerCase();
     if (value.indexOf("website+qr") !== -1 || value.indexOf("website-qr") !== -1) return "Website + QR";
     if (value.indexOf("website") !== -1) return "Website";
@@ -120,8 +126,10 @@
   function merchCut(product) {
     var value = String(product.name || product.key || "").toLowerCase();
     if (isMousepadProduct(product)) return "Mouse Pad";
+    if (isSockProduct(product)) return "Socks";
     if (value.indexOf("windbreaker") !== -1) return "Windbreaker";
     if (value.indexOf("fleece") !== -1 || value.indexOf("jacket") !== -1) return "Fleece Jacket";
+    if (value.indexOf("polo") !== -1) return "Polo";
     if (value.indexOf("muscle") !== -1) return "Muscle Tee";
     if (value.indexOf("tank") !== -1) return "Tank Top";
     return "T-Shirt";
@@ -137,6 +145,7 @@
       var outerwearType = merchCut(product) === "Windbreaker" ? "windbreaker" : "fleece";
       return "/merch/" + outerwearBrand + "-" + outerwearType + "-preview.png";
     }
+    if (isSockProduct(product) && product && product.preview) return product.preview;
     if (product && product.preview) return product.preview;
     var brand = merchBrand(product) === "sqts" ? "sqts-llc" : "smartsleeve-ss";
     var cut = merchCut(product) === "Tank Top" || merchCut(product) === "Muscle Tee" ? "tank" : "tee";
@@ -154,6 +163,7 @@
 
   function merchHasBackPanel(product) {
     if (isMousepadProduct(product)) return false;
+    if (isSockProduct(product)) return false;
     if (isOuterwearProduct(product)) return false;
     return Boolean(merchBackImage(product));
   }
@@ -184,7 +194,11 @@
   }
 
   function merchSizeLabel(size) {
-    return String(size || "").toUpperCase() === "OS" ? "One Size" : String(size || "");
+    var normalized = String(size || "").toUpperCase();
+    if (normalized === "OS") return "One Size";
+    if (normalized === "SM") return "S/M";
+    if (normalized === "LXL") return "L/XL";
+    return String(size || "");
   }
 
   function merchOptionText(size) {
@@ -225,14 +239,15 @@
   function sortProduct(a, b) {
     return sortValue(umbrellaKey(a), ["Apparel", "Office"]) - sortValue(umbrellaKey(b), ["Apparel", "Office"])
       || sortValue(merchGender(a), ["Men", "Women", "All"]) - sortValue(merchGender(b), ["Men", "Women", "All"])
-      || sortValue(merchCut(a), ["T-Shirt", "Tank Top", "Muscle Tee", "Windbreaker", "Fleece Jacket", "Mouse Pad"]) - sortValue(merchCut(b), ["T-Shirt", "Tank Top", "Muscle Tee", "Windbreaker", "Fleece Jacket", "Mouse Pad"])
+      || sortValue(merchCut(a), ["T-Shirt", "Polo", "Tank Top", "Muscle Tee", "Fleece Jacket", "Windbreaker", "Socks", "Mouse Pad"]) - sortValue(merchCut(b), ["T-Shirt", "Polo", "Tank Top", "Muscle Tee", "Fleece Jacket", "Windbreaker", "Socks", "Mouse Pad"])
       || sortValue(merchFrontLabel(a), ["SmartSleeve", "SQTS"]) - sortValue(merchFrontLabel(b), ["SmartSleeve", "SQTS"])
-      || sortValue(merchBackType(a), ["Black", "Website", "Website + QR"]) - sortValue(merchBackType(b), ["Black", "Website", "Website + QR"])
+      || sortValue(merchBackType(a), ["Black", "Website", "Website + QR", "Left chest logo", "Right chest logo", "Outside logo", "Full-surface print"]) - sortValue(merchBackType(b), ["Black", "Website", "Website + QR", "Left chest logo", "Right chest logo", "Outside logo", "Full-surface print"])
       || merchDisplayName(a).localeCompare(merchDisplayName(b));
   }
 
   function groupKey(product) {
     if (isMousepadProduct(product)) return "Office::Mouse Pad";
+    if (isSockProduct(product)) return "Apparel::Socks";
     if (isOuterwearProduct(product)) return "Apparel::Outerwear";
     if (merchCut(product) === "Muscle Tee") return "Apparel::Muscle Tee";
     return "Apparel::" + merchGender(product) + " " + merchCut(product);
@@ -244,8 +259,11 @@
     if (cut === "Mouse Pad") return "Mouse Pads";
     if (cut === "Outerwear") return "Outerwear";
     if (cut === "Muscle Tee") return "Muscle Tees";
+    if (cut === "Socks") return "Socks";
     if (cut === "Women Tank Top") return "Women's Racerback Tanks";
+    if (cut === "Women Polo") return "Women's Polos";
     if (cut === "Men T-Shirt") return "Men's T-Shirts";
+    if (cut === "Men Polo") return "Men's Polos";
     if (cut === "Men Tank Top") return "Men's Tank Tops";
     if (cut === "Women T-Shirt") return "Women's T-Shirts";
     return cut;
@@ -254,11 +272,14 @@
   function groupSort(key) {
     var order = {
       "Apparel::Men T-Shirt": 0,
-      "Apparel::Men Tank Top": 1,
-      "Apparel::Muscle Tee": 2,
-      "Apparel::Women T-Shirt": 3,
-      "Apparel::Women Tank Top": 4,
-      "Apparel::Outerwear": 5,
+      "Apparel::Men Polo": 1,
+      "Apparel::Men Tank Top": 2,
+      "Apparel::Muscle Tee": 3,
+      "Apparel::Women T-Shirt": 4,
+      "Apparel::Women Polo": 5,
+      "Apparel::Women Tank Top": 6,
+      "Apparel::Outerwear": 7,
+      "Apparel::Socks": 8,
       "Office::Mouse Pad": 0
     };
     return order[key] == null ? 99 : order[key];
@@ -269,7 +290,7 @@
   }
 
   function sortProductsInGroup(key, products) {
-    var apparelOrder = ["T-Shirt", "Tank Top", "Muscle Tee", "Fleece Jacket", "Windbreaker"];
+    var apparelOrder = ["T-Shirt", "Polo", "Tank Top", "Muscle Tee", "Fleece Jacket", "Windbreaker", "Socks"];
     var officeOrder = ["Mouse Pad"];
     return products.slice().sort(function (a, b) {
       return sortValue(merchCut(a), umbrellaKey(a) === "Office" ? officeOrder : apparelOrder) - sortValue(merchCut(b), umbrellaKey(b) === "Office" ? officeOrder : apparelOrder)
@@ -287,7 +308,7 @@
     var options = (product.sizes || []).map(function (item) {
       return "<option value=\"" + html(item) + "\"" + (item === size ? " selected" : "") + ">" + html(merchSizeLabel(item)) + "</option>";
     }).join("");
-    var frontCaption = mousepad ? "Design" : "Front";
+    var frontCaption = mousepad || isSockProduct(product) ? "Design" : "Front";
     var chips = singleView
       ? ["Design: " + merchFrontLabel(product), merchBackType(product)]
       : isOuterwearProduct(product)

@@ -1,6 +1,6 @@
 {
   "currency": "USD",
-  "generated_at": "2026-07-03T05:35:00+00:00",
+  "generated_at": "2026-07-03T20:36:44.165643+00:00",
   "products": [
     {
       "back_mockup": "/merch/mockups/printful-440236989-smartsleeve-ss-men-s-tee-plain-back-back.jpg",
@@ -166,6 +166,64 @@
         "XL",
         "2XL",
         "3XL"
+      ]
+    },
+    {
+      "front_mockup": "/merch/mockups/printful-444625301-smartsleeve-men-s-polo-front.jpg",
+      "key": "printful-444625301-smartsleeve-men-s-polo",
+      "name": "SmartSleeve Men's Polo",
+      "preview": "/merch/mockups/printful-444625301-smartsleeve-men-s-polo-front.jpg",
+      "price_label": "$34.99-$43.99",
+      "prices": {
+        "2XL": "37.99",
+        "3XL": "39.99",
+        "4XL": "41.99",
+        "5XL": "43.99",
+        "L": "34.99",
+        "M": "34.99",
+        "S": "34.99",
+        "XL": "34.99"
+      },
+      "printful_name": "SmartSleeve Men's Polo",
+      "printful_product_id": 444625301,
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL",
+        "2XL",
+        "3XL",
+        "4XL",
+        "5XL"
+      ]
+    },
+    {
+      "front_mockup": "/merch/mockups/printful-444625315-sqts-men-s-polo-front.jpg",
+      "key": "printful-444625315-sqts-men-s-polo",
+      "name": "SQTS Men's Polo",
+      "preview": "/merch/mockups/printful-444625315-sqts-men-s-polo-front.jpg",
+      "price_label": "$34.99-$43.99",
+      "prices": {
+        "2XL": "37.99",
+        "3XL": "39.99",
+        "4XL": "41.99",
+        "5XL": "43.99",
+        "L": "34.99",
+        "M": "34.99",
+        "S": "34.99",
+        "XL": "34.99"
+      },
+      "printful_name": "SQTS Men's Polo",
+      "printful_product_id": 444625315,
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL",
+        "2XL",
+        "3XL",
+        "4XL",
+        "5XL"
       ]
     },
     {
@@ -489,6 +547,52 @@
       ]
     },
     {
+      "front_mockup": "/merch/mockups/printful-444625334-smartsleeve-women-s-polo-front.jpg",
+      "key": "printful-444625334-smartsleeve-women-s-polo",
+      "name": "SmartSleeve Women's Polo",
+      "preview": "/merch/mockups/printful-444625334-smartsleeve-women-s-polo-front.jpg",
+      "price_label": "$31.99-$33.99",
+      "prices": {
+        "2XL": "33.99",
+        "L": "31.99",
+        "M": "31.99",
+        "S": "31.99",
+        "XL": "31.99"
+      },
+      "printful_name": "SmartSleeve Women's Polo",
+      "printful_product_id": 444625334,
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL",
+        "2XL"
+      ]
+    },
+    {
+      "front_mockup": "/merch/mockups/printful-444625341-sqts-women-s-polo-front.jpg",
+      "key": "printful-444625341-sqts-women-s-polo",
+      "name": "SQTS Women's Polo",
+      "preview": "/merch/mockups/printful-444625341-sqts-women-s-polo-front.jpg",
+      "price_label": "$31.99-$33.99",
+      "prices": {
+        "2XL": "33.99",
+        "L": "31.99",
+        "M": "31.99",
+        "S": "31.99",
+        "XL": "31.99"
+      },
+      "printful_name": "SQTS Women's Polo",
+      "printful_product_id": 444625341,
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL",
+        "2XL"
+      ]
+    },
+    {
       "back_mockup": "/merch/mockups/printful-440238664-smartsleeve-ss-women-s-tank-blank-back-back.jpg",
       "front_mockup": "/merch/mockups/printful-440238664-smartsleeve-ss-women-s-tank-blank-back-front.jpg",
       "front_print_preview": "https://files.cdn.printful.com/files/fda/fdaafbb579a50b80a328ec2e99ab51eb_preview.png",
@@ -566,10 +670,54 @@
       ]
     },
     {
+      "key": "printful-444483126-smartsleeve-fleece-jacket",
+      "name": "SmartSleeve Fleece Jacket",
+      "preview": "https://files.cdn.printful.com/files/355/35551ae3efcf78178f29592b37108cb8_preview.png",
+      "price_label": "$80.99",
+      "prices": {
+        "2XL": "80.99",
+        "L": "80.99",
+        "M": "80.99",
+        "S": "80.99",
+        "XL": "80.99"
+      },
+      "printful_name": "SmartSleeve Fleece Jacket",
+      "printful_product_id": 444483126,
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL",
+        "2XL"
+      ]
+    },
+    {
+      "key": "printful-444482748-sqts-fleece-jacket",
+      "name": "SQTS Fleece Jacket",
+      "preview": "https://files.cdn.printful.com/files/1cc/1ccb2ec897400d5e818c45f2b001c9dc_preview.png",
+      "price_label": "$80.99",
+      "prices": {
+        "2XL": "80.99",
+        "L": "80.99",
+        "M": "80.99",
+        "S": "80.99",
+        "XL": "80.99"
+      },
+      "printful_name": "SQTS Fleece Jacket",
+      "printful_product_id": 444482748,
+      "sizes": [
+        "S",
+        "M",
+        "L",
+        "XL",
+        "2XL"
+      ]
+    },
+    {
       "front_print_preview": "https://files.cdn.printful.com/files/564/56450cc3b6f33890a7fb9df802048166_preview.png",
       "key": "printful-444481857-smartsleeve-windbreaker",
       "name": "SmartSleeve Windbreaker",
-      "preview": "https://files.cdn.printful.com/files/12d/12dc24ce5aeceedf405fe7362770e624_preview.png",
+      "preview": "https://files.cdn.printful.com/files/474/474fa510909c341c79159c3d934d5ed0_preview.png",
       "price_label": "$61.99",
       "prices": {
         "2XL": "61.99",
@@ -596,7 +744,7 @@
       "front_print_preview": "https://files.cdn.printful.com/files/096/0961126ee446dbc50743a4ef0f643e4d_preview.png",
       "key": "printful-444482059-sqts-windbreaker",
       "name": "SQTS Windbreaker",
-      "preview": "https://files.cdn.printful.com/files/fdc/fdc77a5b7dd363282efd9dbec07b8eb8_preview.png",
+      "preview": "https://files.cdn.printful.com/files/978/97868b35f9bdaaa30e45b4ceefe13452_preview.png",
       "price_label": "$61.99",
       "prices": {
         "2XL": "61.99",
@@ -620,56 +768,27 @@
       ]
     },
     {
-      "front_print_preview": "https://files.cdn.printful.com/files/52c/52c4bf78927326b21d0659f4a42ab0bb_preview.png",
-      "key": "printful-444483126-smartsleeve-fleece-jacket",
-      "name": "SmartSleeve Fleece Jacket",
-      "preview": "https://files.cdn.printful.com/files/355/35551ae3efcf78178f29592b37108cb8_preview.png",
-      "price_label": "$80.99",
+      "front_mockup": "/merch/mockups/printful-444625345-smartsleeve-crew-socks-front.jpg",
+      "key": "printful-444625345-smartsleeve-crew-socks",
+      "name": "SmartSleeve Crew Socks",
+      "preview": "/merch/mockups/printful-444625345-smartsleeve-crew-socks-front.jpg",
+      "price_label": "$36.99",
       "prices": {
-        "2XL": "80.99",
-        "L": "80.99",
-        "M": "80.99",
-        "S": "80.99",
-        "XL": "80.99"
+        "LXL": "36.99",
+        "SM": "36.99"
       },
-      "printful_name": "SmartSleeve Fleece Jacket",
-      "printful_product_id": 444483126,
+      "printful_name": "SmartSleeve Crew Socks",
+      "printful_product_id": 444625345,
       "sizes": [
-        "S",
-        "M",
-        "L",
-        "XL",
-        "2XL"
-      ]
-    },
-    {
-      "front_print_preview": "https://files.cdn.printful.com/files/e5e/e5edeacfcd0e1678d9bf1b563c9d8feb_preview.png",
-      "key": "printful-444482748-sqts-fleece-jacket",
-      "name": "SQTS Fleece Jacket",
-      "preview": "https://files.cdn.printful.com/files/ebf/ebffd37f9392dc3f99f4aeabd6d2da29_preview.png",
-      "price_label": "$80.99",
-      "prices": {
-        "2XL": "80.99",
-        "L": "80.99",
-        "M": "80.99",
-        "S": "80.99",
-        "XL": "80.99"
-      },
-      "printful_name": "SQTS Fleece Jacket",
-      "printful_product_id": 444482748,
-      "sizes": [
-        "S",
-        "M",
-        "L",
-        "XL",
-        "2XL"
+        "SM",
+        "LXL"
       ]
     },
     {
       "front_print_preview": "https://files.cdn.printful.com/files/de5/de545e77cc8fd2a08f1b7abb085a0c42_preview.png",
       "key": "printful-444481747-smartsleeve-mouse-pad",
       "name": "SmartSleeve Mouse Pad",
-      "preview": "https://files.cdn.printful.com/files/c21/c21e92500685cfff2fe73e88a4c630aa_preview.png",
+      "preview": "https://files.cdn.printful.com/files/b45/b459f3b4e0fdd433fa65eb944c2ddfdd_preview.png",
       "price_label": "$14.99",
       "prices": {
         "OS": "14.99"
@@ -684,7 +803,7 @@
       "front_print_preview": "https://files.cdn.printful.com/files/82d/82d8305c9d70671b9b74b45478fa50ff_preview.png",
       "key": "printful-444481585-sqts-mouse-pad",
       "name": "SQTS Mouse Pad",
-      "preview": "https://files.cdn.printful.com/files/be7/be71e2de5fa664dc17956c0f13597d01_preview.png",
+      "preview": "https://files.cdn.printful.com/files/d4b/d4bfcb547d3f86a4eb309d6384ed3d98_preview.png",
       "price_label": "$14.99",
       "prices": {
         "OS": "14.99"
@@ -698,6 +817,8 @@
   ],
   "sizes": [
     "OS",
+    "SM",
+    "LXL",
     "XS",
     "S",
     "M",
