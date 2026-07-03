@@ -25,6 +25,8 @@ PRINT_DPI = 300
 QR_PRINT_INCHES = 3.25
 QR_PRINT_PX = round(PRINT_DPI * QR_PRINT_INCHES)
 BACK_URL_SIZE_MULTIPLIER = 1.18
+MOUSEPAD_SIZE = (3480, 2840)
+CHEST_LOCKUP_SIZE = (1800, 1200)
 
 
 def load_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
@@ -158,6 +160,24 @@ def transparentize_dark_background(image: Image.Image, *, threshold: int = 38, g
                 fade = (max_channel - threshold) / 54
                 pixels[x, y] = (r, g, b, round(a * fade * 0.45))
     return rgba
+
+
+def solid_neon_subject(image: Image.Image, *, fill: tuple[int, int, int, int] = GREEN) -> Image.Image:
+    """Convert glow-heavy logo art into a clean solid mark for embroidery/DTF."""
+    rgba = crop_green_subject(image.convert("RGBA"), margin=12)
+    output = Image.new("RGBA", rgba.size, TRANSPARENT)
+    source_pixels = rgba.load()
+    output_pixels = output.load()
+    for y in range(rgba.height):
+        for x in range(rgba.width):
+            r, g, b, a = source_pixels[x, y]
+            if a < 24:
+                continue
+            is_neon = g > 70 and g > r * 1.15 and g > b * 1.05
+            is_light_detail = max(r, g, b) > 150 and g > 80
+            if is_neon or is_light_detail:
+                output_pixels[x, y] = fill
+    return crop_green_subject(output, margin=8)
 
 
 def glow_line(base: Image.Image, xy: tuple[int, int, int, int], fill: tuple[int, int, int, int], width: int) -> None:
@@ -677,8 +697,14 @@ def make_sqts_llc_front_art() -> None:
 
 
 def make_ss_short_front_art() -> None:
+    source_path = ROOT / "brand" / "smartsleeve-ss-clean-banner-v2-no-lines.png"
+    if not source_path.exists() and (OUT / "smartsleeve-ss-common-front-print.png").exists():
+        existing = Image.open(OUT / "smartsleeve-ss-common-front-print.png").convert("RGBA")
+        existing.save(OUT / "smartsleeve-ss-short-front-print.png")
+        existing.save(OUT / "smartsleeve-ss-tank-front-print.png")
+        return
     source = transparentize_dark_background(
-        Image.open(ROOT / "brand" / "smartsleeve-ss-clean-banner-v2-no-lines.png").convert("RGBA"),
+        Image.open(source_path).convert("RGBA"),
         threshold=42,
         green_floor=18,
     )
@@ -745,6 +771,284 @@ def make_legacy_ss_front_art() -> None:
     """Keep a compatibility copy for existing checkout references."""
     source = Image.open(OUT / "smartsleeve-ss-short-front-print.png").convert("RGBA")
     source.save(OUT / "smartsleeve-ss-front-print.png")
+
+
+def fit_art_to_box(source: Image.Image, max_width: int, max_height: int) -> Image.Image:
+    art = source.convert("RGBA")
+    bbox = art.getbbox()
+    if bbox:
+        art = art.crop(bbox)
+    ratio = min(max_width / art.width, max_height / art.height)
+    return art.resize(
+        (max(1, round(art.width * ratio)), max(1, round(art.height * ratio))),
+        Image.Resampling.LANCZOS,
+    )
+
+
+def make_mousepad_print(
+    output_name: str,
+    preview_name: str,
+    front_art_path: Path,
+    *,
+    max_width: int,
+    max_height: int,
+) -> None:
+    art = fit_art_to_box(Image.open(front_art_path).convert("RGBA"), max_width, max_height)
+    canvas = Image.new("RGBA", MOUSEPAD_SIZE, BLACK)
+    centered_paste(canvas, art, MOUSEPAD_SIZE[0] // 2, round((MOUSEPAD_SIZE[1] - art.height) / 2))
+    canvas.save(OUT / output_name)
+
+    preview = Image.new("RGBA", (1400, 1000), (3, 9, 26, 255))
+    shadow = Image.new("RGBA", preview.size, TRANSPARENT)
+    shadow_draw = ImageDraw.Draw(shadow)
+    pad_box = (118, 158, 1282, 815)
+    shadow_draw.rounded_rectangle((pad_box[0] + 12, pad_box[1] + 20, pad_box[2] + 12, pad_box[3] + 20), radius=58, fill=(0, 0, 0, 160))
+    preview.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(20)))
+    draw = ImageDraw.Draw(preview)
+    draw.rounded_rectangle(pad_box, radius=58, fill=BLACK, outline=(57, 255, 20, 80), width=3)
+    preview_art = fit_art_to_box(Image.open(front_art_path).convert("RGBA"), 1040, 520)
+    centered_paste(preview, preview_art, 700, 196 + round((580 - preview_art.height) / 2))
+    draw.text((118, 866), "Black mouse pad", font=load_font(46, bold=True), fill=TEXT_SOFT)
+    draw.text((118, 924), "One-sided full-surface print", font=load_font(29), fill=(167, 183, 200, 255))
+    preview.save(OUT / preview_name)
+
+
+def make_mousepad_art() -> None:
+    make_mousepad_print(
+        "smartsleeve-ss-mousepad-print.png",
+        "smartsleeve-ss-mousepad-preview.png",
+        OUT / "smartsleeve-ss-common-front-print.png",
+        max_width=3040,
+        max_height=1840,
+    )
+    make_mousepad_print(
+        "sqts-llc-mousepad-print.png",
+        "sqts-llc-mousepad-preview.png",
+        OUT / "sqts-llc-common-front-print.png",
+        max_width=3140,
+        max_height=1480,
+    )
+
+
+def draw_lockup_text_line(
+    image: Image.Image,
+    text: str,
+    center_x: int,
+    y: int,
+    *,
+    max_width: int,
+    start_size: int,
+    fill: tuple[int, int, int, int],
+    bold: bool = True,
+) -> int:
+    draw = ImageDraw.Draw(image)
+    font = fit_font(draw, text, max_width, start_size, bold=bold, min_size=32)
+    bbox = draw.textbbox((0, 0), text, font=font)
+    draw.text((round(center_x - (bbox[2] - bbox[0]) / 2), y), text, font=font, fill=fill)
+    return y + (bbox[3] - bbox[1])
+
+
+def make_text_mark(
+    text: str,
+    *,
+    width: int,
+    height: int,
+    start_size: int,
+    fill: tuple[int, int, int, int] = GREEN,
+) -> Image.Image:
+    mark = Image.new("RGBA", (width, height), TRANSPARENT)
+    draw = ImageDraw.Draw(mark)
+    font = fit_font(draw, text, width - 80, start_size, bold=True, min_size=96)
+    bbox = draw.textbbox((0, 0), text, font=font)
+    x = round((width - (bbox[2] - bbox[0])) / 2 - bbox[0])
+    y = round((height - (bbox[3] - bbox[1])) / 2 - bbox[1])
+    draw.text((x, y), text, font=font, fill=fill)
+    return crop_green_subject(mark, margin=18)
+
+
+def crop_visible_subject(image: Image.Image, margin: int = 28) -> Image.Image:
+    bbox = image.convert("RGBA").getbbox()
+    if not bbox:
+        return image.convert("RGBA")
+    left, top, right, bottom = bbox
+    return image.crop((
+        max(0, left - margin),
+        max(0, top - margin),
+        min(image.width, right + margin),
+        min(image.height, bottom + margin),
+    ))
+
+
+def make_sqts_embroidery_wordmark() -> Image.Image:
+    """Embroidery-safer SQTS mark derived from the approved circuit-board art."""
+    source = Image.open(OUT / "sqts-original-front-print.png").convert("RGBA")
+    # Crop to the core SQTS letters so the side chip/chart ornaments do not
+    # create tiny stitches on chest embroidery.
+    crop = source.crop((1030, 1975, 3520, 2675))
+    output = Image.new("RGBA", crop.size, TRANSPARENT)
+    source_pixels = crop.load()
+    output_pixels = output.load()
+    for y in range(crop.height):
+        for x in range(crop.width):
+            r, g, b, a = source_pixels[x, y]
+            green_signal = g - max(r, b)
+            is_core_trace = a > 6 and g > 120 and green_signal > 55 and r < 86 and b < 76
+            if is_core_trace:
+                output_pixels[x, y] = GREEN
+
+    alpha = output.getchannel("A")
+    alpha = alpha.filter(ImageFilter.MinFilter(3)).filter(ImageFilter.MaxFilter(3))
+    clean = Image.new("RGBA", output.size, TRANSPARENT)
+    clean.alpha_composite(Image.new("RGBA", output.size, GREEN))
+    clean.putalpha(alpha)
+    return crop_visible_subject(clean, margin=24)
+
+
+def make_sqts_jacket_lockup(output_name: str) -> None:
+    canvas = Image.new("RGBA", (1300, 760), TRANSPARENT)
+    logo = make_sqts_embroidery_wordmark()
+    logo = logo.resize((900, round(logo.height * 900 / logo.width)), Image.Resampling.LANCZOS)
+    centered_paste(canvas, logo, canvas.width // 2, 30)
+
+    draw = ImageDraw.Draw(canvas)
+    y = 30 + logo.height + 38
+    for line in ("SmartSleeve Quantitative", "Trading Systems, LLC"):
+        font = fit_font(draw, line, 1160, 128, bold=True, min_size=56)
+        bbox = draw.textbbox((0, 0), line, font=font)
+        draw.text((round((canvas.width - (bbox[2] - bbox[0])) / 2), y), line, font=font, fill=WHITE_SOFT)
+        y += (bbox[3] - bbox[1]) + 18
+
+    crop_visible_subject(canvas, margin=36).save(OUT / output_name)
+
+
+def make_chest_lockup(
+    output_name: str,
+    logo: Image.Image,
+    lines: list[str],
+    *,
+    logo_width: int,
+    logo_top: int,
+    line_start_size: int,
+    text_fill: tuple[int, int, int, int],
+) -> None:
+    canvas = Image.new("RGBA", CHEST_LOCKUP_SIZE, TRANSPARENT)
+    solid_logo = solid_neon_subject(logo)
+    solid_logo = solid_logo.resize(
+        (logo_width, round(solid_logo.height * logo_width / solid_logo.width)),
+        Image.Resampling.LANCZOS,
+    )
+    centered_paste(canvas, solid_logo, CHEST_LOCKUP_SIZE[0] // 2, logo_top)
+
+    y = logo_top + solid_logo.height + 44
+    for line in lines:
+        y = draw_lockup_text_line(
+            canvas,
+            line,
+            CHEST_LOCKUP_SIZE[0] // 2,
+            y,
+            max_width=1480,
+            start_size=line_start_size,
+            fill=text_fill,
+        ) + 20
+
+    bbox = canvas.getbbox()
+    if bbox:
+        left, top, right, bottom = bbox
+        canvas = canvas.crop((max(0, left - 60), max(0, top - 60), min(canvas.width, right + 60), min(canvas.height, bottom + 60)))
+    canvas.save(OUT / output_name)
+
+
+def make_ss_jacket_lockup_from_front_art() -> None:
+    source = Image.open(OUT / "smartsleeve-ss-common-front-print.png").convert("RGBA")
+    # The common apparel front includes the slogan. For outerwear, keep only
+    # the high-resolution SS mark and SmartSleeve name from that approved art.
+    logo_region = source.crop((0, 0, source.width, 2420))
+
+    bbox = logo_region.getbbox()
+    if bbox:
+        left, top, right, bottom = bbox
+        margin = 36
+        logo_region = logo_region.crop((
+            max(0, left - margin),
+            max(0, top - margin),
+            min(logo_region.width, right + margin),
+            min(logo_region.height, bottom + margin),
+        ))
+    logo_region.save(OUT / "smartsleeve-ss-chest-lockup-print.png")
+
+
+def draw_jacket_preview_base(draw: ImageDraw.ImageDraw, *, fleece: bool) -> None:
+    body = (286, 164, 972, 960)
+    sleeve_left = [(286, 206), (134, 372), (180, 850), (326, 796)]
+    sleeve_right = [(972, 206), (1124, 372), (1078, 850), (932, 796)]
+    fill = (4, 8, 18, 255) if not fleece else (7, 11, 21, 255)
+    outline = (57, 255, 20, 80)
+    draw.polygon(sleeve_left, fill=fill, outline=outline)
+    draw.polygon(sleeve_right, fill=fill, outline=outline)
+    draw.rounded_rectangle(body, radius=56, fill=fill, outline=outline, width=3)
+    draw.polygon([(482, 164), (629, 286), (776, 164), (728, 164), (629, 242), (530, 164)], fill=(3, 6, 15, 255), outline=outline)
+    draw.line((629, 252, 629, 946), fill=(142, 153, 166, 180), width=5)
+    draw.line((612, 252, 612, 946), fill=(15, 23, 42, 255), width=5)
+    if fleece:
+        for offset in range(0, 760, 34):
+            draw.line((318, 196 + offset, 940, 176 + offset), fill=(255, 255, 255, 10), width=2)
+    else:
+        draw.arc((402, 104, 856, 346), 190, 350, fill=outline, width=4)
+    draw.rounded_rectangle((386, 812, 536, 902), radius=24, outline=(148, 163, 184, 90), width=3)
+    draw.rounded_rectangle((722, 812, 872, 902), radius=24, outline=(148, 163, 184, 90), width=3)
+
+
+def make_jacket_preview(filename: str, title: str, lockup_path: Path, *, fleece: bool) -> None:
+    preview = Image.new("RGBA", (1400, 1100), (3, 9, 26, 255))
+    draw = ImageDraw.Draw(preview)
+    draw_jacket_preview_base(draw, fleece=fleece)
+    lockup = fit_art_to_box(Image.open(lockup_path).convert("RGBA"), 245, 180)
+    # Wearer's right chest, shown on the viewer's left.
+    centered_paste(preview, lockup, 480, 326)
+    draw_wrapped_text(draw, (1036, 220), title, load_font(54, bold=True), TEXT_SOFT, 300, 7)
+    detail = "Full-zip fleece jacket" if fleece else "Full-zip windbreaker"
+    draw_wrapped_text(draw, (1036, 392), detail, load_font(31, bold=True), GREEN, 300, 4)
+    draw_wrapped_text(
+        draw,
+        (1036, 456),
+        "Right chest logo/name lockup. Black garment, no slogan.",
+        load_font(27),
+        (167, 183, 200, 255),
+        304,
+        5,
+    )
+    preview.save(OUT / filename)
+
+
+def make_jacket_lockups() -> None:
+    make_sqts_jacket_lockup("sqts-llc-chest-lockup-print.png")
+
+    make_ss_jacket_lockup_from_front_art()
+
+    make_jacket_preview(
+        "smartsleeve-ss-windbreaker-preview.png",
+        "SmartSleeve Windbreaker",
+        OUT / "smartsleeve-ss-chest-lockup-print.png",
+        fleece=False,
+    )
+    make_jacket_preview(
+        "sqts-llc-windbreaker-preview.png",
+        "SQTS Windbreaker",
+        OUT / "sqts-llc-chest-lockup-print.png",
+        fleece=False,
+    )
+    make_jacket_preview(
+        "smartsleeve-ss-fleece-preview.png",
+        "SmartSleeve Fleece",
+        OUT / "smartsleeve-ss-chest-lockup-print.png",
+        fleece=True,
+    )
+    make_jacket_preview(
+        "sqts-llc-fleece-preview.png",
+        "SQTS Fleece",
+        OUT / "sqts-llc-chest-lockup-print.png",
+        fleece=True,
+    )
 
 
 def draw_garment(draw: ImageDraw.ImageDraw, kind: str, x: int, y: int, w: int, h: int) -> None:
@@ -1032,6 +1336,8 @@ def main() -> None:
     make_ss_short_front_art()
     make_back_art()
     make_legacy_ss_front_art()
+    make_mousepad_art()
+    make_jacket_lockups()
     make_all_previews()
 
 
