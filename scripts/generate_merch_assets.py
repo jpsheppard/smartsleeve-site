@@ -9,7 +9,7 @@ from io import BytesIO
 from collections import deque
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -996,64 +996,43 @@ def crop_visible_subject(image: Image.Image, margin: int = 28) -> Image.Image:
 
 
 def make_sqts_embroidery_wordmark() -> Image.Image:
-    """Custom solid SQTS trace mark: tech-forward, readable, and embroidery-safe."""
-    mark = Image.new("RGBA", (1500, 470), TRANSPARENT)
+    """Approved green outline SQTS mark for embroidery-friendly outerwear."""
+    mark = Image.new("RGBA", (1500, 500), TRANSPARENT)
     draw = ImageDraw.Draw(mark)
-    top = 70
-    height = 300
-    stroke = 70
-    gap = 55
+    font = fit_font_file(
+        draw,
+        "SQTS",
+        1260,
+        356,
+        "/System/Library/Fonts/Supplemental/Futura.ttc",
+        index=0,
+        min_size=220,
+    )
+    stroke_width = 15
+    bbox = draw.textbbox((0, 0), "SQTS", font=font, stroke_width=stroke_width)
+    x = round((mark.width - (bbox[2] - bbox[0])) / 2 - bbox[0])
+    y = 42 - bbox[1]
 
-    def terminal(x: int, y: int, radius: int = 18) -> None:
-        draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=GREEN)
+    outline = Image.new("L", mark.size, 0)
+    fill = Image.new("L", mark.size, 0)
+    outline_draw = ImageDraw.Draw(outline)
+    fill_draw = ImageDraw.Draw(fill)
+    outline_draw.text((x, y), "SQTS", font=font, fill=255, stroke_width=stroke_width, stroke_fill=255)
+    fill_draw.text((x, y), "SQTS", font=font, fill=255)
+    outline_only = ImageChops.subtract(outline, fill)
 
-    def draw_s(x: int) -> int:
-        width = 260
-        points = [
-            (x + width - 18, top),
-            (x + 45, top),
-            (x + 20, top + 24),
-            (x + 20, top + height // 2),
-            (x + width - 34, top + height // 2),
-            (x + width - 10, top + height // 2 + 24),
-            (x + width - 10, top + height - 20),
-            (x + 34, top + height - 20),
-        ]
-        draw.line(points, fill=GREEN, width=stroke, joint="curve")
-        terminal(x + width - 18, top)
-        terminal(x + 34, top + height - 20)
-        return width
+    green_outline = Image.new("RGBA", mark.size, GREEN)
+    green_outline.putalpha(outline_only)
+    mark.alpha_composite(green_outline)
 
-    def draw_q(x: int) -> int:
-        width = 300
-        draw.rounded_rectangle(
-            (x + 30, top, x + width - 30, top + height - 20),
-            radius=46,
-            outline=GREEN,
-            width=stroke,
-        )
-        draw.line(
-            (x + width - 98, top + height - 96, x + width + 6, top + height + 8),
-            fill=GREEN,
-            width=stroke,
-            joint="curve",
-        )
-        return width
+    fine_outline = Image.new("L", mark.size, 0)
+    fine_draw = ImageDraw.Draw(fine_outline)
+    fine_draw.text((x, y), "SQTS", font=font, fill=255, stroke_width=4, stroke_fill=255)
+    fine_outline = ImageChops.subtract(fine_outline, fill)
+    fine_green = Image.new("RGBA", mark.size, (57, 255, 20, 190))
+    fine_green.putalpha(fine_outline)
+    mark.alpha_composite(fine_green)
 
-    def draw_t(x: int) -> int:
-        width = 270
-        draw.line((x + 18, top, x + width - 18, top), fill=GREEN, width=stroke, joint="curve")
-        draw.line((x + width // 2, top, x + width // 2, top + height - 20), fill=GREEN, width=stroke, joint="curve")
-        terminal(x + 18, top)
-        terminal(x + width - 18, top)
-        terminal(x + width // 2, top + height - 20)
-        return width
-
-    x = 72
-    x += draw_s(x) + gap
-    x += draw_q(x) + gap
-    x += draw_t(x) + gap
-    draw_s(x)
     return crop_visible_subject(mark, margin=30)
 
 
@@ -1066,11 +1045,20 @@ def make_sqts_jacket_lockup(output_name: str) -> None:
     draw = ImageDraw.Draw(canvas)
     y = 28 + logo.height + 28
     company_lines = ("SmartSleeve Quantitative", "Trading Systems, LLC")
-    font = fit_font_from_paths(draw, company_lines[0], 1260, 154, COMPANY_FONT_PATHS, min_size=72)
+    font = fit_font_file(
+        draw,
+        company_lines[0],
+        1260,
+        126,
+        "/System/Library/Fonts/Supplemental/Futura.ttc",
+        index=0,
+        min_size=66,
+    )
     for line in company_lines:
         bbox = draw.textbbox((0, 0), line, font=font)
-        draw.text((round((canvas.width - (bbox[2] - bbox[0])) / 2), y), line, font=font, fill=WHITE_SOFT)
-        y += (bbox[3] - bbox[1]) + 16
+        x = round((canvas.width - (bbox[2] - bbox[0])) / 2 - bbox[0])
+        draw.text((x, y - bbox[1]), line, font=font, fill=WHITE)
+        y += (bbox[3] - bbox[1]) + 22
 
     crop_visible_subject(canvas, margin=36).save(OUT / output_name)
 
