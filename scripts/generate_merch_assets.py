@@ -1020,10 +1020,30 @@ def make_jacket_preview(filename: str, title: str, lockup_path: Path, *, fleece:
     preview.save(OUT / filename)
 
 
+def make_windbreaker_print(filename: str, lockup_path: Path, *, max_width: int) -> None:
+    canvas = Image.new("RGBA", (2000, 1333), TRANSPARENT)
+    lockup = fit_art_to_box(Image.open(lockup_path).convert("RGBA"), max_width, 420)
+    # The windbreaker default file is a full-front transparent canvas. On the
+    # rendered mockup, this upper-left region maps to the wearer's right chest.
+    canvas.alpha_composite(lockup, (82, 220))
+    canvas.save(OUT / filename)
+
+
 def make_jacket_lockups() -> None:
     make_sqts_jacket_lockup("sqts-llc-chest-lockup-print.png")
 
     make_ss_jacket_lockup_from_front_art()
+
+    make_windbreaker_print(
+        "smartsleeve-ss-windbreaker-print.png",
+        OUT / "smartsleeve-ss-chest-lockup-print.png",
+        max_width=560,
+    )
+    make_windbreaker_print(
+        "sqts-llc-windbreaker-print.png",
+        OUT / "sqts-llc-chest-lockup-print.png",
+        max_width=600,
+    )
 
     make_jacket_preview(
         "smartsleeve-ss-windbreaker-preview.png",
