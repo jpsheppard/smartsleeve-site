@@ -6,6 +6,7 @@
   var authEndpoint = meta("smartsleeve-auth-endpoint");
   var registerEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/register" : "";
   var merchImageVersion = "20260703-printful-previews";
+  var staticCatalogEndpoint = "/merch/printful-storefront-catalog.json";
   var state = {
     products: [],
     cart: [],
@@ -375,19 +376,21 @@
   function loadCatalogOnce() {
     if (state.catalogLoaded) return;
     state.catalogLoaded = true;
-    var useLiveCatalog = catalogEndpoint && /^https:\/\/(www\.)?smartsleeve\.ai$/i.test(window.location.origin);
+    var useLiveCatalog = catalogEndpoint
+      && catalogEndpoint !== staticCatalogEndpoint
+      && /^https:\/\/(www\.)?smartsleeve\.ai$/i.test(window.location.origin);
     var live = useLiveCatalog ? fetch(catalogEndpoint, {cache: "no-store"}).then(function (response) {
       if (!response.ok) throw new Error("Catalog HTTP " + response.status);
       return response.json();
     }) : Promise.reject(new Error("No live catalog configured."));
-    var fallback = fetch("/merch/printful-storefront-catalog.json", {cache: "no-store"}).then(function (response) {
+    var fallback = fetch(staticCatalogEndpoint, {cache: "no-store"}).then(function (response) {
       if (!response.ok) throw new Error("Fallback catalog HTTP " + response.status);
       return response.json();
     });
     Promise.allSettled([live, fallback]).then(function (results) {
       var livePayload = results[0].status === "fulfilled" ? results[0].value : null;
       var fallbackPayload = results[1].status === "fulfilled" ? results[1].value : null;
-      state.products = livePayload ? mergeProducts(livePayload, fallbackPayload) : productsFrom(fallbackPayload);
+      state.products = fallbackPayload ? productsFrom(fallbackPayload) : productsFrom(livePayload);
       renderCatalog();
       renderCart();
     }).catch(function () {
