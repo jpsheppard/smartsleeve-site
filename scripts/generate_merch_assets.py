@@ -1120,27 +1120,67 @@ def make_chest_lockup(
 
 
 def make_ss_jacket_lockup_from_front_art(output_name: str) -> None:
-    symbol = make_ss_symbol_for_outerwear()
-    canvas = Image.new("RGBA", (1500, 900), TRANSPARENT)
-    symbol = fit_art_to_box(symbol, 1170, 510)
-    centered_paste(canvas, symbol, canvas.width // 2, 34)
+    source = Image.open(OUT / "smartsleeve-ss-common-front-print.png").convert("RGBA")
+    symbol_region = source.crop((1130, 620, 3370, 1900))
+    pixels = symbol_region.load()
+    alpha = Image.new("L", symbol_region.size, 0)
+    alpha_pixels = alpha.load()
+    for y in range(symbol_region.height):
+        for x in range(symbol_region.width):
+            r, g, b, a = pixels[x, y]
+            if a < 35:
+                continue
+            dominance = g - max(r, b)
+            if g < 108 or dominance < 30:
+                continue
+            score = (g - 108) * 2.65 + (dominance - 30) * 1.85
+            if g > 160 and dominance > 55:
+                score += 45
+            alpha_pixels[x, y] = min(255, a, max(0, int(score)))
 
-    draw = ImageDraw.Draw(canvas)
-    word_font = fit_font_file(
-        draw,
-        "SmartSleeve",
-        1120,
-        190,
-        "/System/Library/Fonts/Avenir Next.ttc",
-        index=7,
-        min_size=108,
+    alpha = alpha.filter(ImageFilter.MedianFilter(3))
+    alpha = alpha.filter(ImageFilter.GaussianBlur(0.55))
+    alpha = alpha.point(lambda value: 0 if value < 18 else min(255, int((value - 18) * 1.22)))
+    alpha = alpha.filter(ImageFilter.SMOOTH_MORE)
+    bbox = alpha.getbbox()
+    if not bbox:
+        raise RuntimeError("Could not isolate approved SmartSleeve SS outerwear mark.")
+    pad = 42
+    bbox = (
+        max(0, bbox[0] - pad),
+        max(0, bbox[1] - pad),
+        min(alpha.width, bbox[2] + pad),
+        min(alpha.height, bbox[3] + pad),
     )
-    word_bbox = draw.textbbox((0, 0), "SmartSleeve", font=word_font)
-    word_y = 34 + symbol.height + 22 - word_bbox[1]
-    word_x = round((canvas.width - (word_bbox[2] - word_bbox[0])) / 2 - word_bbox[0])
-    draw.text((word_x, word_y), "SmartSleeve", font=word_font, fill=GREEN)
+    alpha = alpha.crop(bbox)
+    symbol = Image.new("RGBA", alpha.size, (57, 255, 31, 255))
+    symbol.putalpha(alpha)
 
-    crop_visible_subject(canvas, margin=46).save(OUT / output_name)
+    canvas = Image.new("RGBA", (2400, 1520), TRANSPARENT)
+    symbol = symbol.resize((1580, int(symbol.height * 1580 / symbol.width)), Image.Resampling.LANCZOS)
+    centered_paste(canvas, symbol, canvas.width // 2, 72)
+
+    word_font = ImageFont.truetype("/System/Library/Fonts/Avenir Next.ttc", size=226, index=7)
+    word_probe = Image.new("RGBA", (10, 10), TRANSPARENT)
+    word_draw = ImageDraw.Draw(word_probe)
+    word_bbox = word_draw.textbbox((0, 0), "SmartSleeve", font=word_font, stroke_width=1)
+    word = Image.new(
+        "RGBA",
+        (word_bbox[2] - word_bbox[0] + 32, word_bbox[3] - word_bbox[1] + 32),
+        TRANSPARENT,
+    )
+    ImageDraw.Draw(word).text(
+        (16 - word_bbox[0], 16 - word_bbox[1]),
+        "SmartSleeve",
+        font=word_font,
+        fill=(246, 248, 250, 255),
+        stroke_width=1,
+        stroke_fill=(246, 248, 250, 255),
+    )
+    word = word.resize((1160, int(word.height * 1160 / word.width)), Image.Resampling.LANCZOS)
+    centered_paste(canvas, word, canvas.width // 2, 72 + symbol.height + 78)
+
+    crop_visible_subject(canvas, margin=80).save(OUT / output_name)
 
 
 def draw_jacket_preview_base(draw: ImageDraw.ImageDraw, *, fleece: bool) -> None:
