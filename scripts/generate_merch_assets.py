@@ -881,14 +881,14 @@ def make_mousepad_art() -> None:
         "smartsleeve-ss-mousepad-print.png",
         "smartsleeve-ss-mousepad-preview.png",
         OUT / "smartsleeve-ss-common-front-print.png",
-        max_width=3040,
+        max_width=2736,
         max_height=1840,
     )
     make_mousepad_print(
         "sqts-llc-mousepad-print.png",
         "sqts-llc-mousepad-preview.png",
         OUT / "sqts-llc-common-front-print.png",
-        max_width=3140,
+        max_width=2669,
         max_height=1480,
     )
 
