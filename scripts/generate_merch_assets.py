@@ -3,6 +3,9 @@
 
 from __future__ import annotations
 
+import base64
+import re
+from io import BytesIO
 from collections import deque
 from pathlib import Path
 
@@ -27,6 +30,20 @@ QR_PRINT_PX = round(PRINT_DPI * QR_PRINT_INCHES)
 BACK_URL_SIZE_MULTIPLIER = 1.18
 MOUSEPAD_SIZE = (3480, 2840)
 CHEST_LOCKUP_SIZE = (1800, 1200)
+SMARTSLEEVE_FONT_PATHS = [
+    "/System/Library/Fonts/Avenir Next.ttc",
+    "/System/Library/Fonts/Supplemental/Futura.ttc",
+    "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+]
+SQTS_FONT_PATHS = [
+    "/System/Library/Fonts/Supplemental/DIN Alternate Bold.ttf",
+    "/System/Library/Fonts/Avenir Next Condensed.ttc",
+    "/System/Library/Fonts/Supplemental/Arial Black.ttf",
+]
+COMPANY_FONT_PATHS = [
+    "/System/Library/Fonts/Avenir Next.ttc",
+    "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+]
 
 
 def load_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
@@ -39,6 +56,13 @@ def load_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
         if path and Path(path).exists():
             return ImageFont.truetype(path, size=size)
     return ImageFont.load_default()
+
+
+def load_first_font(paths: list[str], size: int) -> ImageFont.FreeTypeFont:
+    for path in paths:
+        if Path(path).exists():
+            return ImageFont.truetype(path, size=size)
+    return load_font(size, bold=True)
 
 
 def fit_font(
@@ -58,6 +82,45 @@ def fit_font(
             return font
         size -= 3
     return load_font(size, bold=bold)
+
+
+def fit_font_from_paths(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    max_width: int,
+    start_size: int,
+    paths: list[str],
+    *,
+    min_size: int = 24,
+) -> ImageFont.FreeTypeFont:
+    size = start_size
+    while size > min_size:
+        font = load_first_font(paths, size)
+        bbox = draw.textbbox((0, 0), text, font=font)
+        if bbox[2] - bbox[0] <= max_width:
+            return font
+        size -= 3
+    return load_first_font(paths, size)
+
+
+def fit_font_file(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    max_width: int,
+    start_size: int,
+    path: str,
+    *,
+    index: int = 0,
+    min_size: int = 24,
+) -> ImageFont.FreeTypeFont:
+    size = start_size
+    while size > min_size:
+        font = ImageFont.truetype(path, size=size, index=index) if Path(path).exists() else load_font(size)
+        bbox = draw.textbbox((0, 0), text, font=font)
+        if bbox[2] - bbox[0] <= max_width:
+            return font
+        size -= 3
+    return ImageFont.truetype(path, size=size, index=index) if Path(path).exists() else load_font(size)
 
 
 def centered_paste(base: Image.Image, overlay: Image.Image, center_x: int, top: int) -> None:
@@ -848,6 +911,59 @@ def draw_lockup_text_line(
     return y + (bbox[3] - bbox[1])
 
 
+def tracked_text_width(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, tracking: int) -> int:
+    width = 0
+    for index, char in enumerate(text):
+        bbox = draw.textbbox((0, 0), char, font=font)
+        width += bbox[2] - bbox[0]
+        if index < len(text) - 1:
+            width += tracking
+    return width
+
+
+def fit_tracked_font(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    max_width: int,
+    start_size: int,
+    paths: list[str],
+    *,
+    tracking: int,
+    min_size: int = 72,
+) -> ImageFont.FreeTypeFont:
+    size = start_size
+    while size > min_size:
+        font = load_first_font(paths, size)
+        if tracked_text_width(draw, text, font, tracking) <= max_width:
+            return font
+        size -= 4
+    return load_first_font(paths, size)
+
+
+def draw_tracked_centered_text(
+    image: Image.Image,
+    text: str,
+    center_x: int,
+    y: int,
+    font: ImageFont.FreeTypeFont,
+    fill: tuple[int, int, int, int],
+    *,
+    tracking: int,
+) -> tuple[int, int, int, int]:
+    draw = ImageDraw.Draw(image)
+    width = tracked_text_width(draw, text, font, tracking)
+    x = round(center_x - width / 2)
+    tops: list[int] = []
+    bottoms: list[int] = []
+    for index, char in enumerate(text):
+        bbox = draw.textbbox((0, 0), char, font=font)
+        draw.text((x - bbox[0], y), char, font=font, fill=fill)
+        tops.append(y + bbox[1])
+        bottoms.append(y + bbox[3])
+        x += bbox[2] - bbox[0] + (tracking if index < len(text) - 1 else 0)
+    return (round(center_x - width / 2), min(tops), round(center_x + width / 2), max(bottoms))
+
+
 def make_text_mark(
     text: str,
     *,
@@ -880,45 +996,50 @@ def crop_visible_subject(image: Image.Image, margin: int = 28) -> Image.Image:
 
 
 def make_sqts_embroidery_wordmark() -> Image.Image:
-    """Embroidery-safer SQTS mark derived from the approved circuit-board art."""
-    source = Image.open(OUT / "sqts-original-front-print.png").convert("RGBA")
-    # Crop to the core SQTS letters so the side chip/chart ornaments do not
-    # create tiny stitches on chest embroidery.
-    crop = source.crop((1030, 1975, 3520, 2675))
-    output = Image.new("RGBA", crop.size, TRANSPARENT)
-    source_pixels = crop.load()
-    output_pixels = output.load()
-    for y in range(crop.height):
-        for x in range(crop.width):
-            r, g, b, a = source_pixels[x, y]
-            green_signal = g - max(r, b)
-            is_core_trace = a > 6 and g > 120 and green_signal > 55 and r < 86 and b < 76
-            if is_core_trace:
-                output_pixels[x, y] = GREEN
-
-    alpha = output.getchannel("A")
-    alpha = alpha.filter(ImageFilter.MinFilter(3)).filter(ImageFilter.MaxFilter(3))
-    clean = Image.new("RGBA", output.size, TRANSPARENT)
-    clean.alpha_composite(Image.new("RGBA", output.size, GREEN))
-    clean.putalpha(alpha)
-    return crop_visible_subject(clean, margin=24)
+    """Clean embroidery-safe SQTS wordmark with no fragile circuit artifacts."""
+    mark = Image.new("RGBA", (1500, 470), TRANSPARENT)
+    draw = ImageDraw.Draw(mark)
+    font = fit_tracked_font(draw, "SQTS", 1320, 392, SQTS_FONT_PATHS, tracking=18, min_size=180)
+    bbox = draw.textbbox((0, 0), "SQTS", font=font)
+    y = round((mark.height - (bbox[3] - bbox[1])) / 2 - bbox[1] - 4)
+    draw_tracked_centered_text(mark, "SQTS", mark.width // 2, y, font, GREEN, tracking=18)
+    return crop_visible_subject(mark, margin=28)
 
 
 def make_sqts_jacket_lockup(output_name: str) -> None:
-    canvas = Image.new("RGBA", (1300, 760), TRANSPARENT)
+    canvas = Image.new("RGBA", (1420, 840), TRANSPARENT)
     logo = make_sqts_embroidery_wordmark()
-    logo = logo.resize((900, round(logo.height * 900 / logo.width)), Image.Resampling.LANCZOS)
-    centered_paste(canvas, logo, canvas.width // 2, 30)
+    logo = logo.resize((1040, round(logo.height * 1040 / logo.width)), Image.Resampling.LANCZOS)
+    centered_paste(canvas, logo, canvas.width // 2, 28)
 
     draw = ImageDraw.Draw(canvas)
-    y = 30 + logo.height + 38
+    y = 28 + logo.height + 28
     for line in ("SmartSleeve Quantitative", "Trading Systems, LLC"):
-        font = fit_font(draw, line, 1160, 128, bold=True, min_size=56)
+        font = fit_font_from_paths(draw, line, 1260, 154, COMPANY_FONT_PATHS, min_size=72)
         bbox = draw.textbbox((0, 0), line, font=font)
         draw.text((round((canvas.width - (bbox[2] - bbox[0])) / 2), y), line, font=font, fill=WHITE_SOFT)
-        y += (bbox[3] - bbox[1]) + 18
+        y += (bbox[3] - bbox[1]) + 16
 
     crop_visible_subject(canvas, margin=36).save(OUT / output_name)
+
+
+def make_ss_symbol_for_outerwear() -> Image.Image:
+    """Use the approved apparel-front SS mark, but leave the raster wordmark behind."""
+    source_path = OUT / "smartsleeve-ss-common-front-print.png"
+    if source_path.exists():
+        source = Image.open(source_path).convert("RGBA")
+        symbol = source.crop((0, 0, source.width, 1840))
+        symbol = crop_green_subject(symbol, margin=28)
+        if symbol.width > 1200 and symbol.height > 480:
+            return symbol
+
+    svg_path = ROOT / "brand" / "smartsleeve-apparel-logo-source.svg"
+    svg = svg_path.read_text(errors="ignore")
+    match = re.search(r'id="ss-mark-image"[^>]+href="data:image/png;base64,([^"]+)"', svg, flags=re.DOTALL)
+    if not match:
+        raise RuntimeError(f"Could not find SS mark image in {svg_path}")
+    symbol = Image.open(BytesIO(base64.b64decode(match.group(1)))).convert("RGBA")
+    return crop_green_subject(transparentize_dark_background(symbol), margin=18)
 
 
 def make_chest_lockup(
@@ -958,23 +1079,28 @@ def make_chest_lockup(
     canvas.save(OUT / output_name)
 
 
-def make_ss_jacket_lockup_from_front_art() -> None:
-    source = Image.open(OUT / "smartsleeve-ss-common-front-print.png").convert("RGBA")
-    # The common apparel front includes the slogan. For outerwear, keep only
-    # the high-resolution SS mark and SmartSleeve name from that approved art.
-    logo_region = source.crop((0, 0, source.width, 2420))
+def make_ss_jacket_lockup_from_front_art(output_name: str) -> None:
+    symbol = make_ss_symbol_for_outerwear()
+    canvas = Image.new("RGBA", (1500, 900), TRANSPARENT)
+    symbol = fit_art_to_box(symbol, 1170, 510)
+    centered_paste(canvas, symbol, canvas.width // 2, 34)
 
-    bbox = logo_region.getbbox()
-    if bbox:
-        left, top, right, bottom = bbox
-        margin = 36
-        logo_region = logo_region.crop((
-            max(0, left - margin),
-            max(0, top - margin),
-            min(logo_region.width, right + margin),
-            min(logo_region.height, bottom + margin),
-        ))
-    logo_region.save(OUT / "smartsleeve-ss-chest-lockup-print.png")
+    draw = ImageDraw.Draw(canvas)
+    word_font = fit_font_file(
+        draw,
+        "SmartSleeve",
+        1120,
+        190,
+        "/System/Library/Fonts/Avenir Next.ttc",
+        index=7,
+        min_size=108,
+    )
+    word_bbox = draw.textbbox((0, 0), "SmartSleeve", font=word_font)
+    word_y = 34 + symbol.height + 22 - word_bbox[1]
+    word_x = round((canvas.width - (word_bbox[2] - word_bbox[0])) / 2 - word_bbox[0])
+    draw.text((word_x, word_y), "SmartSleeve", font=word_font, fill=GREEN)
+
+    crop_visible_subject(canvas, margin=46).save(OUT / output_name)
 
 
 def draw_jacket_preview_base(draw: ImageDraw.ImageDraw, *, fleece: bool) -> None:
@@ -1031,8 +1157,10 @@ def make_windbreaker_print(filename: str, lockup_path: Path, *, max_width: int) 
 
 def make_jacket_lockups() -> None:
     make_sqts_jacket_lockup("sqts-llc-chest-lockup-print.png")
+    make_sqts_jacket_lockup("sqts-llc-chest-lockup-clean-print.png")
 
-    make_ss_jacket_lockup_from_front_art()
+    make_ss_jacket_lockup_from_front_art("smartsleeve-ss-chest-lockup-print.png")
+    make_ss_jacket_lockup_from_front_art("smartsleeve-ss-chest-lockup-clean-print.png")
 
     make_windbreaker_print(
         "smartsleeve-ss-windbreaker-print.png",
@@ -1043,6 +1171,16 @@ def make_jacket_lockups() -> None:
         "sqts-llc-windbreaker-print.png",
         OUT / "sqts-llc-chest-lockup-print.png",
         max_width=600,
+    )
+    make_windbreaker_print(
+        "smartsleeve-ss-windbreaker-clean-print.png",
+        OUT / "smartsleeve-ss-chest-lockup-clean-print.png",
+        max_width=590,
+    )
+    make_windbreaker_print(
+        "sqts-llc-windbreaker-clean-print.png",
+        OUT / "sqts-llc-chest-lockup-clean-print.png",
+        max_width=610,
     )
 
     make_jacket_preview(
