@@ -5,7 +5,7 @@
   var catalogEndpoint = meta("smartsleeve-merch-catalog-endpoint");
   var authEndpoint = meta("smartsleeve-auth-endpoint");
   var registerEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/register" : "";
-  var merchImageVersion = "20260702-outerwear";
+  var merchImageVersion = "20260703-outerwear-v2";
   var state = {
     products: [],
     cart: [],
@@ -144,6 +144,7 @@
   }
 
   function merchFrontImage(product) {
+    if (isMousepadProduct(product) || isOuterwearProduct(product)) return merchPreviewFor(product);
     return product.front_mockup || product.preview || product.front_print_preview || merchPreviewFor(product);
   }
 
@@ -159,7 +160,7 @@
 
   function merchImageSrc(value) {
     var url = String(value || "");
-    if (url.indexOf("/merch/mockups/") === -1) return url;
+    if (url.indexOf("/merch/") !== 0) return url;
     return url + (url.indexOf("?") === -1 ? "?" : "&") + "v=" + merchImageVersion;
   }
 
