@@ -305,8 +305,23 @@ function productMockupUrl(env, productKey, side = "front") {
   return normalized ? `${siteUrl(env)}/merch/mockups/${normalized}-${normalizedSide}.jpg` : "";
 }
 
+function absoluteProductImageUrl(env, value) {
+  const text = String(value || "").trim();
+  if (!text) {
+    return "";
+  }
+  if (text.startsWith("/")) {
+    return `${siteUrl(env)}${text}`;
+  }
+  return /^https:\/\//i.test(text) ? text : "";
+}
+
 function productImageUrl(env, productKey) {
-  return productMockupUrl(env, productKey, "front");
+  const product = catalogProduct(env, productKey);
+  const configured = product
+    ? absoluteProductImageUrl(env, product.front_mockup_url || product.preview_url)
+    : "";
+  return configured || productMockupUrl(env, productKey, "front");
 }
 
 function allowedOrigins(env) {

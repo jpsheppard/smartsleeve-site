@@ -1,6 +1,6 @@
 {
   "currency": "USD",
-  "generated_at": "2026-07-04T06:08:37.209447+00:00",
+  "generated_at": "2026-07-04T06:36:56.171422+00:00",
   "products": [
     {
       "back_mockup": "/merch/mockups/printful-440236989-smartsleeve-ss-men-s-tee-plain-back-back.jpg",
@@ -670,9 +670,10 @@
       ]
     },
     {
+      "front_mockup": "/merch/mockups/printful-444483126-smartsleeve-fleece-jacket-front.jpg",
       "key": "printful-444483126-smartsleeve-fleece-jacket",
       "name": "SmartSleeve Fleece Jacket",
-      "preview": "https://files.cdn.printful.com/files/355/35551ae3efcf78178f29592b37108cb8_preview.png",
+      "preview": "/merch/mockups/printful-444483126-smartsleeve-fleece-jacket-front.jpg",
       "price_label": "$80.99",
       "prices": {
         "2XL": "80.99",
@@ -692,9 +693,10 @@
       ]
     },
     {
+      "front_mockup": "/merch/mockups/printful-444482748-sqts-fleece-jacket-front.jpg",
       "key": "printful-444482748-sqts-fleece-jacket",
       "name": "SQTS Fleece Jacket",
-      "preview": "https://files.cdn.printful.com/files/1cc/1ccb2ec897400d5e818c45f2b001c9dc_preview.png",
+      "preview": "/merch/mockups/printful-444482748-sqts-fleece-jacket-front.jpg",
       "price_label": "$80.99",
       "prices": {
         "2XL": "80.99",
