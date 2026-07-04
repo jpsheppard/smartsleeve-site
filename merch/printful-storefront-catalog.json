@@ -1,6 +1,6 @@
 {
   "currency": "USD",
-  "generated_at": "2026-07-04T04:43:29.863745+00:00",
+  "generated_at": "2026-07-04T05:30:39.899134+00:00",
   "products": [
     {
       "back_mockup": "/merch/mockups/printful-440236989-smartsleeve-ss-men-s-tee-plain-back-back.jpg",
@@ -805,10 +805,11 @@
       ]
     },
     {
+      "front_mockup": "/merch/mockups/printful-444481747-smartsleeve-mouse-pad-front.jpg",
       "front_print_preview": "https://files.cdn.printful.com/files/de5/de545e77cc8fd2a08f1b7abb085a0c42_preview.png",
       "key": "printful-444481747-smartsleeve-mouse-pad",
       "name": "SmartSleeve Mouse Pad",
-      "preview": "https://files.cdn.printful.com/files/b45/b459f3b4e0fdd433fa65eb944c2ddfdd_preview.png",
+      "preview": "/merch/mockups/printful-444481747-smartsleeve-mouse-pad-front.jpg",
       "price_label": "$14.99",
       "prices": {
         "OS": "14.99"
@@ -840,10 +841,11 @@
       ]
     },
     {
+      "front_mockup": "/merch/mockups/printful-444481585-sqts-mouse-pad-front.jpg",
       "front_print_preview": "https://files.cdn.printful.com/files/82d/82d8305c9d70671b9b74b45478fa50ff_preview.png",
       "key": "printful-444481585-sqts-mouse-pad",
       "name": "SQTS Mouse Pad",
-      "preview": "https://files.cdn.printful.com/files/d4b/d4bfcb547d3f86a4eb309d6384ed3d98_preview.png",
+      "preview": "/merch/mockups/printful-444481585-sqts-mouse-pad-front.jpg",
       "price_label": "$14.99",
       "prices": {
         "OS": "14.99"
@@ -856,7 +858,7 @@
     },
     {
       "front_mockup": "/merch/mockups/printful-444665348-smartsleeve-beach-towel-front.jpg",
-      "front_print_preview": "https://files.cdn.printful.com/files/3c9/3c93d7e8bbc6e71906b2e9756b349483_preview.png",
+      "front_print_preview": "https://files.cdn.printful.com/files/c53/c5308a59d51d94b4b61379a42bc4dbfe_preview.png",
       "key": "printful-444665348-smartsleeve-beach-towel",
       "name": "SmartSleeve Beach Towel",
       "preview": "/merch/mockups/printful-444665348-smartsleeve-beach-towel-front.jpg",
@@ -874,7 +876,7 @@
     },
     {
       "front_mockup": "/merch/mockups/printful-444665350-sqts-beach-towel-front.jpg",
-      "front_print_preview": "https://files.cdn.printful.com/files/589/58923317a7d9899e93f4282179077419_preview.png",
+      "front_print_preview": "https://files.cdn.printful.com/files/972/9723139b7046a0744783634b45f818ad_preview.png",
       "key": "printful-444665350-sqts-beach-towel",
       "name": "SQTS Beach Towel",
       "preview": "/merch/mockups/printful-444665350-sqts-beach-towel-front.jpg",

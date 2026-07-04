@@ -5,7 +5,7 @@
   var catalogEndpoint = meta("smartsleeve-merch-catalog-endpoint");
   var authEndpoint = meta("smartsleeve-auth-endpoint");
   var registerEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/register" : "";
-  var merchImageVersion = "20260704-rotated-towels";
+  var merchImageVersion = "20260704-beach-mousepad-fix";
   var staticCatalogEndpoint = "/merch/printful-storefront-catalog.json";
   var state = {
     products: [],
