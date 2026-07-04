@@ -5,7 +5,7 @@
   var catalogEndpoint = meta("smartsleeve-merch-catalog-endpoint");
   var authEndpoint = meta("smartsleeve-auth-endpoint");
   var registerEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/register" : "";
-  var merchImageVersion = "20260704-printful-accessories";
+  var merchImageVersion = "20260704-rotated-towels";
   var staticCatalogEndpoint = "/merch/printful-storefront-catalog.json";
   var state = {
     products: [],
@@ -376,7 +376,7 @@
 
   function productsFrom(payload) {
     return ((payload && payload.products) || []).filter(function (product) {
-      return product && product.key && product.name && product.sizes && product.sizes.length;
+      return product && product.key && product.name && product.sizes && product.sizes.length && !isNeckGaiterProduct(product);
     });
   }
 
