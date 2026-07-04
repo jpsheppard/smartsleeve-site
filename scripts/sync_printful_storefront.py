@@ -34,7 +34,7 @@ DEFAULT_MAP = ROOT / "merch" / "printful-product-map.json"
 DEFAULT_ENV_FILE = ROOT / ".env.printful.local"
 DEFAULT_MOCKUPS_DIR = ROOT / "merch" / "mockups"
 API_BASE = "https://api.printful.com"
-SIZES = ("OS", "SM", "LXL", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL")
+SIZES = ("OS", "SM", "LXL", "16X24", "28X16", "30X60", "36X72", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL")
 MACOS_SYSTEM_CA_FILE = Path("/private/etc/ssl/cert.pem")
 
 
@@ -96,6 +96,16 @@ def merch_gender_rank(product: dict[str, Any]) -> int:
 
 def merch_apparel_rank(product: dict[str, Any]) -> int:
     text = product_display_text(product)
+    if "bandana" in text:
+        return 9
+    if "neck gaiter" in text:
+        return 10
+    if "beach towel" in text:
+        return 11
+    if "gym towel" in text:
+        return 12
+    if "rally towel" in text:
+        return 13
     if "sock" in text:
         return 8
     if "muscle tee" in text or "muscle shirt" in text:
@@ -360,6 +370,11 @@ def variant_size(variant: dict[str, Any]) -> str | None:
     ]
     for candidate in candidates:
         text = str(candidate or "").upper()
+        dimension_text = text.replace("″", '"').replace("”", '"').replace("“", '"').replace("×", "X")
+        dimension_text = re.sub(r"\s+", "", dimension_text)
+        dimension_match = re.search(r"(?<![A-Z0-9])(16['\"]*X24|28['\"]*X16|30['\"]*X60|36['\"]*X72)(?![A-Z0-9])", dimension_text)
+        if dimension_match:
+            return dimension_match.group(1).replace('"', "").replace("'", "")
         if re.search(r"(?<![A-Z0-9])(ONE[\s_-]*SIZE|OS)(?![A-Z0-9])", text):
             return "OS"
         if re.search(r"(?<![A-Z0-9])(S[\s_/-]*M|SM)(?![A-Z0-9])", text):

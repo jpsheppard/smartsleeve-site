@@ -5,7 +5,7 @@
   var catalogEndpoint = meta("smartsleeve-merch-catalog-endpoint");
   var authEndpoint = meta("smartsleeve-auth-endpoint");
   var registerEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/register" : "";
-  var merchImageVersion = "20260703-printful-previews";
+  var merchImageVersion = "20260704-printful-accessories";
   var staticCatalogEndpoint = "/merch/printful-storefront-catalog.json";
   var state = {
     products: [],
@@ -107,13 +107,31 @@
     return /windbreaker|fleece|jacket/i.test(product.name || product.key || "");
   }
 
+  function isBandanaProduct(product) {
+    return /bandana/i.test(product.name || product.key || "");
+  }
+
+  function isNeckGaiterProduct(product) {
+    return /neck\s*gaiter/i.test(product.name || product.key || "");
+  }
+
+  function isTowelProduct(product) {
+    return /(beach|gym|rally)\s*towel/i.test(product.name || product.key || "");
+  }
+
+  function isSingleSurfaceProduct(product) {
+    return isMousepadProduct(product) || isSockProduct(product) || isBandanaProduct(product) || isNeckGaiterProduct(product) || isTowelProduct(product);
+  }
+
   function merchGender(product) {
-    if (isMousepadProduct(product) || isOuterwearProduct(product) || isSockProduct(product)) return "All";
+    if (isMousepadProduct(product) || isOuterwearProduct(product) || isSingleSurfaceProduct(product)) return "All";
     return String(product.name || product.key || "").toLowerCase().indexOf("women") !== -1 ? "Women" : "Men";
   }
 
   function merchBackType(product) {
     if (isMousepadProduct(product)) return "Full-surface print";
+    if (isBandanaProduct(product) || isNeckGaiterProduct(product)) return "All-over print";
+    if (isTowelProduct(product)) return "Full-surface print";
     if (isSockProduct(product)) return "Outside logo";
     if (isOuterwearProduct(product)) return "Right chest logo";
     if (/polo/i.test(product.name || product.key || "")) return "Left chest logo";
@@ -126,6 +144,11 @@
   function merchCut(product) {
     var value = String(product.name || product.key || "").toLowerCase();
     if (isMousepadProduct(product)) return "Mouse Pad";
+    if (isBandanaProduct(product)) return "Bandana";
+    if (isNeckGaiterProduct(product)) return "Neck Gaiter";
+    if (value.indexOf("beach towel") !== -1) return "Beach Towel";
+    if (value.indexOf("gym towel") !== -1) return "Gym Towel";
+    if (value.indexOf("rally towel") !== -1) return "Rally Towel";
     if (isSockProduct(product)) return "Socks";
     if (value.indexOf("windbreaker") !== -1) return "Windbreaker";
     if (value.indexOf("fleece") !== -1 || value.indexOf("jacket") !== -1) return "Fleece Jacket";
@@ -162,8 +185,7 @@
   }
 
   function merchHasBackPanel(product) {
-    if (isMousepadProduct(product)) return false;
-    if (isSockProduct(product)) return false;
+    if (isSingleSurfaceProduct(product)) return false;
     if (isOuterwearProduct(product)) return false;
     return Boolean(merchBackImage(product));
   }
@@ -198,6 +220,10 @@
     if (normalized === "OS") return "One Size";
     if (normalized === "SM") return "S/M";
     if (normalized === "LXL") return "L/XL";
+    if (normalized === "16X24") return "16 x 24";
+    if (normalized === "28X16") return "28 x 16";
+    if (normalized === "30X60") return "30 x 60";
+    if (normalized === "36X72") return "36 x 72";
     return String(size || "");
   }
 
@@ -233,13 +259,14 @@
   }
 
   function umbrellaKey(product) {
+    if (isTowelProduct(product)) return "Towels";
     return isMousepadProduct(product) ? "Office" : "Apparel";
   }
 
   function sortProduct(a, b) {
-    return sortValue(umbrellaKey(a), ["Apparel", "Office"]) - sortValue(umbrellaKey(b), ["Apparel", "Office"])
+    return sortValue(umbrellaKey(a), ["Apparel", "Towels", "Office"]) - sortValue(umbrellaKey(b), ["Apparel", "Towels", "Office"])
       || sortValue(merchGender(a), ["Men", "Women", "All"]) - sortValue(merchGender(b), ["Men", "Women", "All"])
-      || sortValue(merchCut(a), ["T-Shirt", "Polo", "Tank Top", "Muscle Tee", "Fleece Jacket", "Windbreaker", "Socks", "Mouse Pad"]) - sortValue(merchCut(b), ["T-Shirt", "Polo", "Tank Top", "Muscle Tee", "Fleece Jacket", "Windbreaker", "Socks", "Mouse Pad"])
+      || sortValue(merchCut(a), ["T-Shirt", "Polo", "Tank Top", "Muscle Tee", "Fleece Jacket", "Windbreaker", "Socks", "Bandana", "Neck Gaiter", "Beach Towel", "Gym Towel", "Rally Towel", "Mouse Pad"]) - sortValue(merchCut(b), ["T-Shirt", "Polo", "Tank Top", "Muscle Tee", "Fleece Jacket", "Windbreaker", "Socks", "Bandana", "Neck Gaiter", "Beach Towel", "Gym Towel", "Rally Towel", "Mouse Pad"])
       || sortValue(merchFrontLabel(a), ["SmartSleeve", "SQTS"]) - sortValue(merchFrontLabel(b), ["SmartSleeve", "SQTS"])
       || sortValue(merchBackType(a), ["Black", "Website", "Website + QR", "Left chest logo", "Right chest logo", "Outside logo", "Full-surface print"]) - sortValue(merchBackType(b), ["Black", "Website", "Website + QR", "Left chest logo", "Right chest logo", "Outside logo", "Full-surface print"])
       || merchDisplayName(a).localeCompare(merchDisplayName(b));
@@ -247,6 +274,11 @@
 
   function groupKey(product) {
     if (isMousepadProduct(product)) return "Office::Mouse Pad";
+    if (isBandanaProduct(product)) return "Apparel::Bandana";
+    if (isNeckGaiterProduct(product)) return "Apparel::Neck Gaiter";
+    if (merchCut(product) === "Beach Towel") return "Towels::Beach Towel";
+    if (merchCut(product) === "Gym Towel") return "Towels::Gym Towel";
+    if (merchCut(product) === "Rally Towel") return "Towels::Rally Towel";
     if (isSockProduct(product)) return "Apparel::Socks";
     if (isOuterwearProduct(product)) return "Apparel::Outerwear";
     if (merchCut(product) === "Muscle Tee") return "Apparel::Muscle Tee";
@@ -260,6 +292,11 @@
     if (cut === "Outerwear") return "Outerwear";
     if (cut === "Muscle Tee") return "Muscle Tees";
     if (cut === "Socks") return "Socks";
+    if (cut === "Bandana") return "Bandanas";
+    if (cut === "Neck Gaiter") return "Neck Gaiters";
+    if (cut === "Beach Towel") return "Beach Towels";
+    if (cut === "Gym Towel") return "Gym Towels";
+    if (cut === "Rally Towel") return "Rally Towels";
     if (cut === "Women Tank Top") return "Women's Racerback Tanks";
     if (cut === "Women Polo") return "Women's Polos";
     if (cut === "Men T-Shirt") return "Men's T-Shirts";
@@ -280,20 +317,28 @@
       "Apparel::Women Tank Top": 6,
       "Apparel::Outerwear": 7,
       "Apparel::Socks": 8,
+      "Apparel::Bandana": 9,
+      "Apparel::Neck Gaiter": 10,
+      "Towels::Beach Towel": 0,
+      "Towels::Gym Towel": 1,
+      "Towels::Rally Towel": 2,
       "Office::Mouse Pad": 0
     };
     return order[key] == null ? 99 : order[key];
   }
 
   function umbrellaSort(key) {
-    return sortValue(key, ["Apparel", "Office"]);
+    return sortValue(key, ["Apparel", "Towels", "Office"]);
   }
 
   function sortProductsInGroup(key, products) {
-    var apparelOrder = ["T-Shirt", "Polo", "Tank Top", "Muscle Tee", "Fleece Jacket", "Windbreaker", "Socks"];
+    var apparelOrder = ["T-Shirt", "Polo", "Tank Top", "Muscle Tee", "Fleece Jacket", "Windbreaker", "Socks", "Bandana", "Neck Gaiter"];
+    var towelOrder = ["Beach Towel", "Gym Towel", "Rally Towel"];
     var officeOrder = ["Mouse Pad"];
     return products.slice().sort(function (a, b) {
-      return sortValue(merchCut(a), umbrellaKey(a) === "Office" ? officeOrder : apparelOrder) - sortValue(merchCut(b), umbrellaKey(b) === "Office" ? officeOrder : apparelOrder)
+      var aOrder = umbrellaKey(a) === "Office" ? officeOrder : umbrellaKey(a) === "Towels" ? towelOrder : apparelOrder;
+      var bOrder = umbrellaKey(b) === "Office" ? officeOrder : umbrellaKey(b) === "Towels" ? towelOrder : apparelOrder;
+      return sortValue(merchCut(a), aOrder) - sortValue(merchCut(b), bOrder)
         || sortValue(merchFrontLabel(a), ["SmartSleeve", "SQTS"]) - sortValue(merchFrontLabel(b), ["SmartSleeve", "SQTS"])
         || sortValue(merchBackType(a), ["Black", "Website", "Website + QR", "Right chest logo", "Full-surface print"]) - sortValue(merchBackType(b), ["Black", "Website", "Website + QR", "Right chest logo", "Full-surface print"])
         || merchDisplayName(a).localeCompare(merchDisplayName(b));
@@ -308,7 +353,7 @@
     var options = (product.sizes || []).map(function (item) {
       return "<option value=\"" + html(item) + "\"" + (item === size ? " selected" : "") + ">" + html(merchSizeLabel(item)) + "</option>";
     }).join("");
-    var frontCaption = mousepad || isSockProduct(product) ? "Design" : "Front";
+    var frontCaption = isSingleSurfaceProduct(product) ? "Design" : "Front";
     var chips = singleView
       ? ["Design: " + merchFrontLabel(product), merchBackType(product)]
       : isOuterwearProduct(product)

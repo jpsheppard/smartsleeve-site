@@ -61,7 +61,8 @@ const MAX_QUANTITY = 6;
 const MAX_CART_LINES = 30;
 const APPAREL_SIZE_OPTIONS = ["XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL"];
 const SOCK_SIZE_OPTIONS = ["SM", "LXL"];
-const SIZE_OPTIONS = ["OS", ...SOCK_SIZE_OPTIONS, ...APPAREL_SIZE_OPTIONS];
+const DIMENSION_SIZE_OPTIONS = ["16X24", "28X16", "30X60", "36X72"];
+const SIZE_OPTIONS = ["OS", ...SOCK_SIZE_OPTIONS, ...DIMENSION_SIZE_OPTIONS, ...APPAREL_SIZE_OPTIONS];
 const DEFAULT_SQTS_FRONT_FILE_URL = `${DEFAULT_SITE}/merch/sqts-llc-front-print.png`;
 const DEFAULT_TEE_BACK_FILE_URL = `${DEFAULT_SITE}/merch/ss_and_sqts_tee_back_print.png`;
 const DEFAULT_TEE_BACK_QR_FILE_URL = `${DEFAULT_SITE}/merch/ss_and_sqts_tee_back_qr_print.png`;
@@ -353,6 +354,14 @@ function normalizeProductKey(value) {
 
 function normalizeSize(value) {
   const normalized = String(value || "").trim().toUpperCase();
+  const dimension = normalized
+    .replace(/[″“”"]/g, "")
+    .replace(/'/g, "")
+    .replace(/×/g, "X")
+    .replace(/\s+/g, "");
+  if (DIMENSION_SIZE_OPTIONS.includes(dimension)) {
+    return dimension;
+  }
   if (/^(OS|ONE[\s_-]*SIZE|ONE SIZE)$/.test(normalized)) {
     return "OS";
   }
@@ -379,6 +388,18 @@ function displaySize(size) {
   }
   if (normalized === "LXL") {
     return "L/XL";
+  }
+  if (normalized === "16X24") {
+    return "16 x 24";
+  }
+  if (normalized === "28X16") {
+    return "28 x 16";
+  }
+  if (normalized === "30X60") {
+    return "30 x 60";
+  }
+  if (normalized === "36X72") {
+    return "36 x 72";
   }
   return normalized;
 }
