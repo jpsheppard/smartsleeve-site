@@ -1,6 +1,6 @@
 {
   "currency": "USD",
-  "generated_at": "2026-07-04T05:30:39.899134+00:00",
+  "generated_at": "2026-07-04T06:08:37.209447+00:00",
   "products": [
     {
       "back_mockup": "/merch/mockups/printful-440236989-smartsleeve-ss-men-s-tee-plain-back-back.jpg",
@@ -714,10 +714,11 @@
       ]
     },
     {
+      "front_mockup": "/merch/mockups/printful-444481857-smartsleeve-windbreaker-front.jpg",
       "front_print_preview": "https://files.cdn.printful.com/files/564/56450cc3b6f33890a7fb9df802048166_preview.png",
       "key": "printful-444481857-smartsleeve-windbreaker",
       "name": "SmartSleeve Windbreaker",
-      "preview": "https://files.cdn.printful.com/files/474/474fa510909c341c79159c3d934d5ed0_preview.png",
+      "preview": "/merch/mockups/printful-444481857-smartsleeve-windbreaker-front.jpg",
       "price_label": "$61.99",
       "prices": {
         "2XL": "61.99",
@@ -741,10 +742,11 @@
       ]
     },
     {
+      "front_mockup": "/merch/mockups/printful-444482059-sqts-windbreaker-front.jpg",
       "front_print_preview": "https://files.cdn.printful.com/files/096/0961126ee446dbc50743a4ef0f643e4d_preview.png",
       "key": "printful-444482059-sqts-windbreaker",
       "name": "SQTS Windbreaker",
-      "preview": "https://files.cdn.printful.com/files/978/97868b35f9bdaaa30e45b4ceefe13452_preview.png",
+      "preview": "/merch/mockups/printful-444482059-sqts-windbreaker-front.jpg",
       "price_label": "$61.99",
       "prices": {
         "2XL": "61.99",
