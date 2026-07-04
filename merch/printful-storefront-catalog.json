@@ -1,6 +1,6 @@
 {
   "currency": "USD",
-  "generated_at": "2026-07-04T00:45:05.021900+00:00",
+  "generated_at": "2026-07-04T04:43:29.863745+00:00",
   "products": [
     {
       "back_mockup": "/merch/mockups/printful-440236989-smartsleeve-ss-men-s-tee-plain-back-back.jpg",
@@ -855,40 +855,8 @@
       ]
     },
     {
-      "front_mockup": "/merch/mockups/printful-444665345-smartsleeve-neck-gaiter-front.jpg",
-      "front_print_preview": "https://files.cdn.printful.com/files/250/25013485d6757b63927814072721441f_preview.png",
-      "key": "printful-444665345-smartsleeve-neck-gaiter",
-      "name": "SmartSleeve Neck Gaiter",
-      "preview": "/merch/mockups/printful-444665345-smartsleeve-neck-gaiter-front.jpg",
-      "price_label": "$16.99",
-      "prices": {
-        "OS": "16.99"
-      },
-      "printful_name": "SmartSleeve Neck Gaiter",
-      "printful_product_id": 444665345,
-      "sizes": [
-        "OS"
-      ]
-    },
-    {
-      "front_mockup": "/merch/mockups/printful-444665347-sqts-neck-gaiter-front.jpg",
-      "front_print_preview": "https://files.cdn.printful.com/files/051/0519efe96a5c1c309fada1e26dfc34ff_preview.png",
-      "key": "printful-444665347-sqts-neck-gaiter",
-      "name": "SQTS Neck Gaiter",
-      "preview": "/merch/mockups/printful-444665347-sqts-neck-gaiter-front.jpg",
-      "price_label": "$16.99",
-      "prices": {
-        "OS": "16.99"
-      },
-      "printful_name": "SQTS Neck Gaiter",
-      "printful_product_id": 444665347,
-      "sizes": [
-        "OS"
-      ]
-    },
-    {
       "front_mockup": "/merch/mockups/printful-444665348-smartsleeve-beach-towel-front.jpg",
-      "front_print_preview": "https://files.cdn.printful.com/files/c53/c5367515c40c4c8377d088970a66b2a0_preview.png",
+      "front_print_preview": "https://files.cdn.printful.com/files/3c9/3c93d7e8bbc6e71906b2e9756b349483_preview.png",
       "key": "printful-444665348-smartsleeve-beach-towel",
       "name": "SmartSleeve Beach Towel",
       "preview": "/merch/mockups/printful-444665348-smartsleeve-beach-towel-front.jpg",
@@ -906,7 +874,7 @@
     },
     {
       "front_mockup": "/merch/mockups/printful-444665350-sqts-beach-towel-front.jpg",
-      "front_print_preview": "https://files.cdn.printful.com/files/687/6877fb8ce223867ef46b0a7e4010cd84_preview.png",
+      "front_print_preview": "https://files.cdn.printful.com/files/589/58923317a7d9899e93f4282179077419_preview.png",
       "key": "printful-444665350-sqts-beach-towel",
       "name": "SQTS Beach Towel",
       "preview": "/merch/mockups/printful-444665350-sqts-beach-towel-front.jpg",
@@ -924,7 +892,7 @@
     },
     {
       "front_mockup": "/merch/mockups/printful-444665351-smartsleeve-gym-towel-front.jpg",
-      "front_print_preview": "https://files.cdn.printful.com/files/1c4/1c49b867ea343ed67a44b27115f73b64_preview.png",
+      "front_print_preview": "https://files.cdn.printful.com/files/2f0/2f0bc54cc90dff656d83d7c2ce86cc93_preview.png",
       "key": "printful-444665351-smartsleeve-gym-towel",
       "name": "SmartSleeve Gym Towel",
       "preview": "/merch/mockups/printful-444665351-smartsleeve-gym-towel-front.jpg",
@@ -940,7 +908,7 @@
     },
     {
       "front_mockup": "/merch/mockups/printful-444665354-sqts-gym-towel-front.jpg",
-      "front_print_preview": "https://files.cdn.printful.com/files/7d3/7d339e0aabdd47f9de61dca9573916d6_preview.png",
+      "front_print_preview": "https://files.cdn.printful.com/files/743/743e4eca63bf7cefa0c2f55b41db56de_preview.png",
       "key": "printful-444665354-sqts-gym-towel",
       "name": "SQTS Gym Towel",
       "preview": "/merch/mockups/printful-444665354-sqts-gym-towel-front.jpg",
@@ -956,7 +924,7 @@
     },
     {
       "front_mockup": "/merch/mockups/printful-444665358-smartsleeve-rally-towel-front.jpg",
-      "front_print_preview": "https://files.cdn.printful.com/files/d65/d658ca14e78cad05d891123fc1accc9d_preview.png",
+      "front_print_preview": "https://files.cdn.printful.com/files/cab/cab406fcf63612a5125d2be0a4601a64_preview.png",
       "key": "printful-444665358-smartsleeve-rally-towel",
       "name": "SmartSleeve Rally Towel",
       "preview": "/merch/mockups/printful-444665358-smartsleeve-rally-towel-front.jpg",
@@ -972,7 +940,7 @@
     },
     {
       "front_mockup": "/merch/mockups/printful-444665363-sqts-rally-towel-front.jpg",
-      "front_print_preview": "https://files.cdn.printful.com/files/559/5593bdf993b623d5131a19207972ab0b_preview.png",
+      "front_print_preview": "https://files.cdn.printful.com/files/333/333bc352a8cc4cc4fa1bcfd2bdb7580e_preview.png",
       "key": "printful-444665363-sqts-rally-towel",
       "name": "SQTS Rally Towel",
       "preview": "/merch/mockups/printful-444665363-sqts-rally-towel-front.jpg",
