@@ -109,6 +109,7 @@
 
   var sleeveTargets = {
     "Sage by SmartSleeve": 35,
+    "Discipline Sage": 12,
     "Grand Sage": 30,
     "Savage Sage": 12,
     "Honey Badger": 8,
@@ -760,9 +761,11 @@
         return String(holding.symbol || holding.ticker || holding || "").toUpperCase();
       }).filter(Boolean);
       var hasAccountHolding = sleeveHoldings.some(function (symbol) { return Boolean(accountSymbols[symbol]); });
+      var mode = String(sleeve.operatingMode || sleeve.operating_mode || "").toLowerCase();
       var configuredActive = Boolean(sleeve.configuredActive || sleeve.configured_active)
+        || /^(active|enabled|live|live_trade)$/i.test(mode)
         || ((numeric(sleeve.effectiveLimitUsd != null ? sleeve.effectiveLimitUsd : sleeve.effective_limit_usd) || 0) > 0
-          && !/^(off|disabled|inactive|hibernate|hibernating|paused|sleep)$/i.test(String(sleeve.operatingMode || sleeve.operating_mode || "")));
+          && !/^(off|disabled|inactive|hibernate|hibernating|paused|sleep)$/i.test(mode));
       var funded = sleeveDisplayValue(sleeve, account).value > 0 || sleeveHasCurrentOwnership(sleeve) || configuredActive;
       if ((funded || hasAccountHolding) && names.indexOf(name) === -1) {
         names.push(name);
@@ -1821,9 +1824,12 @@
 
   function scheduleFeedRefresh() {
     if (state.feedRefreshTimer || !appFeedEndpoint) return;
+    // 5 min, not 60s: each poll costs 2 KV reads (session + account) against the
+    // auth worker's free-tier daily KV operation cap; 60s polling across a few
+    // open tabs was enough to trip Cloudflare's 50%-of-daily-limit alert.
     state.feedRefreshTimer = window.setInterval(function () {
       if (!$("auth-gate")) loadFeed({silent: true});
-    }, 60000);
+    }, 300000);
   }
 
   function buildRecommendations() {
@@ -2330,7 +2336,9 @@
       var hasValue = Math.abs(values.net) >= 0.005 || Math.abs(values.cash) >= 0.005 || Math.abs(values.positionValue) >= 0.005 || Math.abs(values.allocationValue) >= 0.005;
       var hasCurrentOwnership = sleeveHasCurrentOwnership(sleeve);
       var configuredLimit = numeric(sleeve.effectiveLimitUsd != null ? sleeve.effectiveLimitUsd : sleeve.effective_limit_usd) || numeric(sleeve.initialCapitalUsd != null ? sleeve.initialCapitalUsd : sleeve.initial_capital_usd) || 0;
-      var configuredActive = Boolean(sleeve.configuredActive || sleeve.configured_active) || configuredLimit > 0;
+      var configuredActive = Boolean(sleeve.configuredActive || sleeve.configured_active)
+        || /^(active|enabled|live|live_trade)$/i.test(mode)
+        || configuredLimit > 0;
       var isOff = /^(off|disabled|inactive|hibernate|hibernating|paused|sleep)$/i.test(mode);
       var row = {
         label: sleeveLabel(sleeve, "Sleeve"),
