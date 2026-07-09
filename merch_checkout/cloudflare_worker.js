@@ -1761,8 +1761,38 @@ function printfulOrderIndexKey(orderId) {
   return `printful:order:${String(orderId || "").trim()}`;
 }
 
-function notificationKey(sessionId, stage) {
-  return `stripe:session:${sessionId}:notification:${stage}`;
+// A reserved-but-not-yet-committed claim older than this is treated as abandoned
+// (e.g. the Worker died between reserving the slot and committing the send) and may
+// be re-claimed so a genuinely un-sent notification is not blocked forever.
+const NOTIFICATION_CLAIM_STALE_MS = 120000;
+
+function stableHash(value) {
+  const str = String(value === undefined || value === null ? "" : value);
+  let hash = 5381;
+  for (let i = 0; i < str.length; i += 1) {
+    hash = ((hash << 5) + hash + str.charCodeAt(i)) >>> 0;
+  }
+  return hash.toString(36);
+}
+
+// A stable per-package fingerprint shared across the real-time webhook and the
+// scheduled poll for the same physical shipment. Tracking number is preferred
+// because both Printful paths expose it identically; tracking URL / shipment id
+// are fallbacks. Returns "" when no shipment identity is available, in which case
+// the notification key degrades to the legacy per-(session, stage) behavior.
+function shipmentIdentifier(fulfillment) {
+  const data = fulfillmentResult(fulfillment);
+  const candidate = uniqueNonEmpty([
+    ...objectValuesByKey(data, /tracking[_-]?number|tracking[_-]?code|tracking[_-]?no\b/i),
+    ...objectValuesByKey(data, /tracking[_-]?url/i),
+    ...objectValuesByKey(data, /(^|[_-])shipment[_-]?id($|[_-])/i),
+  ])[0];
+  return candidate ? stableHash(candidate) : "";
+}
+
+function notificationKey(sessionId, stage, shipmentKey = "") {
+  const base = `stripe:session:${sessionId}:notification:${stage}`;
+  return shipmentKey ? `${base}:${shipmentKey}` : base;
 }
 
 function printfulOrderIdentifiersFromFulfillment(session, fulfillment) {
@@ -1871,10 +1901,6 @@ function storedOrderIsPollable(stored, lookbackDays) {
     return true;
   }
   return Date.now() - storedAt.getTime() <= lookbackDays * 24 * 60 * 60 * 1000;
-}
-
-function storedNotificationExists(stored, stage) {
-  return Boolean(stored && stored.notifications && stored.notifications[stage]);
 }
 
 function uniqueNonEmpty(values) {
@@ -2013,14 +2039,47 @@ async function sendOrderStageNotification(env, sessionId, stage, fulfillment) {
   if (!sessionId || !stage) {
     return { status: "skipped", reason: "missing session id or stage" };
   }
-  const alreadySent = env.MERCH_ORDERS
-    ? await env.MERCH_ORDERS.get(notificationKey(sessionId, stage))
-    : null;
-  if (alreadySent) {
-    return { status: "duplicate", stage, session_id: sessionId };
+  // Key idempotency on the individual shipment so an order that ships in multiple
+  // packages still emits one email per package, while every retry/second-trigger for
+  // the SAME package collapses to a single send.
+  const shipmentKey = shipmentIdentifier(fulfillment);
+  const key = notificationKey(sessionId, stage, shipmentKey);
+  // Claim-before-send: reserve the slot BEFORE sending. A concurrent trigger (the
+  // real-time Printful webhook racing the scheduled poll, or a webhook redelivery)
+  // then observes the claim and backs off instead of sending a duplicate. The claim
+  // is written up front rather than only after a successful send, which is what
+  // previously left a wide window for two identical emails.
+  if (env.MERCH_ORDERS) {
+    const existingRaw = await env.MERCH_ORDERS.get(key);
+    if (existingRaw) {
+      let existing = null;
+      try {
+        existing = JSON.parse(existingRaw);
+      } catch (_err) {
+        existing = null;
+      }
+      const isStaleClaim = existing
+        && existing.status === "claiming"
+        && Date.now() - Date.parse(existing.stored_at || "") > NOTIFICATION_CLAIM_STALE_MS;
+      if (!isStaleClaim) {
+        return { status: "duplicate", stage, session_id: sessionId, shipment_key: shipmentKey };
+      }
+      // A prior attempt reserved the slot but never committed (crash mid-send) and is
+      // old enough to safely re-attempt.
+    }
+    await env.MERCH_ORDERS.put(key, JSON.stringify({
+      status: "claiming",
+      stage,
+      shipment_key: shipmentKey,
+      stored_at: new Date().toISOString(),
+    }));
   }
   const session = await fetchStripeCheckoutSession(env, sessionId, ["payment_intent.latest_charge", "payment_intent.payment_method"]);
   if (!session || session.error) {
+    // Release the claim so a later webhook/poll can retry this shipment.
+    if (env.MERCH_ORDERS) {
+      await env.MERCH_ORDERS.delete(key).catch(() => {});
+    }
     return {
       status: "failed",
       reason: "Stripe Checkout session lookup failed",
@@ -2031,65 +2090,105 @@ async function sendOrderStageNotification(env, sessionId, stage, fulfillment) {
   }
   const notification = await sendLifecycleEmail(env, session, stage, fulfillment);
   if (notification.status === "failed") {
+    // Release the claim so the next trigger can retry the send.
+    if (env.MERCH_ORDERS) {
+      await env.MERCH_ORDERS.delete(key).catch(() => {});
+    }
     console.error("SmartSleeve lifecycle email failed", JSON.stringify({
       stripe_session_id: sessionId,
       stage,
+      shipment_key: shipmentKey,
       http_status: notification.http_status,
       reason: notification.reason,
     }));
     return { status: "failed", stage, session_id: sessionId, notification };
   }
-  await recordOrderNotification(env, sessionId, stage, notification);
-  return { status: notification.status, stage, session_id: sessionId, notification };
+  // Commit: overwrite the claim with the final record.
+  await recordOrderNotification(env, sessionId, stage, notification, shipmentKey);
+  return { status: notification.status, stage, session_id: sessionId, shipment_key: shipmentKey, notification };
 }
 
-async function markInferredNotification(env, sessionId, stage, reason) {
+async function markInferredNotification(env, sessionId, stage, reason, shipmentKey = "") {
   if (!env.MERCH_ORDERS || !sessionId || !stage) {
     return;
   }
-  const alreadySent = await env.MERCH_ORDERS.get(notificationKey(sessionId, stage));
+  const alreadySent = await env.MERCH_ORDERS.get(notificationKey(sessionId, stage, shipmentKey));
   if (!alreadySent) {
     await recordOrderNotification(env, sessionId, stage, {
       status: "inferred",
       reason,
       email_sent: false,
-    });
+    }, shipmentKey);
   }
 }
 
-async function processPolledPrintfulOrder(env, sessionId, stored) {
-  const shippedAlready = storedNotificationExists(stored, "shipped")
-    || (env.MERCH_ORDERS ? await env.MERCH_ORDERS.get(notificationKey(sessionId, "shipped")) : null);
-  const deliveredAlready = storedNotificationExists(stored, "delivered")
-    || (env.MERCH_ORDERS ? await env.MERCH_ORDERS.get(notificationKey(sessionId, "delivered")) : null);
-  if (deliveredAlready) {
-    return { status: "skipped", reason: "delivered notification already recorded", session_id: sessionId };
-  }
-  const shipmentResult = await fetchPrintfulShipmentsForStoredOrder(env, sessionId, stored);
-  if (!shipmentResult.ok) {
-    return { status: "failed", reason: "Printful shipment lookup failed", session_id: sessionId, failures: shipmentResult.failures };
-  }
-  const stage = stageFromPrintfulShipments(shipmentResult.shipments, shipmentResult.order || {});
-  if (!stage) {
-    return { status: "skipped", reason: "no shipped or delivered status yet", session_id: sessionId };
-  }
-  const fulfillment = printfulPollingFulfillment({
-    shipments: shipmentResult.shipments,
+function printfulPollingFulfillmentForShipment(shipment, shipmentResult, stage) {
+  return printfulPollingFulfillment({
+    shipments: shipment ? [shipment] : [],
     order: shipmentResult.order,
     lookup_source: shipmentResult.source,
     lookup_candidate_type: shipmentResult.candidate && shipmentResult.candidate.type,
   }, stage);
-  if (stage === "shipped" && shippedAlready) {
-    return { status: "skipped", reason: "shipped notification already recorded", session_id: sessionId };
+}
+
+async function processPolledPrintfulOrder(env, sessionId, stored) {
+  const shipmentResult = await fetchPrintfulShipmentsForStoredOrder(env, sessionId, stored);
+  if (!shipmentResult.ok) {
+    return { status: "failed", reason: "Printful shipment lookup failed", session_id: sessionId, failures: shipmentResult.failures };
   }
-  if (stage === "delivered") {
-    const delivered = await sendOrderStageNotification(env, sessionId, "delivered", fulfillment);
-    if (!shippedAlready && delivered.status !== "failed") {
-      await markInferredNotification(env, sessionId, "shipped", "delivery status was observed before a shipped email was sent");
+  const shipments = Array.isArray(shipmentResult.shipments) ? shipmentResult.shipments : [];
+
+  // No per-shipment records available: fall back to whole-order status with a
+  // stage-only key (legacy behavior). sendOrderStageNotification still dedupes.
+  if (shipments.length === 0) {
+    const stage = stageFromPrintfulShipments([], shipmentResult.order || {});
+    if (!stage) {
+      return { status: "skipped", reason: "no shipped or delivered status yet", session_id: sessionId };
     }
-    return delivered;
+    return sendOrderStageNotification(
+      env,
+      sessionId,
+      stage,
+      printfulPollingFulfillmentForShipment(null, shipmentResult, stage),
+    );
   }
-  return sendOrderStageNotification(env, sessionId, "shipped", fulfillment);
+
+  // Emit one notification per package. Each shipment is deduped independently inside
+  // sendOrderStageNotification (per-shipment claim), so a split order that ships in
+  // two boxes produces one email per box, and the webhook + poll never double up on
+  // the same box.
+  const results = [];
+  for (const shipment of shipments) {
+    const stage = stageFromPrintfulShipments([shipment], {});
+    if (!stage) {
+      continue;
+    }
+    const fulfillment = printfulPollingFulfillmentForShipment(shipment, shipmentResult, stage);
+    const result = await sendOrderStageNotification(env, sessionId, stage, fulfillment);
+    results.push(result);
+    if (stage === "delivered" && result.status !== "failed") {
+      await markInferredNotification(
+        env,
+        sessionId,
+        "shipped",
+        "delivery status was observed before a shipped email was sent",
+        shipmentIdentifier(fulfillment),
+      );
+    }
+  }
+
+  if (results.length === 0) {
+    return { status: "skipped", reason: "no shipped or delivered status yet", session_id: sessionId };
+  }
+  const failed = results.filter((result) => result && result.status === "failed");
+  const sent = results.filter((result) => result && result.status === "sent");
+  return {
+    status: failed.length ? "failed" : (sent.length ? "sent" : "skipped"),
+    session_id: sessionId,
+    shipments: results.length,
+    sent: sent.length,
+    results,
+  };
 }
 
 async function pollPrintfulShipmentStatuses(env, context = {}) {
@@ -2192,14 +2291,22 @@ async function storeOrder(env, session, fulfillment, receipt) {
   );
 }
 
-async function recordOrderNotification(env, sessionId, stage, notification) {
+async function recordOrderNotification(env, sessionId, stage, notification, shipmentKey = "") {
   if (!env.MERCH_ORDERS || !sessionId || !stage) {
     return;
   }
   const storedAt = new Date().toISOString();
+  // Commit the authoritative per-shipment idempotency record, overwriting any
+  // "claiming" reservation left by claim-before-send.
   await env.MERCH_ORDERS.put(
-    notificationKey(sessionId, stage),
-    JSON.stringify({ stored_at: storedAt, stage, notification }),
+    notificationKey(sessionId, stage, shipmentKey),
+    JSON.stringify({
+      status: notification && notification.status ? notification.status : "sent",
+      stored_at: storedAt,
+      stage,
+      shipment_key: shipmentKey,
+      notification,
+    }),
   );
   const existingRaw = await env.MERCH_ORDERS.get(orderKey(sessionId));
   if (!existingRaw) {
@@ -2210,7 +2317,13 @@ async function recordOrderNotification(env, sessionId, stage, notification) {
     const notifications = existing.notifications && typeof existing.notifications === "object"
       ? existing.notifications
       : {};
-    notifications[stage] = { stored_at: storedAt, notification };
+    // Keep one entry per package under each stage so a multi-package order retains a
+    // record for every shipment rather than clobbering earlier ones.
+    const stageRecord = notifications[stage] && typeof notifications[stage] === "object"
+      ? notifications[stage]
+      : {};
+    stageRecord[shipmentKey || "_order"] = { stored_at: storedAt, notification };
+    notifications[stage] = stageRecord;
     await env.MERCH_ORDERS.put(orderKey(sessionId), JSON.stringify(Object.assign(existing, { notifications })));
   } catch (_err) {
     // Keep the idempotency record even if the historical order payload is malformed.
