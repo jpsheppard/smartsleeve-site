@@ -8,7 +8,7 @@
 //   STRIPE_SECRET_KEY
 //   STRIPE_WEBHOOK_SECRET
 //   MERCH_ADMIN_TOKEN, for manual fulfillment recovery
-//   RESEND_API_KEY, for SmartSleeve Shop customer receipts
+//   RESEND_API_KEY, for SmartSleeve Orders customer receipts
 //
 // Optional Worker bindings/secrets:
 //   MERCH_ORDERS KV binding
@@ -39,8 +39,8 @@
 //   PRINTFUL_FILE_URL_SHARED_TANK_BACK_QR
 //   PRINTFUL_CONFIRM_ORDERS=true
 //   PRINTFUL_WEBHOOK_SECRET
-//   MERCH_RECEIPT_FROM_EMAIL="SmartSleeve Shop <shop@smartsleeve.ai>"
-//   MERCH_RECEIPT_REPLY_TO_EMAIL="SmartSleeve Shop <shop@smartsleeve.ai>"
+//   MERCH_RECEIPT_FROM_EMAIL="SmartSleeve Orders <orders@smartsleeve.ai>"
+//   MERCH_RECEIPT_REPLY_TO_EMAIL="SmartSleeve Orders <orders@smartsleeve.ai>"
 //
 // Routes:
 //   GET  /health
@@ -51,12 +51,14 @@
 //   POST /admin/retry-printful
 //   POST /admin/send-receipt
 //   POST /admin/poll-printful
+//   POST /admin/poll-printful-order
+//   POST /admin/preflight-printful
 
 const DEFAULT_SITE = "https://smartsleeve.ai";
 const DEFAULT_SUCCESS_PATH = "/app/#shop-success";
 const DEFAULT_CANCEL_PATH = "/app/#shop";
-const DEFAULT_RECEIPT_FROM_EMAIL = "SmartSleeve Shop <shop@smartsleeve.ai>";
-const DEFAULT_RECEIPT_REPLY_TO_EMAIL = "SmartSleeve Shop <shop@smartsleeve.ai>";
+const DEFAULT_RECEIPT_FROM_EMAIL = "SmartSleeve Orders <orders@smartsleeve.ai>";
+const DEFAULT_RECEIPT_REPLY_TO_EMAIL = "SmartSleeve Orders <orders@smartsleeve.ai>";
 const MAX_QUANTITY = 6;
 const MAX_CART_LINES = 30;
 const APPAREL_SIZE_OPTIONS = ["XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL"];
@@ -70,6 +72,8 @@ const DEFAULT_TANK_BACK_FILE_URL = `${DEFAULT_SITE}/merch/ss_and_sqts_tank_back_
 const DEFAULT_TANK_BACK_QR_FILE_URL = `${DEFAULT_SITE}/merch/ss_and_sqts_tank_back_qr_print.png`;
 const PRINTFUL_POLL_DEFAULT_LIMIT = 75;
 const PRINTFUL_POLL_DEFAULT_LOOKBACK_DAYS = 60;
+const PRINTFUL_POLL_DEFAULT_SCAN_LIMIT = 200;
+const PRINTFUL_PENDING_TTL_BUFFER_DAYS = 2;
 
 function envSlug(value) {
   return String(value || "")
@@ -720,10 +724,13 @@ function bearerToken(request) {
   return match ? match[1].trim() : "";
 }
 
-function isAdminAuthorized(request, env) {
-  const expected = String(env.MERCH_ADMIN_TOKEN || "").trim();
+function isAdminAuthorized(request, env, options = {}) {
   const actual = bearerToken(request);
-  return Boolean(expected && actual && timingSafeStringEqual(actual, expected));
+  const expectedTokens = [
+    env.MERCH_ADMIN_TOKEN,
+    options.allowRecoveryToken ? env.MERCH_RECOVERY_TOKEN : "",
+  ].map((value) => String(value || "").trim()).filter(Boolean);
+  return Boolean(actual && expectedTokens.some((expected) => timingSafeStringEqual(actual, expected)));
 }
 
 async function hmacSha256Hex(secret, value) {
@@ -803,6 +810,29 @@ async function fetchStripeCheckoutSession(env, sessionId, expand = []) {
     return { error: payload.error || payload, http_status: response.status };
   }
   return payload;
+}
+
+async function fetchStripeCheckoutSessionForPaymentIntent(env, paymentIntentId) {
+  const id = typeof paymentIntentId === "object" && paymentIntentId ? paymentIntentId.id : paymentIntentId;
+  if (!env.STRIPE_SECRET_KEY || !id) {
+    return null;
+  }
+  const url = new URL("https://api.stripe.com/v1/checkout/sessions");
+  url.searchParams.set("payment_intent", id);
+  url.searchParams.set("limit", "1");
+  const response = await fetch(url.toString(), {
+    headers: {
+      Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
+    },
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    return { error: payload.error || payload, http_status: response.status };
+  }
+  const session = Array.isArray(payload.data) && payload.data[0] ? payload.data[0] : null;
+  return session && session.id
+    ? fetchStripeCheckoutSession(env, session.id, ["payment_intent.latest_charge", "payment_intent.payment_method"])
+    : null;
 }
 
 async function fetchStripePaymentIntent(env, paymentIntentId) {
@@ -914,6 +944,508 @@ function publicCatalog(env) {
   };
 }
 
+function printfulRecipientForSession(session) {
+  const shipping = session.shipping_details
+    || (session.collected_information && session.collected_information.shipping_details)
+    || {};
+  const address = shipping.address || {};
+  const customer = session.customer_details || {};
+  const collectedInformation = session.collected_information || {};
+  return {
+    name: shipping.name
+      || customer.name
+      || collectedInformation.individual_name
+      || collectedInformation.business_name
+      || "SmartSleeve customer",
+    email: customer.email || "",
+    address1: address.line1 || "",
+    address2: address.line2 || "",
+    city: address.city || "",
+    state_code: address.state || "",
+    country_code: address.country || "US",
+    zip: address.postal_code || "",
+  };
+}
+
+function printfulStoreId(env) {
+  return String(env.PRINTFUL_STORE_ID || "").trim();
+}
+
+function printfulRequestHeaders(env) {
+  const storeId = printfulStoreId(env);
+  return {
+    Authorization: `Bearer ${env.PRINTFUL_API_KEY}`,
+    "Content-Type": "application/json",
+    ...(storeId ? { "X-PF-Store-Id": storeId } : {}),
+  };
+}
+
+async function printfulJsonRequest(env, path, options = {}) {
+  const response = await fetch(`https://api.printful.com${path}`, {
+    method: options.method || "GET",
+    headers: printfulRequestHeaders(env),
+    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+  });
+  const payload = await response.json().catch(() => ({}));
+  return { response, payload };
+}
+
+function printfulV2ThreadColorOption(options, placement) {
+  const suffix = String(placement || "").replace(/^embroidery_/, "");
+  const candidates = [`thread_colors_${suffix}`, "thread_colors"];
+  for (const id of candidates) {
+    const option = (options || []).find((item) => item && item.id === id);
+    if (option && Array.isArray(option.value) && option.value.length > 0) {
+      return option.value;
+    }
+  }
+  return null;
+}
+
+function printfulV2CatalogProductOptionNames(catalogProduct) {
+  const optionList = [
+    ...(Array.isArray(catalogProduct && catalogProduct.product_options) ? catalogProduct.product_options : []),
+    ...(Array.isArray(catalogProduct && catalogProduct.options) ? catalogProduct.options : []),
+  ];
+  return new Set(optionList
+    .map((option) => option && (option.name || option.id || option.key))
+    .map((value) => String(value || "").trim())
+    .filter(Boolean));
+}
+
+function printfulV2ProductOptions(options, catalogProduct) {
+  const validOptionNames = printfulV2CatalogProductOptionNames(catalogProduct);
+  const fallbackAllowed = new Set(["lifelike", "notes", "stitch_color"]);
+  return (options || [])
+    .filter((option) => option && option.id && option.value !== undefined && option.value !== null)
+    .filter((option) => !/^thread_colors(?:_|$)/.test(String(option.id)))
+    .filter((option) => !/^text_thread_colors(?:_|$)/.test(String(option.id)))
+    .filter((option) => String(option.id) !== "embroidery_type")
+    .filter((option) => validOptionNames.size > 0
+      ? validOptionNames.has(String(option.id))
+      : fallbackAllowed.has(String(option.id)))
+    .map((option) => ({ name: String(option.id), value: option.value }));
+}
+
+function printfulV2CatalogProductId(syncVariant) {
+  const product = syncVariant && syncVariant.product ? syncVariant.product : {};
+  const candidates = [
+    product.product_id,
+    product.catalog_product_id,
+    syncVariant && syncVariant.catalog_product_id,
+  ];
+  for (const candidate of candidates) {
+    const id = Number(candidate);
+    if (Number.isFinite(id) && id > 0) {
+      return Math.round(id);
+    }
+  }
+  return 0;
+}
+
+async function printfulV2CatalogProduct(env, syncVariant, catalogProductCache) {
+  const catalogProductId = printfulV2CatalogProductId(syncVariant);
+  if (!catalogProductId) {
+    return null;
+  }
+  if (catalogProductCache && catalogProductCache.has(catalogProductId)) {
+    return catalogProductCache.get(catalogProductId);
+  }
+  const { response, payload } = await printfulJsonRequest(env, `/v2/catalog-products/${encodeURIComponent(catalogProductId)}`);
+  const catalogProduct = response.ok ? (payload.data || null) : null;
+  if (catalogProductCache) {
+    catalogProductCache.set(catalogProductId, catalogProduct);
+  }
+  return catalogProduct;
+}
+
+function printfulV2TechniqueForPlacement(fileType, catalogProduct) {
+  const placement = printfulV2PlacementName(fileType, catalogProduct);
+  const placements = Array.isArray(catalogProduct && catalogProduct.placements)
+    ? catalogProduct.placements
+    : [];
+  const exact = placements.find((item) => item && item.placement === placement);
+  if (exact && exact.technique) {
+    return String(exact.technique);
+  }
+  if (placement === "default") {
+    const defaultPlacement = placements.find((item) => item && item.placement === "default")
+      || (placements.length === 1 ? placements[0] : null);
+    if (defaultPlacement && defaultPlacement.technique) {
+      return String(defaultPlacement.technique);
+    }
+  }
+  return placement.includes("embroidery") ? "embroidery" : "dtg";
+}
+
+function printfulV2PlacementName(fileType, catalogProduct) {
+  const placement = String(fileType || "");
+  const placements = Array.isArray(catalogProduct && catalogProduct.placements)
+    ? catalogProduct.placements
+    : [];
+  if (placements.some((item) => item && item.placement === placement)) {
+    return placement;
+  }
+  if (placement === "default") {
+    const front = placements.find((item) => item && item.placement === "front");
+    if (front) {
+      return "front";
+    }
+    const printable = placements.find((item) => item && item.placement && item.placement !== "label_inside");
+    if (printable) {
+      return printable.placement;
+    }
+  }
+  return placement;
+}
+
+function printfulV2LayerPosition(file) {
+  const source = file && typeof file.position === "object" ? file.position : null;
+  if (!source) {
+    return null;
+  }
+  const position = {};
+  ["area_width", "area_height", "width", "height", "top", "left"].forEach((key) => {
+    const value = Number(source[key]);
+    if (Number.isFinite(value)) {
+      position[key] = value;
+    }
+  });
+  return Object.keys(position).length ? position : null;
+}
+
+async function printfulV2OrderItem(env, checkoutItem, options = {}) {
+  const product = checkoutItem.product;
+  const size = checkoutItem.size;
+  const syncVariantId = printfulSyncVariantId(env, product, size);
+  if (!syncVariantId) {
+    return { error: `${product.sync_variant_env_prefixes[0]}_${size} not configured` };
+  }
+  const { response, payload } = await printfulJsonRequest(env, `/store/variants/${encodeURIComponent(syncVariantId)}`);
+  const syncVariant = payload.result || {};
+  if (!response.ok || !syncVariant.variant_id) {
+    return {
+      error: "Printful sync variant lookup failed",
+      sync_variant_id: syncVariantId,
+      http_status: response.status,
+      provider_response: payload,
+    };
+  }
+  const catalogProduct = await printfulV2CatalogProduct(env, syncVariant, options.catalogProductCache);
+  const placements = (syncVariant.files || [])
+    .filter((file) => file && file.type && file.type !== "preview" && (file.url || file.id))
+    .map((file) => {
+      const layer = { type: "file" };
+      if (file.url) {
+        layer.url = file.url;
+      } else {
+        layer.id = file.id;
+      }
+      const placementName = printfulV2PlacementName(file.type, catalogProduct);
+      const threadColors = printfulV2ThreadColorOption(syncVariant.options || [], file.type);
+      if (threadColors) {
+        layer.layer_options = [{ name: "thread_colors", value: threadColors }];
+      }
+      const position = printfulV2LayerPosition(file);
+      if (position) {
+        layer.position = position;
+      }
+      return {
+        placement: placementName,
+        technique: printfulV2TechniqueForPlacement(placementName, catalogProduct),
+        layers: [layer],
+      };
+    });
+  if (placements.length === 0) {
+    return {
+      error: "Printful sync variant has no reusable print placements",
+      sync_variant_id: syncVariantId,
+    };
+  }
+  const productOptions = printfulV2ProductOptions(syncVariant.options || [], catalogProduct);
+  const item = {
+    source: "catalog",
+    catalog_variant_id: syncVariant.variant_id,
+    quantity: checkoutItem.quantity,
+    name: productNameWithOption(product.name, size),
+    retail_price: (checkoutItem.unit_amount / 100).toFixed(2),
+    placements,
+  };
+  if (productOptions.length > 0) {
+    item.product_options = productOptions;
+  }
+  return {
+    item,
+    summary: {
+      product_key: checkoutItem.product_key,
+      size,
+      quantity: checkoutItem.quantity,
+      fulfillment_mode: "v2_catalog_variant_files",
+      sync_variant_id: syncVariantId,
+      catalog_variant_id: syncVariant.variant_id,
+      catalog_product_id: printfulV2CatalogProductId(syncVariant) || undefined,
+      placement_count: placements.length,
+      product_option_count: productOptions.length,
+    },
+  };
+}
+
+async function waitForPrintfulV2Costs(env, orderId) {
+  let latest = null;
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const { response, payload } = await printfulJsonRequest(env, `/v2/orders/${encodeURIComponent(orderId)}`);
+    latest = payload;
+    const order = payload.data || {};
+    const status = order.costs && order.costs.calculation_status;
+    if (!response.ok) {
+      return { ok: false, http_status: response.status, provider_response: payload };
+    }
+    if (status === "done") {
+      return { ok: true, order };
+    }
+    if (status === "failed") {
+      return { ok: false, reason: "Printful v2 cost calculation failed", provider_response: payload };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  return { ok: false, reason: "Printful v2 cost calculation timed out", provider_response: latest };
+}
+
+async function submitPrintfulV2Order(env, session, checkoutItems, externalId) {
+  const itemResults = [];
+  const catalogProductCache = new Map();
+  for (const checkoutItem of checkoutItems) {
+    const result = await printfulV2OrderItem(env, checkoutItem, { catalogProductCache });
+    if (result.error) {
+      return {
+        status: "failed",
+        provider: "printful",
+        api_version: "v2",
+        reason: result.error,
+        http_status: result.http_status,
+        provider_response: result.provider_response,
+      };
+    }
+    itemResults.push(result);
+  }
+  const retailCosts = printfulRetailCostsForSession(session, checkoutItems);
+  const order = {
+    external_id: externalId,
+    shipping: "STANDARD",
+    recipient: printfulRecipientForSession(session),
+    order_items: itemResults.map((result) => result.item),
+    retail_costs: {
+      currency: retailCosts.currency,
+      discount: retailCosts.discount,
+      shipping: retailCosts.shipping,
+      tax: retailCosts.tax,
+    },
+  };
+  const confirm = String(env.PRINTFUL_CONFIRM_ORDERS || "").toLowerCase() === "true";
+  const storeId = printfulStoreId(env);
+  if (!storeId) {
+    return {
+      status: "skipped",
+      reason: "PRINTFUL_STORE_ID not configured",
+      item_count: itemResults.length,
+    };
+  }
+  const created = await printfulJsonRequest(env, "/v2/orders", {
+    method: "POST",
+    body: order,
+  });
+  const createdOrder = created.payload.data || {};
+  if (!created.response.ok || !createdOrder.id) {
+    return {
+      status: "failed",
+      provider: "printful",
+      api_version: "v2",
+      confirm,
+      item_count: itemResults.length,
+      items: itemResults.map((result) => result.summary),
+      store_id: storeId,
+      http_status: created.response.status,
+      provider_response: created.payload,
+    };
+  }
+  let finalOrder = createdOrder;
+  let confirmationPayload = null;
+  let confirmationStatus = 200;
+  if (confirm) {
+    const costs = await waitForPrintfulV2Costs(env, createdOrder.id);
+    if (!costs.ok) {
+      return {
+        status: "failed",
+        provider: "printful",
+        api_version: "v2",
+        confirm,
+        item_count: itemResults.length,
+        items: itemResults.map((result) => result.summary),
+        store_id: storeId,
+        http_status: costs.http_status || 409,
+        reason: costs.reason,
+        provider_response: { result: finalOrder, create: created.payload, cost_lookup: costs.provider_response },
+      };
+    }
+    finalOrder = costs.order;
+    const confirmed = await printfulJsonRequest(env, `/v2/orders/${encodeURIComponent(createdOrder.id)}/confirmation`, {
+      method: "POST",
+      body: {},
+    });
+    confirmationPayload = confirmed.payload;
+    confirmationStatus = confirmed.response.status;
+    if (!confirmed.response.ok) {
+      return {
+        status: "failed",
+        provider: "printful",
+        api_version: "v2",
+        confirm,
+        item_count: itemResults.length,
+        items: itemResults.map((result) => result.summary),
+        store_id: storeId,
+        http_status: confirmationStatus,
+        provider_response: { result: finalOrder, create: created.payload, confirmation: confirmationPayload },
+      };
+    }
+    finalOrder = confirmationPayload.data || finalOrder;
+  }
+  return {
+    status: "submitted",
+    provider: "printful",
+    api_version: "v2",
+    confirm,
+    item_count: itemResults.length,
+    items: itemResults.map((result) => result.summary),
+    store_id: storeId,
+    http_status: confirmationStatus,
+    provider_response: { result: finalOrder, create: created.payload, confirmation: confirmationPayload },
+  };
+}
+
+function printfulPreflightRecipient() {
+  return {
+    name: "SmartSleeve Preflight",
+    email: "orders@smartsleeve.ai",
+    address1: "19749 Dearborn St",
+    city: "Chatsworth",
+    state_code: "CA",
+    country_code: "US",
+    zip: "91311",
+  };
+}
+
+function preflightCheckoutItems(env, body = {}) {
+  const allProducts = publicCatalog(env).products;
+  const requestedKeys = Array.isArray(body.product_keys)
+    ? new Set(body.product_keys.map(normalizeProductKey).filter(Boolean))
+    : null;
+  const requestedSize = body.size ? normalizeSize(body.size) : "";
+  const allSizes = body.all_sizes === true;
+  const candidates = [];
+  allProducts.forEach((catalogEntry) => {
+    const productKey = normalizeProductKey(catalogEntry.key);
+    if (requestedKeys && !requestedKeys.has(productKey)) {
+      return;
+    }
+    const product = catalogProduct(env, productKey);
+    if (!product) {
+      return;
+    }
+    const sizes = Array.isArray(catalogEntry.sizes) && catalogEntry.sizes.length
+      ? catalogEntry.sizes.map(normalizeSize)
+      : ["M"];
+    const selectedSizes = requestedSize
+      ? (sizes.includes(requestedSize) ? [requestedSize] : [])
+      : (allSizes ? sizes : [sizes[0]]);
+    selectedSizes.forEach((size) => {
+      candidates.push({
+        product_key: productKey,
+        product,
+        size,
+        quantity: 1,
+        unit_amount: productUnitAmountForSize(env, product, size),
+      });
+    });
+  });
+  const offset = Math.max(0, Math.round(Number(body.offset) || 0));
+  const limit = Math.min(50, Math.max(1, Math.round(Number(body.limit) || 20)));
+  return {
+    total_candidates: candidates.length,
+    offset,
+    limit,
+    items: candidates.slice(offset, offset + limit),
+  };
+}
+
+async function deletePrintfulV2Order(env, orderId) {
+  if (!orderId) {
+    return { ok: false, reason: "missing order id" };
+  }
+  const { response, payload } = await printfulJsonRequest(env, `/v2/orders/${encodeURIComponent(orderId)}`, {
+    method: "DELETE",
+  });
+  return {
+    ok: response.ok || response.status === 404,
+    http_status: response.status,
+    provider_response: payload,
+  };
+}
+
+async function preflightPrintfulV2Items(env, checkoutItems, createDraft) {
+  const itemResults = [];
+  const catalogProductCache = new Map();
+  for (const checkoutItem of checkoutItems) {
+    const result = await printfulV2OrderItem(env, checkoutItem, { catalogProductCache });
+    if (result.error) {
+      return {
+        status: "failed",
+        reason: result.error,
+        http_status: result.http_status,
+        provider_response: result.provider_response,
+        item_count: itemResults.length,
+        items: itemResults.map((item) => item.summary),
+      };
+    }
+    itemResults.push(result);
+  }
+  if (!createDraft) {
+    return {
+      status: "passed",
+      item_count: itemResults.length,
+      items: itemResults.map((item) => item.summary),
+      draft_created: false,
+    };
+  }
+  const externalId = printfulExternalId(`preflight-${crypto.randomUUID()}`);
+  const created = await printfulJsonRequest(env, "/v2/orders", {
+    method: "POST",
+    body: {
+      external_id: externalId,
+      shipping: "STANDARD",
+      recipient: printfulPreflightRecipient(),
+      order_items: itemResults.map((result) => result.item),
+      retail_costs: {
+        currency: "USD",
+        discount: "0.00",
+        shipping: "0.00",
+        tax: "0.00",
+      },
+    },
+  });
+  const createdOrder = created.payload.data || {};
+  const deletion = createdOrder.id ? await deletePrintfulV2Order(env, createdOrder.id) : null;
+  return {
+    status: created.response.ok && (!deletion || deletion.ok) ? "passed" : "failed",
+    item_count: itemResults.length,
+    items: itemResults.map((item) => item.summary),
+    draft_created: Boolean(createdOrder.id),
+    draft_deleted: deletion ? deletion.ok : false,
+    http_status: created.response.status,
+    delete_http_status: deletion && deletion.http_status,
+    provider_response: created.response.ok ? undefined : created.payload,
+  };
+}
+
 async function submitPrintfulOrder(env, session) {
   if (!env.PRINTFUL_API_KEY) {
     return { status: "skipped", reason: "PRINTFUL_API_KEY not configured" };
@@ -922,113 +1454,7 @@ async function submitPrintfulOrder(env, session) {
   if (checkoutItems.length === 0) {
     return { status: "skipped", reason: "no fulfillable checkout line items" };
   }
-  const shipping = session.shipping_details
-    || (session.collected_information && session.collected_information.shipping_details)
-    || {};
-  const address = shipping.address || {};
-  const customer = session.customer_details || {};
-  const collectedInformation = session.collected_information || {};
-  const printfulItems = [];
-  const itemSummaries = [];
-  for (const checkoutItem of checkoutItems) {
-    const { productKey, product, size, quantity, unitAmount } = {
-      productKey: checkoutItem.product_key,
-      product: checkoutItem.product,
-      size: checkoutItem.size,
-      quantity: checkoutItem.quantity,
-      unitAmount: checkoutItem.unit_amount,
-    };
-    const syncVariantId = printfulSyncVariantId(env, product, size);
-    const item = {
-      quantity,
-      name: productNameWithOption(product.name, size),
-      retail_price: (unitAmount / 100).toFixed(2),
-    };
-    let fulfillmentMode = "sync_variant";
-    let files = [];
-    if (syncVariantId) {
-      item.sync_variant_id = syncVariantId;
-    } else {
-      fulfillmentMode = "catalog_variant_files";
-      const variantId = printfulVariantId(env, product, size);
-      if (!variantId) {
-        return {
-          status: "skipped",
-          reason: `${sizeVariantEnvName(product, size)} or ${product.sync_variant_env_prefixes[0]}_${size} not configured`,
-          product_key: productKey,
-          size,
-        };
-      }
-      files = printfulFiles(env, product);
-      if (files.length === 0) {
-        return {
-          status: "skipped",
-          reason: "Printful front/back print file URLs not configured",
-          product_key: productKey,
-          size,
-        };
-      }
-      item.variant_id = variantId;
-      item.files = files;
-    }
-    printfulItems.push(item);
-    itemSummaries.push({
-      product_key: productKey,
-      size,
-      quantity,
-      fulfillment_mode: fulfillmentMode,
-      sync_variant_id: syncVariantId || undefined,
-      print_files: files,
-    });
-  }
-  const order = {
-    external_id: printfulExternalId(session.id),
-    recipient: {
-      name: shipping.name
-        || customer.name
-        || collectedInformation.individual_name
-        || collectedInformation.business_name
-        || "SmartSleeve customer",
-      email: customer.email || "",
-      address1: address.line1 || "",
-      address2: address.line2 || "",
-      city: address.city || "",
-      state_code: address.state || "",
-      country_code: address.country || "US",
-      zip: address.postal_code || "",
-    },
-    items: printfulItems,
-    retail_costs: printfulRetailCostsForSession(session, checkoutItems),
-  };
-  const confirm = String(env.PRINTFUL_CONFIRM_ORDERS || "").toLowerCase() === "true";
-  const storeId = String(env.PRINTFUL_STORE_ID || "").trim();
-  if (!storeId) {
-    return {
-      status: "skipped",
-      reason: "PRINTFUL_STORE_ID not configured",
-      item_count: itemSummaries.length,
-    };
-  }
-  const response = await fetch(`https://api.printful.com/orders?confirm=${confirm ? "1" : "0"}`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.PRINTFUL_API_KEY}`,
-      "Content-Type": "application/json",
-      "X-PF-Store-Id": storeId,
-    },
-    body: JSON.stringify(order),
-  });
-  const payload = await response.json().catch(() => ({}));
-  return {
-    status: response.ok ? "submitted" : "failed",
-    provider: "printful",
-    confirm,
-    item_count: itemSummaries.length,
-    items: itemSummaries,
-    store_id: storeId,
-    http_status: response.status,
-    provider_response: payload,
-  };
+  return submitPrintfulV2Order(env, session, checkoutItems, printfulExternalId(session.id));
 }
 
 async function maybeFulfill(env, session) {
@@ -1246,6 +1672,25 @@ function fulfillmentResult(fulfillment) {
   return response.result || response.data || response;
 }
 
+function fulfillmentProviderPayloads(fulfillment) {
+  const response = fulfillment && fulfillment.provider_response ? fulfillment.provider_response : {};
+  const payloads = [response, response.result, response.data, response.create, response.confirmation].filter(Boolean);
+  if (Array.isArray(response.segments)) {
+    response.segments.forEach((segment) => {
+      if (segment) {
+        payloads.push(segment, segment.result, segment.data);
+      }
+    });
+  }
+  if (Array.isArray(fulfillment && fulfillment.segments)) {
+    fulfillment.segments.forEach((segment) => {
+      const providerResponse = segment && segment.provider_response ? segment.provider_response : {};
+      payloads.push(providerResponse, providerResponse.result, providerResponse.data, providerResponse.create, providerResponse.confirmation);
+    });
+  }
+  return payloads.filter(Boolean);
+}
+
 function fulfillmentStatusText(fulfillment) {
   if (!fulfillment) {
     return "SmartSleeve is waiting for order fulfillment.";
@@ -1429,7 +1874,7 @@ function itemSummaryText(items) {
   return items.map((item) => `- ${item.name} | ${itemOptionLabel(item.size)} | Qty ${item.quantity}`).join("\n");
 }
 
-function lifecycleCopy(stage, env, session, fulfillment) {
+function lifecycleCopy(stage, env, session, fulfillment, options = {}) {
   const trackingUrl = fulfillmentTrackingUrl(session, fulfillment);
   const statusUrl = fulfillmentStatusUrl(session, fulfillment);
   const delivery = estimatedDeliveryDetails(env, session, fulfillment);
@@ -1441,19 +1886,26 @@ function lifecycleCopy(stage, env, session, fulfillment) {
       detail: trackingUrl
         ? "Carrier tracking details are linked below."
         : "If the package is not where you expect it, check around the delivery address and contact SmartSleeve if it still cannot be found.",
+      itemsLabel: "Items in your order",
       trackingLabel: trackingUrl ? "Delivery tracking" : "Tracking",
       trackingText: trackingUrl || "The carrier reported this order delivered.",
       trackingUrl,
       statusUrl,
     };
   }
+  const partial = Boolean(options.partialShipment);
   return {
-    subject: "Your SmartSleeve merch order has shipped",
-    heading: "Your order has shipped",
-    intro: "Your SmartSleeve merch order is on its way.",
+    subject: partial
+      ? "Part of your SmartSleeve merch order has shipped"
+      : "Your SmartSleeve merch order has shipped",
+    heading: partial ? "Part of your order has shipped" : "Your order has shipped",
+    intro: partial
+      ? "Some of your SmartSleeve merch order is on its way. Orders can ship in multiple packages, and you'll get a separate email as each one ships."
+      : "Your SmartSleeve merch order is on its way.",
     detail: trackingUrl
       ? "Use the tracking link below for the latest carrier updates."
       : `Estimated delivery: ${delivery.label} (${delivery.basis}).`,
+    itemsLabel: partial ? "Items in this shipment" : "Items in your order",
     trackingLabel: trackingUrl ? "Track shipment" : "Estimated delivery",
     trackingText: trackingUrl || `${delivery.label} (${delivery.basis})`,
     trackingUrl,
@@ -1461,12 +1913,12 @@ function lifecycleCopy(stage, env, session, fulfillment) {
   };
 }
 
-function buildLifecycleEmailHtml(env, session, items, fulfillment, stage) {
+function buildLifecycleEmailHtml(env, session, items, fulfillment, stage, options = {}) {
   const customer = session.customer_details || {};
   const shipping = sessionShippingDetails(session);
   const customerName = shipping.name || customer.name || "SmartSleeve customer";
   const shippingLines = addressLines(shipping, customerName);
-  const copy = lifecycleCopy(stage, env, session, fulfillment);
+  const copy = lifecycleCopy(stage, env, session, fulfillment, options);
   const tracking = copy.trackingUrl
     ? `<a href="${escapeHtml(copy.trackingUrl)}">${escapeHtml(copy.trackingUrl)}</a>`
     : escapeHtml(copy.trackingText);
@@ -1479,7 +1931,7 @@ function buildLifecycleEmailHtml(env, session, items, fulfillment, stage) {
     <div style="max-width:720px;margin:0 auto;padding:28px 16px;">
       <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
         <div style="padding:24px;background:#020617;color:#f8fafc;">
-          <div style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#39ff14;font-weight:700;">SmartSleeve Shop</div>
+          <div style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#39ff14;font-weight:700;">SmartSleeve Orders</div>
           <h1 style="margin:8px 0 4px;font-size:26px;line-height:1.2;">${escapeHtml(copy.heading)}</h1>
           <div style="font-size:14px;color:#cbd5e1;">Order ${escapeHtml(receiptOrderNumber(session))}</div>
         </div>
@@ -1490,6 +1942,7 @@ function buildLifecycleEmailHtml(env, session, items, fulfillment, stage) {
             <div><strong>${escapeHtml(copy.trackingLabel)}:</strong> ${tracking}</div>
             <div><strong>Order status:</strong> ${status}</div>
           </div>
+          <div style="font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;font-weight:700;margin:0 0 8px;">${escapeHtml(copy.itemsLabel || "Items")}</div>
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
             <thead>
               <tr style="background:#f9fafb;">
@@ -1511,11 +1964,11 @@ function buildLifecycleEmailHtml(env, session, items, fulfillment, stage) {
 </html>`;
 }
 
-function buildLifecycleEmailText(env, session, items, fulfillment, stage) {
+function buildLifecycleEmailText(env, session, items, fulfillment, stage, options = {}) {
   const customer = session.customer_details || {};
   const shipping = sessionShippingDetails(session);
   const customerName = shipping.name || customer.name || "SmartSleeve customer";
-  const copy = lifecycleCopy(stage, env, session, fulfillment);
+  const copy = lifecycleCopy(stage, env, session, fulfillment, options);
   return [
     copy.heading,
     `Order: ${receiptOrderNumber(session)}`,
@@ -1526,7 +1979,7 @@ function buildLifecycleEmailText(env, session, items, fulfillment, stage) {
     `${copy.trackingLabel}: ${copy.trackingText}`,
     `Order status: ${orderStatusText(session, fulfillment)}`,
     "",
-    "Items:",
+    `${copy.itemsLabel || "Items"}:`,
     itemSummaryText(items),
     "",
     "Shipping Address:",
@@ -1568,7 +2021,7 @@ function buildReceiptHtml(env, session, items, paymentIntent, fulfillment) {
     <div style="max-width:760px;margin:0 auto;padding:28px 16px;">
       <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
         <div style="padding:24px;background:#020617;color:#f8fafc;">
-          <div style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#39ff14;font-weight:700;">SmartSleeve Shop</div>
+          <div style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#39ff14;font-weight:700;">SmartSleeve Orders</div>
           <h1 style="margin:8px 0 4px;font-size:26px;line-height:1.2;">Your merch receipt</h1>
           <div style="font-size:14px;color:#cbd5e1;">Order ${escapeHtml(orderNumber)} &middot; ${escapeHtml(orderDate.toLocaleString("en-US", { timeZone: "America/Los_Angeles", dateStyle: "medium", timeStyle: "short" }))} PT</div>
         </div>
@@ -1730,18 +2183,32 @@ async function sendLifecycleEmail(env, session, stage, fulfillment, options = {}
   if (!isValidEmail(to)) {
     return { status: "skipped", reason: "No valid customer email available" };
   }
-  const items = await receiptItemsForSession(env, fullSession);
-  if (items.length === 0) {
+  const allItems = await receiptItemsForSession(env, fullSession);
+  if (allItems.length === 0) {
     return { status: "skipped", reason: "No order line items available" };
   }
-  const copy = lifecycleCopy(stage, env, fullSession, fulfillment);
+  // For split shipments, scope the item list to just the parcel(s) in this
+  // shipment so the email doesn't report the whole order as shipped. Falls back
+  // to the full order list when the parcel's items can't be determined.
+  let items = allItems;
+  let partialShipment = false;
+  if (stage === "shipped") {
+    const previouslyNotifiedTracking = options.previouslyNotifiedTracking || notifiedShipmentSignatures(options.stored);
+    const scoped = scopeItemsToNewShipments(options.stored, fulfillment, allItems, previouslyNotifiedTracking);
+    if (scoped && scoped.length) {
+      items = scoped;
+      partialShipment = scoped.length < allItems.length;
+    }
+  }
+  const emailOptions = { partialShipment };
+  const copy = lifecycleCopy(stage, env, fullSession, fulfillment, emailOptions);
   const message = {
     from: String(env.MERCH_RECEIPT_FROM_EMAIL || DEFAULT_RECEIPT_FROM_EMAIL),
     to,
     reply_to: String(env.MERCH_RECEIPT_REPLY_TO_EMAIL || DEFAULT_RECEIPT_REPLY_TO_EMAIL),
     subject: options.subject || copy.subject,
-    html: buildLifecycleEmailHtml(env, fullSession, items, fulfillment, stage),
-    text: buildLifecycleEmailText(env, fullSession, items, fulfillment, stage),
+    html: buildLifecycleEmailHtml(env, fullSession, items, fulfillment, stage, emailOptions),
+    text: buildLifecycleEmailText(env, fullSession, items, fulfillment, stage, emailOptions),
   };
   const result = await sendResendEmail(env, message);
   return Object.assign(result, {
@@ -1749,6 +2216,7 @@ async function sendLifecycleEmail(env, session, stage, fulfillment, options = {}
     subject: message.subject,
     stage,
     item_count: items.length,
+    partial_shipment: partialShipment,
     order_number: receiptOrderNumber(fullSession),
   });
 }
@@ -1761,47 +2229,74 @@ function printfulOrderIndexKey(orderId) {
   return `printful:order:${String(orderId || "").trim()}`;
 }
 
-// A reserved-but-not-yet-committed claim older than this is treated as abandoned
-// (e.g. the Worker died between reserving the slot and committing the send) and may
-// be re-claimed so a genuinely un-sent notification is not blocked forever.
-const NOTIFICATION_CLAIM_STALE_MS = 120000;
+function compactIsoTimestamp(date) {
+  const value = date instanceof Date && !Number.isNaN(date.getTime()) ? date : new Date();
+  return value.toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
+}
 
-function stableHash(value) {
-  const str = String(value === undefined || value === null ? "" : value);
-  let hash = 5381;
-  for (let i = 0; i < str.length; i += 1) {
-    hash = ((hash << 5) + hash + str.charCodeAt(i)) >>> 0;
+function printfulPendingDateForSession(session) {
+  const created = Number(session && session.created);
+  return Number.isFinite(created) && created > 0 ? new Date(created * 1000) : new Date();
+}
+
+function printfulLegacyPendingKey(sessionId) {
+  return `printful:pending:${String(sessionId || "").trim()}`;
+}
+
+function printfulPendingKey(sessionId, date = new Date()) {
+  return `printful:pending:${compactIsoTimestamp(date)}:${String(sessionId || "").trim()}`;
+}
+
+function storedPendingSessionIdFromKey(key) {
+  const match = String(key || "").match(/^printful:pending:(?:\d{14}:)?(cs_(?:test|live)_[A-Za-z0-9]+)$/);
+  return match ? match[1] : "";
+}
+
+function notificationKey(sessionId, stage) {
+  return `stripe:session:${sessionId}:notification:${stage}`;
+}
+
+function printfulCoreOrderRecords(fulfillment) {
+  const response = fulfillment && fulfillment.provider_response ? fulfillment.provider_response : {};
+  const records = [];
+  const add = (value) => {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      records.push(value);
+      if (Array.isArray(value.orders)) {
+        value.orders.forEach(add);
+      }
+    }
+  };
+  add(response.result);
+  add(response.data);
+  add(response.create && (response.create.data || response.create.result));
+  add(response.confirmation && (response.confirmation.data || response.confirmation.result));
+  if (Array.isArray(response.segments)) {
+    response.segments.forEach((segment) => {
+      add(segment && (segment.data || segment.result || segment));
+    });
   }
-  return hash.toString(36);
-}
-
-// A stable per-package fingerprint shared across the real-time webhook and the
-// scheduled poll for the same physical shipment. Tracking number is preferred
-// because both Printful paths expose it identically; tracking URL / shipment id
-// are fallbacks. Returns "" when no shipment identity is available, in which case
-// the notification key degrades to the legacy per-(session, stage) behavior.
-function shipmentIdentifier(fulfillment) {
-  const data = fulfillmentResult(fulfillment);
-  const candidate = uniqueNonEmpty([
-    ...objectValuesByKey(data, /tracking[_-]?number|tracking[_-]?code|tracking[_-]?no\b/i),
-    ...objectValuesByKey(data, /tracking[_-]?url/i),
-    ...objectValuesByKey(data, /(^|[_-])shipment[_-]?id($|[_-])/i),
-  ])[0];
-  return candidate ? stableHash(candidate) : "";
-}
-
-function notificationKey(sessionId, stage, shipmentKey = "") {
-  const base = `stripe:session:${sessionId}:notification:${stage}`;
-  return shipmentKey ? `${base}:${shipmentKey}` : base;
+  if (Array.isArray(fulfillment && fulfillment.segments)) {
+    fulfillment.segments.forEach((segment) => {
+      const providerResponse = segment && segment.provider_response ? segment.provider_response : {};
+      add(providerResponse.result);
+      add(providerResponse.data);
+      add(providerResponse.create && (providerResponse.create.data || providerResponse.create.result));
+      add(providerResponse.confirmation && (providerResponse.confirmation.data || providerResponse.confirmation.result));
+    });
+  }
+  return records;
 }
 
 function printfulOrderIdentifiersFromFulfillment(session, fulfillment) {
-  const result = fulfillmentResult(fulfillment);
+  const records = printfulCoreOrderRecords(fulfillment);
   const externalIds = new Set([
     printfulExternalId(session && session.id),
-    ...objectValuesByKey(result, /external_id/i),
+    ...records.map((record) => record.external_id),
   ].filter(Boolean));
-  const orderIds = new Set(objectValuesByKey(result, /(^id$|order_id|printful_order_id)/i).filter(Boolean));
+  const orderIds = new Set(records
+    .map((record) => record.id || record.order_id || record.printful_order_id)
+    .filter(Boolean));
   return { externalIds: Array.from(externalIds), orderIds: Array.from(orderIds) };
 }
 
@@ -1814,6 +2309,53 @@ async function storePrintfulIndexes(env, session, fulfillment) {
     ...identifiers.externalIds.map((externalId) => env.MERCH_ORDERS.put(printfulExternalIndexKey(externalId), session.id)),
     ...identifiers.orderIds.map((orderId) => env.MERCH_ORDERS.put(printfulOrderIndexKey(orderId), session.id)),
   ]);
+}
+
+function fulfillmentNeedsPrintfulPolling(env, fulfillment, notifications = {}) {
+  const status = String(fulfillment && fulfillment.status || "");
+  return Boolean(
+    fulfillment
+    && fulfillment.provider === "printful"
+    && (
+      (status === "submitted" && !notifications.shipped)
+      || (status === "shipped" && printfulDeliveryPollingEnabled(env) && !notifications.delivered)
+    ),
+  );
+}
+
+async function storePrintfulPendingPoll(env, session, fulfillment) {
+  if (!env.MERCH_ORDERS || !session || !session.id || !fulfillmentNeedsPrintfulPolling(env, fulfillment)) {
+    return "";
+  }
+  const storedAt = printfulPendingDateForSession(session);
+  const key = printfulPendingKey(session.id, storedAt);
+  const stageGoal = String(fulfillment.status || "") === "shipped" ? "delivered" : "shipped";
+  await env.MERCH_ORDERS.put(
+    key,
+    "",
+    {
+      expirationTtl: printfulPendingPollTtlSeconds(env),
+      metadata: {
+        stripe_session_id: session.id,
+        stored_at: storedAt.toISOString(),
+        poll_until: pendingPollUntil(env, storedAt),
+        stage_goal: stageGoal,
+      },
+    },
+  );
+  return key;
+}
+
+async function clearPrintfulPendingPoll(env, sessionId, options = {}) {
+  if (!env.MERCH_ORDERS || !sessionId) {
+    return;
+  }
+  const keys = new Set([
+    printfulLegacyPendingKey(sessionId),
+    options.pendingKey,
+    options.stored && options.stored.printful_pending_key,
+  ].filter(Boolean));
+  await Promise.all(Array.from(keys).map((key) => env.MERCH_ORDERS.delete(key)));
 }
 
 function printfulWebhookStage(payload) {
@@ -1842,7 +2384,15 @@ async function sessionIdForPrintfulPayload(env, payload) {
     if (/^cs_(test|live)_/i.test(externalId)) {
       return externalId;
     }
-    const sessionId = await env.MERCH_ORDERS.get(printfulExternalIndexKey(externalId));
+    let sessionId = await env.MERCH_ORDERS.get(printfulExternalIndexKey(externalId));
+    if (!sessionId) {
+      // Split shipments append a suffix (e.g. "<ext>-rest", "<ext>-2"); the index
+      // was written against the base external id, so retry without the suffix.
+      const baseExternalId = String(externalId).replace(/-(rest|\d+)$/i, "");
+      if (baseExternalId && baseExternalId !== externalId) {
+        sessionId = await env.MERCH_ORDERS.get(printfulExternalIndexKey(baseExternalId));
+      }
+    }
     if (sessionId) {
       return sessionId;
     }
@@ -1880,12 +2430,52 @@ function positiveEnvInt(env, key, fallback) {
   return Number.isFinite(value) && value > 0 ? Math.round(value) : fallback;
 }
 
+function envFlag(env, key, fallback = false) {
+  const value = String(env[key] === undefined ? "" : env[key]).trim().toLowerCase();
+  if (!value) {
+    return fallback;
+  }
+  return ["1", "true", "yes", "on"].includes(value);
+}
+
+function printfulDeliveryPollingEnabled(env) {
+  return envFlag(env, "MERCH_PRINTFUL_DELIVERY_POLL_ENABLED", false);
+}
+
+// Keep polling an order after its first shipment so Printful split shipments
+// (apparel now, a towel/mug/poster later) each trigger their own customer email.
+// The pending key is still pruned when the order is delivered or its poll window
+// (MERCH_PRINTFUL_POLL_LOOKBACK_DAYS) expires. Disable to revert to one email/order.
+function printfulSplitShipmentPollingEnabled(env) {
+  return envFlag(env, "MERCH_PRINTFUL_SPLIT_SHIPMENT_POLL_ENABLED", true);
+}
+
+function printfulPendingPollTtlSeconds(env) {
+  const lookbackDays = positiveEnvInt(env, "MERCH_PRINTFUL_POLL_LOOKBACK_DAYS", PRINTFUL_POLL_DEFAULT_LOOKBACK_DAYS);
+  return Math.max(60, (lookbackDays + PRINTFUL_PENDING_TTL_BUFFER_DAYS) * 24 * 60 * 60);
+}
+
+function pendingPollUntil(env, storedAt) {
+  const lookbackDays = positiveEnvInt(env, "MERCH_PRINTFUL_POLL_LOOKBACK_DAYS", PRINTFUL_POLL_DEFAULT_LOOKBACK_DAYS);
+  return new Date(storedAt.getTime() + lookbackDays * 24 * 60 * 60 * 1000).toISOString();
+}
+
+function pendingMetadataIsExpired(metadata) {
+  const pollUntil = parseReceiptDate(metadata && metadata.poll_until);
+  return Boolean(pollUntil && Date.now() > pollUntil.getTime());
+}
+
+function pendingMetadataStageGoal(metadata) {
+  const goal = String(metadata && metadata.stage_goal || "").trim().toLowerCase();
+  return goal === "delivered" ? "delivered" : "shipped";
+}
+
 function storedOrderSessionIdFromKey(key) {
   const match = String(key || "").match(/^stripe:session:(cs_(?:test|live)_[A-Za-z0-9]+)$/);
   return match ? match[1] : "";
 }
 
-function storedOrderIsPollable(stored, lookbackDays) {
+function storedOrderIsPollable(env, stored, lookbackDays) {
   if (!stored || typeof stored !== "object") {
     return false;
   }
@@ -1893,7 +2483,22 @@ function storedOrderIsPollable(stored, lookbackDays) {
   if (fulfillment.provider !== "printful") {
     return false;
   }
+  const notifications = stored.notifications && typeof stored.notifications === "object"
+    ? stored.notifications
+    : {};
+  if (notifications.delivered) {
+    return false;
+  }
+  // Keep polling shipped-but-undelivered orders when delivery or split-shipment
+  // polling is enabled, so additional Printful parcels are still detected.
+  const keepPollingShipped = printfulDeliveryPollingEnabled(env) || printfulSplitShipmentPollingEnabled(env);
+  if (notifications.shipped && !keepPollingShipped) {
+    return false;
+  }
   if (!["submitted", "shipped"].includes(String(fulfillment.status || ""))) {
+    return false;
+  }
+  if (fulfillment.status === "shipped" && !keepPollingShipped) {
     return false;
   }
   const storedAt = parseReceiptDate(stored.stored_at);
@@ -1903,6 +2508,166 @@ function storedOrderIsPollable(stored, lookbackDays) {
   return Date.now() - storedAt.getTime() <= lookbackDays * 24 * 60 * 60 * 1000;
 }
 
+function storedNotificationExists(stored, stage) {
+  return Boolean(stored && stored.notifications && stored.notifications[stage]);
+}
+
+// Printful ships parts of an order separately (apparel now, a towel later) and
+// sends a "shipped" event per parcel. Dedupe shipped notifications by a per-shipment
+// signature (tracking number preferred, then shipment id, then split-shipment
+// external id like "<ext>-rest") so each parcel emails the customer exactly once.
+function shipmentSignaturesFromFulfillment(fulfillment) {
+  if (!fulfillment || typeof fulfillment !== "object") {
+    return [];
+  }
+  const payload = fulfillment.provider_response || fulfillment;
+  const tracking = objectValuesByKey(payload, /tracking_number|tracking_code/i);
+  const shipmentIds = objectValuesByKey(payload, /shipment_id|shipment_number/i);
+  let signatures = uniqueNonEmpty([...tracking, ...shipmentIds]);
+  if (!signatures.length) {
+    signatures = uniqueNonEmpty(
+      objectValuesByKey(payload, /external_id/i).filter((value) => /-(rest|\d+)$/i.test(String(value || ""))),
+    );
+  }
+  return signatures;
+}
+
+function notifiedShipmentSignatures(stored) {
+  const map = stored && stored.notifications && stored.notifications.shipped_shipments;
+  return new Set(map && typeof map === "object" ? Object.keys(map) : []);
+}
+
+// Whether a shipped fulfillment references a parcel we have not emailed about yet.
+// When no shipment signature can be extracted, falls back to the original
+// once-per-stage dedup so an unidentifiable shipment can't cause repeat emails.
+function shippedShipmentIsNew(stored, fulfillment) {
+  const signatures = shipmentSignaturesFromFulfillment(fulfillment);
+  if (!signatures.length) {
+    return !storedNotificationExists(stored, "shipped");
+  }
+  const seen = notifiedShipmentSignatures(stored);
+  return signatures.some((signature) => !seen.has(signature));
+}
+
+function normalizeItemMatchName(value) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+// Map Printful order-item id -> item name, from the stored split sub-orders.
+function orderItemNameIndex(stored) {
+  const res = fulfillmentResult(stored && stored.fulfillment);
+  const index = new Map();
+  const subOrders = Array.isArray(res.orders) ? res.orders : [];
+  for (const subOrder of subOrders) {
+    const items = [].concat(
+      Array.isArray(subOrder.items) ? subOrder.items : [],
+      Array.isArray(subOrder.order_items) ? subOrder.order_items : [],
+    );
+    for (const item of items) {
+      if (item && item.id != null && item.name) {
+        index.set(String(item.id), String(item.name));
+      }
+    }
+  }
+  return index;
+}
+
+function shipmentTrackingNumber(shipment) {
+  return String((shipment && (shipment.tracking_number || shipment.tracking_code)) || "").trim();
+}
+
+function shipmentItemOrderIdsAndNames(shipment) {
+  const entries = [].concat(
+    Array.isArray(shipment && shipment.items) ? shipment.items : [],
+    Array.isArray(shipment && shipment.order_items) ? shipment.order_items : [],
+  );
+  const ids = [];
+  const names = [];
+  for (const item of entries) {
+    if (item == null) {
+      continue;
+    }
+    const id = item.order_item_id ?? item.item_id ?? item.id ?? (item.order_item && item.order_item.id);
+    if (id != null) {
+      ids.push(String(id));
+    }
+    if (item.name) {
+      names.push(String(item.name));
+    }
+    if (item.product && item.product.name) {
+      names.push(String(item.product.name));
+    }
+  }
+  return { ids, names };
+}
+
+// Normalized names of items in shipments not yet emailed, or null when the
+// shipment payload carries no resolvable item references (caller keeps full list).
+function newShipmentItemNames(stored, fulfillment, previouslyNotifiedTracking) {
+  const res = fulfillmentResult(fulfillment);
+  const shipments = Array.isArray(res.shipments) ? res.shipments : [];
+  if (!shipments.length) {
+    return null;
+  }
+  const nameIndex = orderItemNameIndex(stored);
+  const wanted = new Set();
+  let sawReference = false;
+  for (const shipment of shipments) {
+    const tracking = shipmentTrackingNumber(shipment);
+    if (tracking && previouslyNotifiedTracking && previouslyNotifiedTracking.has(tracking)) {
+      continue;
+    }
+    const { ids, names } = shipmentItemOrderIdsAndNames(shipment);
+    for (const id of ids) {
+      const name = nameIndex.get(id);
+      if (name) {
+        wanted.add(normalizeItemMatchName(name));
+        sawReference = true;
+      }
+    }
+    for (const name of names) {
+      wanted.add(normalizeItemMatchName(name));
+      sawReference = true;
+    }
+  }
+  return sawReference ? wanted : null;
+}
+
+function receiptItemMatchesShipment(item, wantedNames) {
+  const base = normalizeItemMatchName(item.name);
+  const withSize = normalizeItemMatchName(`${item.name} ${item.size || ""}`);
+  for (const wanted of wantedNames) {
+    if (!wanted) {
+      continue;
+    }
+    if (wanted === base || wanted === withSize) {
+      return true;
+    }
+    if (base && (wanted.startsWith(base) || base.startsWith(wanted))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Scope the order's line items to just the parcel(s) in this shipment. Returns
+// null (caller keeps the full order list) when scoping can't be determined or
+// would select all/none, so a shipped email never shows a wrong or empty list.
+function scopeItemsToNewShipments(stored, fulfillment, receiptItems, previouslyNotifiedTracking) {
+  if (!stored || !Array.isArray(receiptItems) || receiptItems.length <= 1) {
+    return null;
+  }
+  const wanted = newShipmentItemNames(stored, fulfillment, previouslyNotifiedTracking);
+  if (!wanted || !wanted.size) {
+    return null;
+  }
+  const matched = receiptItems.filter((item) => receiptItemMatchesShipment(item, wanted));
+  if (!matched.length || matched.length === receiptItems.length) {
+    return null;
+  }
+  return matched;
+}
+
 function uniqueNonEmpty(values) {
   return Array.from(new Set(values.map((value) => String(value || "").trim()).filter(Boolean)));
 }
@@ -1910,16 +2675,19 @@ function uniqueNonEmpty(values) {
 function printfulOrderCandidatesForStoredOrder(sessionId, stored) {
   const result = fulfillmentResult(stored && stored.fulfillment);
   const order = result && typeof result.order === "object" ? result.order : {};
+  const records = printfulCoreOrderRecords(stored && stored.fulfillment);
   const orderIds = uniqueNonEmpty([
     result && result.id,
     result && result.order_id,
     result && result.printful_order_id,
     order.id,
+    ...records.map((record) => record.id || record.order_id || record.printful_order_id),
   ]);
   const externalIds = uniqueNonEmpty([
     result && result.external_id,
     result && result.order_external_id,
     order.external_id,
+    ...records.map((record) => record.external_id),
     printfulExternalId(sessionId),
   ]);
   return [
@@ -1978,19 +2746,31 @@ async function fetchPrintfulV1OrderShipments(env, candidate) {
 async function fetchPrintfulShipmentsForStoredOrder(env, sessionId, stored) {
   const candidates = printfulOrderCandidatesForStoredOrder(sessionId, stored);
   const failures = [];
+  let firstSuccessfulLookup = null;
   for (const candidate of candidates) {
     const v2 = await fetchPrintfulV2Shipments(env, candidate);
     if (v2.ok) {
-      return v2;
+      firstSuccessfulLookup = firstSuccessfulLookup || v2;
+      if (stageFromPrintfulShipments(v2.shipments, v2.order || {})) {
+        return v2;
+      }
+      continue;
     }
     failures.push({ source: "printful_v2_shipments", candidate, http_status: v2.http_status });
   }
   for (const candidate of candidates) {
     const v1 = await fetchPrintfulV1OrderShipments(env, candidate);
     if (v1.ok) {
-      return v1;
+      firstSuccessfulLookup = firstSuccessfulLookup || v1;
+      if (stageFromPrintfulShipments(v1.shipments, v1.order || {})) {
+        return v1;
+      }
+      continue;
     }
     failures.push({ source: "printful_v1_order", candidate, http_status: v1.http_status });
+  }
+  if (firstSuccessfulLookup) {
+    return firstSuccessfulLookup;
   }
   return { ok: false, failures };
 }
@@ -2035,11 +2815,37 @@ function stageFromPrintfulShipments(shipments, order = {}) {
   return "";
 }
 
-// Acquire an exclusive claim on a (session, stage, shipment) notification slot.
-// Prefers the Durable Object lock (strongly consistent — fully race-proof even for
-// perfectly simultaneous triggers). Falls back to KV claim-before-send when the
-// NOTIFICATION_LOCK binding is absent, so the Worker still runs (with KV's small
-// non-atomic window) if the lock has not been wired up yet.
+// A reserved-but-not-yet-committed claim older than this is treated as abandoned
+// (Worker died between reserving and committing) and may be re-claimed.
+const NOTIFICATION_CLAIM_STALE_MS = 120000;
+
+function stableHash(value) {
+  const str = String(value === undefined || value === null ? "" : value);
+  let hash = 5381;
+  for (let i = 0; i < str.length; i += 1) {
+    hash = ((hash << 5) + hash + str.charCodeAt(i)) >>> 0;
+  }
+  return hash.toString(36);
+}
+
+// Per-(session, stage, parcel) claim key. Shipped notifications are keyed by the
+// same parcel signatures the dedup uses, so each parcel is claimed independently and
+// a split order still emails once per box; other stages are keyed per stage.
+function notificationClaimKey(sessionId, stage, fulfillment) {
+  const base = notificationKey(sessionId, stage);
+  if (stage !== "shipped") {
+    return base;
+  }
+  const signatures = shipmentSignaturesFromFulfillment(fulfillment);
+  if (!signatures.length) {
+    return base;
+  }
+  return `${base}:${stableHash(signatures.slice().sort().join("|"))}`;
+}
+
+// Atomically reserve a notification slot before sending. Prefers the Durable Object
+// lock (strongly consistent — race-proof even for simultaneous triggers); falls back
+// to KV claim-before-send if NOTIFICATION_LOCK is not bound.
 async function acquireNotificationClaim(env, key) {
   if (env.NOTIFICATION_LOCK) {
     const stub = env.NOTIFICATION_LOCK.get(env.NOTIFICATION_LOCK.idFromName(key));
@@ -2051,76 +2857,78 @@ async function acquireNotificationClaim(env, key) {
     return { ok: Boolean(data.claimed), backend: "durable_object" };
   }
   if (env.MERCH_ORDERS) {
-    const existingRaw = await env.MERCH_ORDERS.get(key);
-    if (existingRaw) {
+    const raw = await env.MERCH_ORDERS.get(`claim:${key}`);
+    if (raw) {
       let existing = null;
       try {
-        existing = JSON.parse(existingRaw);
+        existing = JSON.parse(raw);
       } catch (_err) {
         existing = null;
       }
-      const isStaleClaim = existing
+      const isStale = existing
         && existing.status === "claiming"
         && Date.now() - Date.parse(existing.stored_at || "") > NOTIFICATION_CLAIM_STALE_MS;
-      if (!isStaleClaim) {
+      if (!isStale) {
         return { ok: false, backend: "kv" };
       }
-      // A prior attempt reserved the slot but never committed (crash mid-send) and is
-      // old enough to safely re-attempt.
     }
-    await env.MERCH_ORDERS.put(key, JSON.stringify({ status: "claiming", stored_at: new Date().toISOString() }));
+    await env.MERCH_ORDERS.put(`claim:${key}`, JSON.stringify({ status: "claiming", stored_at: new Date().toISOString() }));
     return { ok: true, backend: "kv" };
   }
-  // No durable store configured: cannot dedupe, so allow the send.
   return { ok: true, backend: "none" };
 }
 
 async function releaseNotificationClaim(env, key) {
   if (env.NOTIFICATION_LOCK) {
     const stub = env.NOTIFICATION_LOCK.get(env.NOTIFICATION_LOCK.idFromName(key));
-    await stub.fetch("https://notification-lock/release", {
-      method: "POST",
-      body: JSON.stringify({ action: "release" }),
-    }).catch(() => {});
+    await stub.fetch("https://notification-lock/release", { method: "POST", body: JSON.stringify({ action: "release" }) }).catch(() => {});
     return;
   }
   if (env.MERCH_ORDERS) {
-    await env.MERCH_ORDERS.delete(key).catch(() => {});
+    await env.MERCH_ORDERS.delete(`claim:${key}`).catch(() => {});
   }
 }
 
 async function commitNotificationClaim(env, key) {
   if (env.NOTIFICATION_LOCK) {
     const stub = env.NOTIFICATION_LOCK.get(env.NOTIFICATION_LOCK.idFromName(key));
-    await stub.fetch("https://notification-lock/commit", {
-      method: "POST",
-      body: JSON.stringify({ action: "commit" }),
-    }).catch(() => {});
+    await stub.fetch("https://notification-lock/commit", { method: "POST", body: JSON.stringify({ action: "commit" }) }).catch(() => {});
   }
-  // The rich KV record is written separately by recordOrderNotification.
 }
 
 async function sendOrderStageNotification(env, sessionId, stage, fulfillment) {
   if (!sessionId || !stage) {
     return { status: "skipped", reason: "missing session id or stage" };
   }
-  // Idempotency is keyed on the individual shipment so an order that ships in
-  // multiple packages emits one email per package, while every retry/second-trigger
-  // for the SAME package collapses to a single send.
-  const shipmentKey = shipmentIdentifier(fulfillment);
-  const key = notificationKey(sessionId, stage, shipmentKey);
-  // Claim-before-send: reserve the slot BEFORE sending so a concurrent trigger (the
-  // real-time webhook racing the scheduled poll, or a webhook redelivery) backs off
-  // instead of sending a duplicate. The Durable Object lock makes this fully atomic;
-  // KV claim-before-send is the graceful fallback when the lock is not bound.
-  const claim = await acquireNotificationClaim(env, key);
+  let stored = null;
+  if (env.MERCH_ORDERS) {
+    const existingRaw = await env.MERCH_ORDERS.get(orderKey(sessionId));
+    if (existingRaw) {
+      try {
+        stored = JSON.parse(existingRaw);
+      } catch (_err) {
+        stored = null;
+      }
+    }
+    const alreadyNotified = stage === "shipped"
+      ? !shippedShipmentIsNew(stored, fulfillment)
+      : storedNotificationExists(stored, stage);
+    if (alreadyNotified) {
+      return { status: "duplicate", stage, session_id: sessionId };
+    }
+  }
+  // Claim-before-send: the KV check above dedupes already-recorded notifications;
+  // this closes the in-flight window between that check and the record, where two
+  // concurrent triggers (webhook racing the poll, or a webhook redelivery) would
+  // otherwise both send. The Durable Object makes the reservation fully atomic.
+  const claimKey = notificationClaimKey(sessionId, stage, fulfillment);
+  const claim = await acquireNotificationClaim(env, claimKey);
   if (!claim.ok) {
-    return { status: "duplicate", stage, session_id: sessionId, shipment_key: shipmentKey };
+    return { status: "duplicate", stage, session_id: sessionId, claim: claim.backend };
   }
   const session = await fetchStripeCheckoutSession(env, sessionId, ["payment_intent.latest_charge", "payment_intent.payment_method"]);
   if (!session || session.error) {
-    // Release the claim so a later webhook/poll can retry this shipment.
-    await releaseNotificationClaim(env, key);
+    await releaseNotificationClaim(env, claimKey);
     return {
       status: "failed",
       reason: "Stripe Checkout session lookup failed",
@@ -2129,106 +2937,82 @@ async function sendOrderStageNotification(env, sessionId, stage, fulfillment) {
       session_id: sessionId,
     };
   }
-  const notification = await sendLifecycleEmail(env, session, stage, fulfillment);
+  const notification = await sendLifecycleEmail(env, session, stage, fulfillment, {
+    stored,
+    previouslyNotifiedTracking: notifiedShipmentSignatures(stored),
+  });
   if (notification.status === "failed") {
-    // Release the claim so the next trigger can retry the send.
-    await releaseNotificationClaim(env, key);
+    await releaseNotificationClaim(env, claimKey);
     console.error("SmartSleeve lifecycle email failed", JSON.stringify({
       stripe_session_id: sessionId,
       stage,
-      shipment_key: shipmentKey,
       http_status: notification.http_status,
       reason: notification.reason,
     }));
     return { status: "failed", stage, session_id: sessionId, notification };
   }
-  // Commit the claim (mark the slot permanently taken) and persist the record.
-  await commitNotificationClaim(env, key);
-  await recordOrderNotification(env, sessionId, stage, notification, shipmentKey);
-  return { status: notification.status, stage, session_id: sessionId, shipment_key: shipmentKey, notification };
+  const shipmentSignatures = stage === "shipped" ? shipmentSignaturesFromFulfillment(fulfillment) : [];
+  await recordOrderNotification(env, sessionId, stage, notification, stored, shipmentSignatures);
+  await commitNotificationClaim(env, claimKey);
+  // Keep the pending poll key alive after a shipment when split-shipment polling is
+  // on, so later parcels are still caught; only clear on delivery (or if the split
+  // behavior is disabled, revert to clearing after the first shipment).
+  const clearAfterShipped = stage === "shipped"
+    && !printfulDeliveryPollingEnabled(env)
+    && !printfulSplitShipmentPollingEnabled(env);
+  if (stage === "delivered" || clearAfterShipped) {
+    await clearPrintfulPendingPoll(env, sessionId, { stored });
+  }
+  return { status: notification.status, stage, session_id: sessionId, notification };
 }
 
-async function markInferredNotification(env, sessionId, stage, reason, shipmentKey = "") {
+async function markInferredNotification(env, sessionId, stage, reason) {
   if (!env.MERCH_ORDERS || !sessionId || !stage) {
     return;
   }
-  const alreadySent = await env.MERCH_ORDERS.get(notificationKey(sessionId, stage, shipmentKey));
-  if (!alreadySent) {
-    await recordOrderNotification(env, sessionId, stage, {
-      status: "inferred",
-      reason,
-      email_sent: false,
-    }, shipmentKey);
-  }
-}
-
-function printfulPollingFulfillmentForShipment(shipment, shipmentResult, stage) {
-  return printfulPollingFulfillment({
-    shipments: shipment ? [shipment] : [],
-    order: shipmentResult.order,
-    lookup_source: shipmentResult.source,
-    lookup_candidate_type: shipmentResult.candidate && shipmentResult.candidate.type,
-  }, stage);
+  await recordOrderNotification(env, sessionId, stage, {
+    status: "inferred",
+    reason,
+    email_sent: false,
+  });
 }
 
 async function processPolledPrintfulOrder(env, sessionId, stored) {
+  const deliveredAlready = storedNotificationExists(stored, "delivered");
+  if (deliveredAlready) {
+    await clearPrintfulPendingPoll(env, sessionId, { stored });
+    return { status: "skipped", reason: "delivered notification already recorded", session_id: sessionId };
+  }
   const shipmentResult = await fetchPrintfulShipmentsForStoredOrder(env, sessionId, stored);
   if (!shipmentResult.ok) {
     return { status: "failed", reason: "Printful shipment lookup failed", session_id: sessionId, failures: shipmentResult.failures };
   }
-  const shipments = Array.isArray(shipmentResult.shipments) ? shipmentResult.shipments : [];
-
-  // No per-shipment records available: fall back to whole-order status with a
-  // stage-only key (legacy behavior). sendOrderStageNotification still dedupes.
-  if (shipments.length === 0) {
-    const stage = stageFromPrintfulShipments([], shipmentResult.order || {});
-    if (!stage) {
-      return { status: "skipped", reason: "no shipped or delivered status yet", session_id: sessionId };
-    }
-    return sendOrderStageNotification(
-      env,
-      sessionId,
-      stage,
-      printfulPollingFulfillmentForShipment(null, shipmentResult, stage),
-    );
-  }
-
-  // Emit one notification per package. Each shipment is deduped independently inside
-  // sendOrderStageNotification (per-shipment claim), so a split order that ships in
-  // two boxes produces one email per box, and the webhook + poll never double up on
-  // the same box.
-  const results = [];
-  for (const shipment of shipments) {
-    const stage = stageFromPrintfulShipments([shipment], {});
-    if (!stage) {
-      continue;
-    }
-    const fulfillment = printfulPollingFulfillmentForShipment(shipment, shipmentResult, stage);
-    const result = await sendOrderStageNotification(env, sessionId, stage, fulfillment);
-    results.push(result);
-    if (stage === "delivered" && result.status !== "failed") {
-      await markInferredNotification(
-        env,
-        sessionId,
-        "shipped",
-        "delivery status was observed before a shipped email was sent",
-        shipmentIdentifier(fulfillment),
-      );
-    }
-  }
-
-  if (results.length === 0) {
+  const stage = stageFromPrintfulShipments(shipmentResult.shipments, shipmentResult.order || {});
+  if (!stage) {
     return { status: "skipped", reason: "no shipped or delivered status yet", session_id: sessionId };
   }
-  const failed = results.filter((result) => result && result.status === "failed");
-  const sent = results.filter((result) => result && result.status === "sent");
-  return {
-    status: failed.length ? "failed" : (sent.length ? "sent" : "skipped"),
-    session_id: sessionId,
-    shipments: results.length,
-    sent: sent.length,
-    results,
-  };
+  const fulfillment = printfulPollingFulfillment({
+    shipments: shipmentResult.shipments,
+    order: shipmentResult.order,
+    lookup_source: shipmentResult.source,
+    lookup_candidate_type: shipmentResult.candidate && shipmentResult.candidate.type,
+  }, stage);
+  if (stage === "delivered") {
+    const shippedAlready = storedNotificationExists(stored, "shipped");
+    const delivered = await sendOrderStageNotification(env, sessionId, "delivered", fulfillment);
+    if (delivered.status !== "failed") {
+      await clearPrintfulPendingPoll(env, sessionId, { stored });
+    }
+    if (!shippedAlready && delivered.status !== "failed") {
+      await markInferredNotification(env, sessionId, "shipped", "delivery status was observed before a shipped email was sent");
+    }
+    return delivered;
+  }
+  // stage === "shipped": sendOrderStageNotification dedupes per shipment, so each
+  // parcel emails once. The pending poll key is intentionally left in place (unless
+  // split-shipment polling is disabled inside sendOrderStageNotification) so later
+  // split shipments are still caught; it is pruned on delivery or window expiry.
+  return sendOrderStageNotification(env, sessionId, "shipped", fulfillment);
 }
 
 async function pollPrintfulShipmentStatuses(env, context = {}) {
@@ -2242,27 +3026,58 @@ async function pollPrintfulShipmentStatuses(env, context = {}) {
     return { status: "skipped", reason: "MERCH_PRINTFUL_POLL_ENABLED=false" };
   }
   const limit = Math.min(1000, positiveEnvInt(env, "MERCH_PRINTFUL_POLL_LIMIT", PRINTFUL_POLL_DEFAULT_LIMIT));
+  const scanLimit = Math.min(
+    1000,
+    positiveEnvInt(env, "MERCH_PRINTFUL_POLL_SCAN_LIMIT", Math.max(PRINTFUL_POLL_DEFAULT_SCAN_LIMIT, limit * 5)),
+  );
   const lookbackDays = positiveEnvInt(env, "MERCH_PRINTFUL_POLL_LOOKBACK_DAYS", PRINTFUL_POLL_DEFAULT_LOOKBACK_DAYS);
   let cursor;
   let scanned = 0;
   let considered = 0;
   let notifications = 0;
+  let pruned = 0;
   const failures = [];
   do {
+    const remainingScan = scanLimit - scanned;
+    if (remainingScan <= 0 || considered >= limit) {
+      break;
+    }
     const listed = await env.MERCH_ORDERS.list({
-      prefix: "stripe:session:",
-      limit: Math.min(1000, limit - scanned),
+      prefix: "printful:pending:",
+      limit: Math.min(1000, remainingScan),
       cursor,
     });
     cursor = listed.cursor;
     for (const key of listed.keys || []) {
+      if (considered >= limit) {
+        break;
+      }
       scanned += 1;
-      const sessionId = storedOrderSessionIdFromKey(key.name);
+      const metadata = key.metadata && typeof key.metadata === "object" ? key.metadata : {};
+      const sessionId = storedPendingSessionIdFromKey(key.name)
+        || metadata.stripe_session_id
+        || "";
+      if (pendingMetadataIsExpired(metadata)) {
+        if (sessionId) {
+          await clearPrintfulPendingPoll(env, sessionId, { pendingKey: key.name });
+        } else {
+          await env.MERCH_ORDERS.delete(key.name);
+        }
+        pruned += 1;
+        continue;
+      }
       if (!sessionId) {
         continue;
       }
-      const raw = await env.MERCH_ORDERS.get(key.name);
+      if (pendingMetadataStageGoal(metadata) === "delivered" && !printfulDeliveryPollingEnabled(env)) {
+        await clearPrintfulPendingPoll(env, sessionId, { pendingKey: key.name });
+        pruned += 1;
+        continue;
+      }
+      const raw = await env.MERCH_ORDERS.get(orderKey(sessionId));
       if (!raw) {
+        await clearPrintfulPendingPoll(env, sessionId, { pendingKey: key.name });
+        pruned += 1;
         continue;
       }
       let stored;
@@ -2272,7 +3087,9 @@ async function pollPrintfulShipmentStatuses(env, context = {}) {
         failures.push({ session_id: sessionId, reason: "stored order JSON parse failed" });
         continue;
       }
-      if (!storedOrderIsPollable(stored, lookbackDays)) {
+      if (!storedOrderIsPollable(env, stored, lookbackDays)) {
+        await clearPrintfulPendingPoll(env, sessionId, { pendingKey: key.name, stored });
+        pruned += 1;
         continue;
       }
       considered += 1;
@@ -2284,7 +3101,7 @@ async function pollPrintfulShipmentStatuses(env, context = {}) {
         failures.push(result);
       }
     }
-  } while (cursor && scanned < limit);
+  } while (cursor && scanned < scanLimit && considered < limit);
   return {
     status: failures.length ? "completed_with_failures" : "completed",
     cron: context.cron,
@@ -2292,6 +3109,8 @@ async function pollPrintfulShipmentStatuses(env, context = {}) {
     scanned,
     considered,
     notifications,
+    pruned,
+    scan_limit: scanLimit,
     failures: failures.slice(0, 10),
   };
 }
@@ -2314,6 +3133,7 @@ async function storeOrder(env, session, fulfillment, receipt) {
     return;
   }
   await storePrintfulIndexes(env, session, fulfillment);
+  const printfulPendingKeyName = await storePrintfulPendingPoll(env, session, fulfillment);
   await env.MERCH_ORDERS.put(
     orderKey(session.id),
     JSON.stringify({
@@ -2327,46 +3147,45 @@ async function storeOrder(env, session, fulfillment, receipt) {
       size: customFieldValue(session, "merch_size") || customFieldValue(session, "shirt_size"),
       fulfillment,
       receipt,
+      printful_pending_key: printfulPendingKeyName || undefined,
     }),
   );
 }
 
-async function recordOrderNotification(env, sessionId, stage, notification, shipmentKey = "") {
+async function recordOrderNotification(env, sessionId, stage, notification, existing = null, shipmentSignatures = []) {
   if (!env.MERCH_ORDERS || !sessionId || !stage) {
     return;
   }
   const storedAt = new Date().toISOString();
-  // Commit the authoritative per-shipment idempotency record, overwriting any
-  // "claiming" reservation left by claim-before-send.
-  await env.MERCH_ORDERS.put(
-    notificationKey(sessionId, stage, shipmentKey),
-    JSON.stringify({
-      status: notification && notification.status ? notification.status : "sent",
-      stored_at: storedAt,
-      stage,
-      shipment_key: shipmentKey,
-      notification,
-    }),
-  );
-  const existingRaw = await env.MERCH_ORDERS.get(orderKey(sessionId));
-  if (!existingRaw) {
-    return;
+  let stored = existing;
+  if (!stored) {
+    const existingRaw = await env.MERCH_ORDERS.get(orderKey(sessionId));
+    if (!existingRaw) {
+      return;
+    }
+    try {
+      stored = JSON.parse(existingRaw);
+    } catch (_err) {
+      return;
+    }
   }
   try {
-    const existing = JSON.parse(existingRaw);
-    const notifications = existing.notifications && typeof existing.notifications === "object"
-      ? existing.notifications
+    const notifications = stored.notifications && typeof stored.notifications === "object"
+      ? stored.notifications
       : {};
-    // Keep one entry per package under each stage so a multi-package order retains a
-    // record for every shipment rather than clobbering earlier ones.
-    const stageRecord = notifications[stage] && typeof notifications[stage] === "object"
-      ? notifications[stage]
-      : {};
-    stageRecord[shipmentKey || "_order"] = { stored_at: storedAt, notification };
-    notifications[stage] = stageRecord;
-    await env.MERCH_ORDERS.put(orderKey(sessionId), JSON.stringify(Object.assign(existing, { notifications })));
+    notifications[stage] = { stored_at: storedAt, notification };
+    if (stage === "shipped" && Array.isArray(shipmentSignatures) && shipmentSignatures.length) {
+      const shippedShipments = notifications.shipped_shipments && typeof notifications.shipped_shipments === "object"
+        ? notifications.shipped_shipments
+        : {};
+      for (const signature of shipmentSignatures) {
+        shippedShipments[signature] = { stored_at: storedAt };
+      }
+      notifications.shipped_shipments = shippedShipments;
+    }
+    await env.MERCH_ORDERS.put(orderKey(sessionId), JSON.stringify(Object.assign(stored, { notifications })));
   } catch (_err) {
-    // Keep the idempotency record even if the historical order payload is malformed.
+    // Keep lifecycle processing resilient even if a historical order payload is malformed.
   }
 }
 
@@ -2417,7 +3236,20 @@ async function handleStripeWebhook(request, env) {
   if (event.type !== "checkout.session.completed") {
     return jsonResponse(request, env, { received: true, ignored: event.type });
   }
-  const session = event.data && event.data.object ? event.data.object : {};
+  const eventSession = event.data && event.data.object ? event.data.object : {};
+  const session = eventSession.id
+    ? await fetchStripeCheckoutSession(env, eventSession.id, ["payment_intent.latest_charge", "payment_intent.payment_method"])
+    : eventSession;
+  if (!session || session.error) {
+    console.error("SmartSleeve Stripe session refresh failed", JSON.stringify({
+      stripe_session_id: eventSession.id,
+      stripe_error: session && session.error,
+    }));
+    return jsonResponse(request, env, {
+      error: "Stripe Checkout session lookup failed",
+      stripe_error: session && session.error,
+    }, 502);
+  }
   const alreadyStored = env.MERCH_ORDERS && session.id
     ? await env.MERCH_ORDERS.get(orderKey(session.id))
     : null;
@@ -2524,6 +3356,182 @@ async function pollPrintfulForOrders(request, env) {
   return jsonResponse(request, env, result, status);
 }
 
+function isStripeSessionId(value) {
+  return /^cs_(test|live)_[A-Za-z0-9]+$/.test(String(value || "").trim());
+}
+
+async function sessionIdForAdminPrintfulLookup(env, body) {
+  const directSessionId = String(body.session_id || "").trim();
+  if (isStripeSessionId(directSessionId)) {
+    return directSessionId;
+  }
+  const paymentIntentId = String(body.payment_intent || body.payment_intent_id || "").trim();
+  if (paymentIntentId) {
+    const session = await fetchStripeCheckoutSessionForPaymentIntent(env, paymentIntentId);
+    if (session && session.id) {
+      return session.id;
+    }
+  }
+  if (!env.MERCH_ORDERS) {
+    return "";
+  }
+  const externalIds = uniqueNonEmpty([
+    body.external_id,
+    body.printful_external_id,
+    body.order_external_id,
+    body.order_number,
+  ]);
+  for (const externalId of externalIds) {
+    if (isStripeSessionId(externalId)) {
+      return externalId;
+    }
+    const sessionId = await env.MERCH_ORDERS.get(printfulExternalIndexKey(externalId));
+    if (sessionId) {
+      return sessionId;
+    }
+  }
+  const orderIds = uniqueNonEmpty([
+    body.printful_order_id,
+    body.order_id,
+    body.provider_order_id,
+  ]).map((value) => value.replace(/^#/, ""));
+  for (const orderId of orderIds) {
+    const sessionId = await env.MERCH_ORDERS.get(printfulOrderIndexKey(orderId));
+    if (sessionId) {
+      return sessionId;
+    }
+  }
+  return "";
+}
+
+function printfulAdminRecoveryIdentifiers(body, sessionId) {
+  const externalId = uniqueNonEmpty([
+    body.external_id,
+    body.printful_external_id,
+    body.order_external_id,
+    body.order_number,
+    printfulExternalId(sessionId),
+  ])[0];
+  const orderId = uniqueNonEmpty([
+    body.printful_order_id,
+    body.order_id,
+    body.provider_order_id,
+  ]).map((value) => value.replace(/^#/, ""))[0];
+  return { externalId, orderId };
+}
+
+function recoveredPrintfulFulfillment(body, sessionId) {
+  const identifiers = printfulAdminRecoveryIdentifiers(body, sessionId);
+  const result = {
+    external_id: identifiers.externalId,
+    source: "admin_payment_intent_recovery",
+  };
+  if (identifiers.orderId) {
+    result.id = identifiers.orderId;
+    result.order_id = identifiers.orderId;
+    result.printful_order_id = identifiers.orderId;
+  }
+  return {
+    status: "submitted",
+    provider: "printful",
+    provider_response: { result },
+  };
+}
+
+async function recoverStoredPrintfulOrderForPoll(env, body, sessionId) {
+  const session = await fetchStripeCheckoutSession(env, sessionId, ["payment_intent.latest_charge", "payment_intent.payment_method"]);
+  if (!session || session.error) {
+    return { error: "Stripe Checkout session lookup failed", stripe_error: session && session.error, status: 502 };
+  }
+  const paymentStatus = String(session.payment_status || "").toLowerCase();
+  if (paymentStatus !== "paid") {
+    return { error: "Stripe session is not paid", payment_status: paymentStatus || "unknown", status: 409 };
+  }
+  const fulfillment = recoveredPrintfulFulfillment(body, sessionId);
+  await storeOrder(env, session, fulfillment, {
+    status: "recovered",
+    reason: "admin_poll_printful_order",
+    recovered_at: new Date().toISOString(),
+  });
+  const raw = await env.MERCH_ORDERS.get(orderKey(sessionId));
+  if (!raw) {
+    return { error: "Recovered SmartSleeve order was not readable from KV", status: 502 };
+  }
+  try {
+    return { stored: JSON.parse(raw), recovered: true };
+  } catch (_err) {
+    return { error: "Recovered SmartSleeve order JSON parse failed", status: 500 };
+  }
+}
+
+async function pollPrintfulForSingleOrder(request, env) {
+  if (!isAdminAuthorized(request, env, { allowRecoveryToken: true })) {
+    return jsonResponse(request, env, { error: "Unauthorized" }, 401);
+  }
+  if (!env.MERCH_ORDERS) {
+    return jsonResponse(request, env, { error: "MERCH_ORDERS KV binding not configured" }, 503);
+  }
+  if (!env.PRINTFUL_API_KEY) {
+    return jsonResponse(request, env, { error: "PRINTFUL_API_KEY not configured" }, 503);
+  }
+  const body = await readJson(request);
+  const sessionId = await sessionIdForAdminPrintfulLookup(env, body);
+  if (!sessionId) {
+    return jsonResponse(request, env, {
+      error: "No SmartSleeve order mapping found",
+      accepted_identifiers: ["session_id", "external_id", "printful_external_id", "printful_order_id"],
+    }, 404);
+  }
+  const raw = await env.MERCH_ORDERS.get(orderKey(sessionId));
+  let stored;
+  let recovered = false;
+  if (raw) {
+    try {
+      stored = JSON.parse(raw);
+    } catch (_err) {
+      return jsonResponse(request, env, { error: "Stored SmartSleeve order JSON parse failed", session_id: sessionId }, 500);
+    }
+  } else {
+    const recovery = await recoverStoredPrintfulOrderForPoll(env, body, sessionId);
+    if (recovery.error) {
+      return jsonResponse(request, env, Object.assign({ session_id: sessionId }, recovery), recovery.status || 500);
+    }
+    stored = recovery.stored;
+    recovered = Boolean(recovery.recovered);
+  }
+  const result = await processPolledPrintfulOrder(env, sessionId, stored);
+  const status = result.status === "failed" ? 502 : 200;
+  return jsonResponse(request, env, { session_id: sessionId, recovered, result }, status);
+}
+
+async function preflightPrintful(request, env) {
+  if (!isAdminAuthorized(request, env)) {
+    return jsonResponse(request, env, { error: "Unauthorized" }, 401);
+  }
+  if (!env.PRINTFUL_API_KEY) {
+    return jsonResponse(request, env, { error: "PRINTFUL_API_KEY not configured" }, 503);
+  }
+  const body = await readJson(request);
+  const selection = preflightCheckoutItems(env, body);
+  if (selection.items.length === 0) {
+    return jsonResponse(request, env, {
+      status: "skipped",
+      reason: "No matching catalog items selected",
+      total_candidates: selection.total_candidates,
+      offset: selection.offset,
+      limit: selection.limit,
+    }, 400);
+  }
+  const result = await preflightPrintfulV2Items(env, selection.items, body.create_draft === true);
+  const ok = result.status === "passed";
+  return jsonResponse(request, env, Object.assign({
+    api_version: "v2",
+    total_candidates: selection.total_candidates,
+    offset: selection.offset,
+    limit: selection.limit,
+  }, result), ok ? 200 : 502);
+}
+
 function notificationLockJson(body, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -2533,8 +3541,8 @@ function notificationLockJson(body, status = 200) {
 
 // Strongly-consistent, single-threaded lock that makes notification claims fully
 // atomic across the racing webhook and scheduled-poll paths. One instance per
-// notification key (idFromName(key)) serializes claim/commit/release for that key,
-// so even two perfectly simultaneous triggers can never both send.
+// notification key (idFromName(key)) serializes claim/commit/release, so even two
+// perfectly simultaneous triggers for the same parcel can never both send.
 export class NotificationLock {
   constructor(ctx) {
     this.ctx = ctx;
@@ -2549,8 +3557,6 @@ export class NotificationLock {
     }
     const action = body.action;
     const staleMs = Number(body.staleMs) > 0 ? Number(body.staleMs) : 120000;
-    // blockConcurrencyWhile guarantees the read-modify-write runs with no other
-    // event interleaved on this object, making the claim atomic.
     return this.ctx.blockConcurrencyWhile(async () => {
       const current = await this.ctx.storage.get("entry");
       const now = Date.now();
@@ -2562,7 +3568,6 @@ export class NotificationLock {
           if (!isStaleClaim) {
             return notificationLockJson({ claimed: false, existing: current });
           }
-          // Previous claim crashed mid-send and is old enough to reclaim.
         }
         await this.ctx.storage.put("entry", { status: "claiming", at: now });
         return notificationLockJson({ claimed: true });
@@ -2600,6 +3605,9 @@ export default {
         printful_poll_configured: Boolean(env.MERCH_ORDERS && env.PRINTFUL_API_KEY),
         printful_poll_enabled: String(env.MERCH_PRINTFUL_POLL_ENABLED || "true").toLowerCase() !== "false",
         printful_poll_limit: positiveEnvInt(env, "MERCH_PRINTFUL_POLL_LIMIT", PRINTFUL_POLL_DEFAULT_LIMIT),
+        printful_poll_scan_limit: positiveEnvInt(env, "MERCH_PRINTFUL_POLL_SCAN_LIMIT", PRINTFUL_POLL_DEFAULT_SCAN_LIMIT),
+        printful_poll_lookback_days: positiveEnvInt(env, "MERCH_PRINTFUL_POLL_LOOKBACK_DAYS", PRINTFUL_POLL_DEFAULT_LOOKBACK_DAYS),
+        printful_delivery_poll_enabled: printfulDeliveryPollingEnabled(env),
         receipt_from_email: String(env.MERCH_RECEIPT_FROM_EMAIL || DEFAULT_RECEIPT_FROM_EMAIL),
         fulfillment_provider: env.MERCH_FULFILLMENT_PROVIDER || "none",
         printful_confirm_orders: String(env.PRINTFUL_CONFIRM_ORDERS || "").toLowerCase() === "true",
@@ -2626,6 +3634,12 @@ export default {
     }
     if (request.method === "POST" && url.pathname === "/admin/poll-printful") {
       return pollPrintfulForOrders(request, env);
+    }
+    if (request.method === "POST" && url.pathname === "/admin/poll-printful-order") {
+      return pollPrintfulForSingleOrder(request, env);
+    }
+    if (request.method === "POST" && url.pathname === "/admin/preflight-printful") {
+      return preflightPrintful(request, env);
     }
     return jsonResponse(request, env, { error: "Not found" }, 404);
   },
