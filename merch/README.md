@@ -13,6 +13,10 @@ These files power the static shop preview at `/app/#shop`.
 - `ss_and_sqts_tee_back_qr_print.png`: shared tee QR back art for SS/SQTS promo variants with a 3.25 in x 3.25 in QR code at 300 DPI.
 - `ss_and_sqts_tank_back_print.png`: shared tank back art for SS/SQTS website variants with tank-adjusted `smartsleeve.ai` placement.
 - `ss_and_sqts_tank_back_qr_print.png`: shared tank QR back art for SS/SQTS promo variants with tank-adjusted placement.
+- `smartsleeve-ss-mousepad-print.png`: black mousepad print art using the SS chip mark, short `SmartSleeve` lockup, and white slogan.
+- `sqts-llc-mousepad-print.png`: black mousepad print art using the official SQTS LLC banner lockup and white slogan.
+- `smartsleeve-ss-chest-lockup-print.png`: right-chest SmartSleeve SS logo/name lockup for black full-zip outerwear, with no slogan.
+- `sqts-llc-chest-lockup-print.png`: right-chest SQTS/company-name lockup for black full-zip outerwear, with no slogan.
 - `smartsleeve-back-print.png`: compatibility copy of the shared tee website back.
 - `smartsleeve-back-qr-print.png`: compatibility copy of the shared tee QR back.
 - `smartsleeve-tank-back-print.png`: compatibility copy of the shared tank website back.
@@ -39,10 +43,16 @@ These files power the static shop preview at `/app/#shop`.
 - `smartsleeve-ss-tank-promo-preview.png`: QR promo preview for the SS tank.
 - `sqts-llc-tee-promo-preview.png`: QR promo preview for the SQTS LLC tee.
 - `sqts-llc-tank-promo-preview.png`: QR promo preview for the SQTS LLC tank.
+- `smartsleeve-ss-mousepad-preview.png`: storefront preview for the SmartSleeve black mousepad.
+- `sqts-llc-mousepad-preview.png`: storefront preview for the SQTS black mousepad.
+- `smartsleeve-ss-windbreaker-preview.png`: storefront preview for the SmartSleeve black full-zip windbreaker.
+- `sqts-llc-windbreaker-preview.png`: storefront preview for the SQTS black full-zip windbreaker.
+- `smartsleeve-ss-fleece-preview.png`: storefront preview for the SmartSleeve black full-zip fleece jacket.
+- `sqts-llc-fleece-preview.png`: storefront preview for the SQTS black full-zip fleece jacket.
 
 ## Launch Products
 
-The active launch products are four garment/logo combinations, each with three variants:
+The active launch apparel products are four garment/logo combinations, each with three variants:
 
 - Brand: front art only; blank black back.
 - Website promo: front art plus white `smartsleeve.ai` on the back.
@@ -54,6 +64,17 @@ Core keys:
 - `smartsleeve-ss-tank-brand`, `smartsleeve-ss-tank`, `smartsleeve-ss-tank-promo`
 - `sqts-llc-tee-brand`, `sqts-llc-tee`, `sqts-llc-tee-promo`
 - `sqts-llc-tank-brand`, `sqts-llc-tank`, `sqts-llc-tank-promo`
+- `smartsleeve-ss-mousepad`, `sqts-llc-mousepad`
+- `smartsleeve-ss-windbreaker`, `sqts-llc-windbreaker`
+- `smartsleeve-ss-fleece`, `sqts-llc-fleece`
+
+Mousepads are one-size, one-sided black accessories using the same SmartSleeve and SQTS front artwork as the apparel.
+
+Outerwear products use a small right-chest logo/name lockup on black full-zip blanks. They intentionally skip back art and slogans.
+
+## Patagonia / Elevation Store Request
+
+See `elevation-patagonia-store-request.md` for the submitted Elevation Sports request covering black Patagonia full-zip outerwear, preferred right-chest placement, no-slogan SS/SQTS artwork, and the no-upfront-cost managed-store condition.
 
 The promo QR is intentionally subtle rather than billboard-sized: the print file places a 975 px x 975 px QR code, which maps to 3.25 in x 3.25 in at 300 DPI, below the back `smartsleeve.ai` wordmark.
 

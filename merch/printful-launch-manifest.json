@@ -16,6 +16,10 @@
     "shared_tee_back_qr": "merch/ss_and_sqts_tee_back_qr_print.png",
     "shared_tank_back_url": "merch/ss_and_sqts_tank_back_print.png",
     "shared_tank_back_qr": "merch/ss_and_sqts_tank_back_qr_print.png",
+    "smartsleeve_mousepad_front": "merch/smartsleeve-ss-mousepad-print.png",
+    "sqts_mousepad_front": "merch/sqts-llc-mousepad-print.png",
+    "smartsleeve_chest_lockup": "merch/smartsleeve-ss-chest-lockup-print.png",
+    "sqts_chest_lockup": "merch/sqts-llc-chest-lockup-print.png",
     "standard_back_url": "merch/smartsleeve-back-print.png",
     "standard_back_qr": "merch/smartsleeve-back-qr-print.png",
     "qr_standalone": "merch/smartsleeve-ai-qr.png"
@@ -68,6 +72,54 @@
       "front_art": "merch/sqts-llc-front-print.png",
       "back_art": "merch/ss_and_sqts_tank_back_qr_print.png",
       "preview": "merch/sqts-llc-tank-promo-preview.png"
+    },
+    {
+      "key": "smartsleeve-ss-mousepad",
+      "name": "SmartSleeve Mouse Pad",
+      "garment": "black mouse pad",
+      "front_art": "merch/smartsleeve-ss-mousepad-print.png",
+      "back_art": null,
+      "preview": "merch/smartsleeve-ss-mousepad-preview.png"
+    },
+    {
+      "key": "sqts-llc-mousepad",
+      "name": "SQTS Mouse Pad",
+      "garment": "black mouse pad",
+      "front_art": "merch/sqts-llc-mousepad-print.png",
+      "back_art": null,
+      "preview": "merch/sqts-llc-mousepad-preview.png"
+    },
+    {
+      "key": "smartsleeve-ss-windbreaker",
+      "name": "SmartSleeve Windbreaker",
+      "garment": "black full-zip windbreaker",
+      "front_art": "merch/smartsleeve-ss-chest-lockup-print.png",
+      "back_art": null,
+      "preview": "merch/smartsleeve-ss-windbreaker-preview.png"
+    },
+    {
+      "key": "sqts-llc-windbreaker",
+      "name": "SQTS Windbreaker",
+      "garment": "black full-zip windbreaker",
+      "front_art": "merch/sqts-llc-chest-lockup-print.png",
+      "back_art": null,
+      "preview": "merch/sqts-llc-windbreaker-preview.png"
+    },
+    {
+      "key": "smartsleeve-ss-fleece",
+      "name": "SmartSleeve Fleece Jacket",
+      "garment": "black full-zip fleece jacket",
+      "front_art": "merch/smartsleeve-ss-chest-lockup-print.png",
+      "back_art": null,
+      "preview": "merch/smartsleeve-ss-fleece-preview.png"
+    },
+    {
+      "key": "sqts-llc-fleece",
+      "name": "SQTS Fleece Jacket",
+      "garment": "black full-zip fleece jacket",
+      "front_art": "merch/sqts-llc-chest-lockup-print.png",
+      "back_art": null,
+      "preview": "merch/sqts-llc-fleece-preview.png"
     }
   ]
 }
