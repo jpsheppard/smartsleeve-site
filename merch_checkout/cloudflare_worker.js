@@ -3189,6 +3189,20 @@ async function recordOrderNotification(env, sessionId, stage, notification, exis
   }
 }
 
+// Identifying fields from a Printful webhook delivery, for duplicate-delivery
+// observability. Printful payloads carry type/created/retries (no stable event id),
+// so we log those plus the parcel signature to correlate repeat deliveries.
+function printfulWebhookDeliveryInfo(payload, fulfillment) {
+  const p = payload && typeof payload === "object" ? payload : {};
+  return {
+    type: p.type || p.event || p.event_type || "",
+    created: p.created || p.created_at || "",
+    retries: p.retries,
+    store: p.store,
+    shipment: shipmentSignaturesFromFulfillment(fulfillment),
+  };
+}
+
 async function handlePrintfulWebhook(request, env) {
   const url = new URL(request.url);
   if (!isPrintfulWebhookAuthorized(request, env, url)) {
@@ -3209,8 +3223,17 @@ async function handlePrintfulWebhook(request, env) {
     }, 202);
   }
   const fulfillment = printfulWebhookFulfillment(payload, stage);
+  const delivery = printfulWebhookDeliveryInfo(payload, fulfillment);
+  // Observability: log every delivery so duplicate/retried Printful webhooks are
+  // visible in `wrangler tail` / Cloudflare logs (the DO lock makes them harmless).
+  console.log("SmartSleeve Printful webhook received", JSON.stringify(Object.assign({ session_id: sessionId, stage }, delivery)));
   const result = await sendOrderStageNotification(env, sessionId, stage, fulfillment);
   if (result.status === "duplicate") {
+    console.warn("SmartSleeve duplicate Printful webhook suppressed", JSON.stringify(Object.assign({
+      session_id: sessionId,
+      stage,
+      suppressed_by: result.claim ? "in_flight_claim" : "already_recorded",
+    }, delivery)));
     return jsonResponse(request, env, { received: true, duplicate: true, stage, session_id: sessionId });
   }
   if (result.reason === "Stripe Checkout session lookup failed") {
