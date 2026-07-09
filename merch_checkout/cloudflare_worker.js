@@ -2035,20 +2035,21 @@ function stageFromPrintfulShipments(shipments, order = {}) {
   return "";
 }
 
-async function sendOrderStageNotification(env, sessionId, stage, fulfillment) {
-  if (!sessionId || !stage) {
-    return { status: "skipped", reason: "missing session id or stage" };
+// Acquire an exclusive claim on a (session, stage, shipment) notification slot.
+// Prefers the Durable Object lock (strongly consistent — fully race-proof even for
+// perfectly simultaneous triggers). Falls back to KV claim-before-send when the
+// NOTIFICATION_LOCK binding is absent, so the Worker still runs (with KV's small
+// non-atomic window) if the lock has not been wired up yet.
+async function acquireNotificationClaim(env, key) {
+  if (env.NOTIFICATION_LOCK) {
+    const stub = env.NOTIFICATION_LOCK.get(env.NOTIFICATION_LOCK.idFromName(key));
+    const response = await stub.fetch("https://notification-lock/claim", {
+      method: "POST",
+      body: JSON.stringify({ action: "claim", staleMs: NOTIFICATION_CLAIM_STALE_MS }),
+    });
+    const data = await response.json().catch(() => ({}));
+    return { ok: Boolean(data.claimed), backend: "durable_object" };
   }
-  // Key idempotency on the individual shipment so an order that ships in multiple
-  // packages still emits one email per package, while every retry/second-trigger for
-  // the SAME package collapses to a single send.
-  const shipmentKey = shipmentIdentifier(fulfillment);
-  const key = notificationKey(sessionId, stage, shipmentKey);
-  // Claim-before-send: reserve the slot BEFORE sending. A concurrent trigger (the
-  // real-time Printful webhook racing the scheduled poll, or a webhook redelivery)
-  // then observes the claim and backs off instead of sending a duplicate. The claim
-  // is written up front rather than only after a successful send, which is what
-  // previously left a wide window for two identical emails.
   if (env.MERCH_ORDERS) {
     const existingRaw = await env.MERCH_ORDERS.get(key);
     if (existingRaw) {
@@ -2062,24 +2063,64 @@ async function sendOrderStageNotification(env, sessionId, stage, fulfillment) {
         && existing.status === "claiming"
         && Date.now() - Date.parse(existing.stored_at || "") > NOTIFICATION_CLAIM_STALE_MS;
       if (!isStaleClaim) {
-        return { status: "duplicate", stage, session_id: sessionId, shipment_key: shipmentKey };
+        return { ok: false, backend: "kv" };
       }
       // A prior attempt reserved the slot but never committed (crash mid-send) and is
       // old enough to safely re-attempt.
     }
-    await env.MERCH_ORDERS.put(key, JSON.stringify({
-      status: "claiming",
-      stage,
-      shipment_key: shipmentKey,
-      stored_at: new Date().toISOString(),
-    }));
+    await env.MERCH_ORDERS.put(key, JSON.stringify({ status: "claiming", stored_at: new Date().toISOString() }));
+    return { ok: true, backend: "kv" };
+  }
+  // No durable store configured: cannot dedupe, so allow the send.
+  return { ok: true, backend: "none" };
+}
+
+async function releaseNotificationClaim(env, key) {
+  if (env.NOTIFICATION_LOCK) {
+    const stub = env.NOTIFICATION_LOCK.get(env.NOTIFICATION_LOCK.idFromName(key));
+    await stub.fetch("https://notification-lock/release", {
+      method: "POST",
+      body: JSON.stringify({ action: "release" }),
+    }).catch(() => {});
+    return;
+  }
+  if (env.MERCH_ORDERS) {
+    await env.MERCH_ORDERS.delete(key).catch(() => {});
+  }
+}
+
+async function commitNotificationClaim(env, key) {
+  if (env.NOTIFICATION_LOCK) {
+    const stub = env.NOTIFICATION_LOCK.get(env.NOTIFICATION_LOCK.idFromName(key));
+    await stub.fetch("https://notification-lock/commit", {
+      method: "POST",
+      body: JSON.stringify({ action: "commit" }),
+    }).catch(() => {});
+  }
+  // The rich KV record is written separately by recordOrderNotification.
+}
+
+async function sendOrderStageNotification(env, sessionId, stage, fulfillment) {
+  if (!sessionId || !stage) {
+    return { status: "skipped", reason: "missing session id or stage" };
+  }
+  // Idempotency is keyed on the individual shipment so an order that ships in
+  // multiple packages emits one email per package, while every retry/second-trigger
+  // for the SAME package collapses to a single send.
+  const shipmentKey = shipmentIdentifier(fulfillment);
+  const key = notificationKey(sessionId, stage, shipmentKey);
+  // Claim-before-send: reserve the slot BEFORE sending so a concurrent trigger (the
+  // real-time webhook racing the scheduled poll, or a webhook redelivery) backs off
+  // instead of sending a duplicate. The Durable Object lock makes this fully atomic;
+  // KV claim-before-send is the graceful fallback when the lock is not bound.
+  const claim = await acquireNotificationClaim(env, key);
+  if (!claim.ok) {
+    return { status: "duplicate", stage, session_id: sessionId, shipment_key: shipmentKey };
   }
   const session = await fetchStripeCheckoutSession(env, sessionId, ["payment_intent.latest_charge", "payment_intent.payment_method"]);
   if (!session || session.error) {
     // Release the claim so a later webhook/poll can retry this shipment.
-    if (env.MERCH_ORDERS) {
-      await env.MERCH_ORDERS.delete(key).catch(() => {});
-    }
+    await releaseNotificationClaim(env, key);
     return {
       status: "failed",
       reason: "Stripe Checkout session lookup failed",
@@ -2091,9 +2132,7 @@ async function sendOrderStageNotification(env, sessionId, stage, fulfillment) {
   const notification = await sendLifecycleEmail(env, session, stage, fulfillment);
   if (notification.status === "failed") {
     // Release the claim so the next trigger can retry the send.
-    if (env.MERCH_ORDERS) {
-      await env.MERCH_ORDERS.delete(key).catch(() => {});
-    }
+    await releaseNotificationClaim(env, key);
     console.error("SmartSleeve lifecycle email failed", JSON.stringify({
       stripe_session_id: sessionId,
       stage,
@@ -2103,7 +2142,8 @@ async function sendOrderStageNotification(env, sessionId, stage, fulfillment) {
     }));
     return { status: "failed", stage, session_id: sessionId, notification };
   }
-  // Commit: overwrite the claim with the final record.
+  // Commit the claim (mark the slot permanently taken) and persist the record.
+  await commitNotificationClaim(env, key);
   await recordOrderNotification(env, sessionId, stage, notification, shipmentKey);
   return { status: notification.status, stage, session_id: sessionId, shipment_key: shipmentKey, notification };
 }
@@ -2482,6 +2522,62 @@ async function pollPrintfulForOrders(request, env) {
   const result = await pollPrintfulShipmentStatuses(env, { manual: true });
   const status = result.status === "completed_with_failures" ? 207 : 200;
   return jsonResponse(request, env, result, status);
+}
+
+function notificationLockJson(body, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+// Strongly-consistent, single-threaded lock that makes notification claims fully
+// atomic across the racing webhook and scheduled-poll paths. One instance per
+// notification key (idFromName(key)) serializes claim/commit/release for that key,
+// so even two perfectly simultaneous triggers can never both send.
+export class NotificationLock {
+  constructor(ctx) {
+    this.ctx = ctx;
+  }
+
+  async fetch(request) {
+    let body = {};
+    try {
+      body = await request.json();
+    } catch (_err) {
+      body = {};
+    }
+    const action = body.action;
+    const staleMs = Number(body.staleMs) > 0 ? Number(body.staleMs) : 120000;
+    // blockConcurrencyWhile guarantees the read-modify-write runs with no other
+    // event interleaved on this object, making the claim atomic.
+    return this.ctx.blockConcurrencyWhile(async () => {
+      const current = await this.ctx.storage.get("entry");
+      const now = Date.now();
+      if (action === "claim") {
+        if (current) {
+          const isStaleClaim = current.status === "claiming"
+            && typeof current.at === "number"
+            && now - current.at > staleMs;
+          if (!isStaleClaim) {
+            return notificationLockJson({ claimed: false, existing: current });
+          }
+          // Previous claim crashed mid-send and is old enough to reclaim.
+        }
+        await this.ctx.storage.put("entry", { status: "claiming", at: now });
+        return notificationLockJson({ claimed: true });
+      }
+      if (action === "commit") {
+        await this.ctx.storage.put("entry", { status: "committed", at: now });
+        return notificationLockJson({ ok: true });
+      }
+      if (action === "release") {
+        await this.ctx.storage.delete("entry");
+        return notificationLockJson({ ok: true });
+      }
+      return notificationLockJson({ error: "unknown action" }, 400);
+    });
+  }
 }
 
 export default {

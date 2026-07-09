@@ -96,7 +96,30 @@ Configure Printful to call:
 https://<your-worker-host>/printful-webhook?token=<PRINTFUL_WEBHOOK_SECRET>
 ```
 
-for shipment sent/shipped and delivered events. The Worker stores Printful-to-Stripe order indexes in `MERCH_ORDERS`, then sends each lifecycle email once per order stage.
+for shipment sent/shipped and delivered events. The Worker stores Printful-to-Stripe order indexes in `MERCH_ORDERS`, then sends each lifecycle email once per **shipment** (not just per order stage), so an order that ships in multiple packages gets one shipped email per package.
+
+### Notification idempotency (no duplicate emails)
+
+Two paths can report a shipment — the real-time `/printful-webhook` and the scheduled
+poll (`scheduled` cron → `pollPrintfulShipmentStatuses`) — plus Printful may redeliver
+a webhook. To guarantee exactly one email per shipment, the Worker claims a
+`(session, stage, shipment)` slot **before** sending and only commits it after:
+
+- **Durable Object lock (`NOTIFICATION_LOCK` → `NotificationLock`)**: strongly
+  consistent, so even perfectly simultaneous triggers collapse to a single send.
+  Enable the binding + migration shown in `wrangler.example.toml`.
+- **KV fallback**: if the Durable Object binding is absent, the Worker falls back to
+  KV claim-before-send. This stops the realistic webhook-vs-poll overlap but, because
+  KV is eventually consistent, cannot guarantee a perfectly simultaneous double-fire.
+
+A claim that never commits (e.g. the Worker dies mid-send) becomes reclaimable after
+two minutes so a genuinely un-sent email is never blocked permanently.
+
+Regression coverage lives in `dedup.test.mjs` (Node built-ins, no deps):
+
+```bash
+cd merch_checkout && npm test
+```
 
 ## Printful Catalog Sync
 
