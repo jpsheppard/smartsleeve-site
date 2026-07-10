@@ -18,6 +18,7 @@ This is the explicitly approved reference-matched SS lockup: no dark green haze,
 - Canonical SVG SHA-256: `a0d0a759a0cd9e1481e13c2baae78d693c0fa0d2cace3704ff9cace2efe00d63`
 - High-resolution proof SHA-256: `5d72929047c5f15758e9863ca77076afccb4a8897d92cb833642738c401539ba`
 - Printful production PNG SHA-256: `21352422afcc79ddf7cd890333d5fd3a541889b6522743d49f497ff0a47816b1`
+- Storefront mockup cache revision: `20260710-approved-ss-reference-v3`
 
 Do not use `brand/smartsleeve-apparel-logo-cropped.png` for current merch or homepage banners. It is a legacy green-wordmark/period-era asset.
 
