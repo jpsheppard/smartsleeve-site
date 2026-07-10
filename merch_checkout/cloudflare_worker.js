@@ -1919,12 +1919,14 @@ function buildLifecycleEmailHtml(env, session, items, fulfillment, stage, option
   const customerName = shipping.name || customer.name || "SmartSleeve customer";
   const shippingLines = addressLines(shipping, customerName);
   const copy = lifecycleCopy(stage, env, session, fulfillment, options);
+  const duplicateStatusLink = copy.trackingUrl && copy.statusUrl && copy.trackingUrl === copy.statusUrl;
   const tracking = copy.trackingUrl
     ? `<a href="${escapeHtml(copy.trackingUrl)}">${escapeHtml(copy.trackingUrl)}</a>`
     : escapeHtml(copy.trackingText);
   const status = copy.statusUrl
     ? `<a href="${escapeHtml(copy.statusUrl)}">${escapeHtml(copy.statusUrl)}</a>`
     : escapeHtml(orderStatusText(session, fulfillment));
+  const statusRow = duplicateStatusLink ? "" : `<div><strong>Order status:</strong> ${status}</div>`;
   return `<!doctype html>
 <html>
   <body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;color:#111827;">
@@ -1940,7 +1942,7 @@ function buildLifecycleEmailHtml(env, session, items, fulfillment, stage, option
           <p style="margin:0 0 18px;color:#374151;">${escapeHtml(copy.detail)}</p>
           <div style="border:1px solid #e5e7eb;border-radius:10px;padding:14px;line-height:1.55;margin-bottom:18px;">
             <div><strong>${escapeHtml(copy.trackingLabel)}:</strong> ${tracking}</div>
-            <div><strong>Order status:</strong> ${status}</div>
+            ${statusRow}
           </div>
           <div style="font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;font-weight:700;margin:0 0 8px;">${escapeHtml(copy.itemsLabel || "Items")}</div>
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
@@ -1969,6 +1971,7 @@ function buildLifecycleEmailText(env, session, items, fulfillment, stage, option
   const shipping = sessionShippingDetails(session);
   const customerName = shipping.name || customer.name || "SmartSleeve customer";
   const copy = lifecycleCopy(stage, env, session, fulfillment, options);
+  const duplicateStatusLink = copy.trackingUrl && copy.statusUrl && copy.trackingUrl === copy.statusUrl;
   return [
     copy.heading,
     `Order: ${receiptOrderNumber(session)}`,
@@ -1977,7 +1980,7 @@ function buildLifecycleEmailText(env, session, items, fulfillment, stage, option
     copy.detail,
     "",
     `${copy.trackingLabel}: ${copy.trackingText}`,
-    `Order status: ${orderStatusText(session, fulfillment)}`,
+    duplicateStatusLink ? "" : `Order status: ${orderStatusText(session, fulfillment)}`,
     "",
     `${copy.itemsLabel || "Items"}:`,
     itemSummaryText(items),
