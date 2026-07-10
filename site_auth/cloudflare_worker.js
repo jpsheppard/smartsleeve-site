@@ -14,6 +14,7 @@
 //   POST /register
 //   POST /login
 //   GET  /me
+//   POST /profile
 //   POST /logout
 //   GET  /verify?token=...
 //   POST /verify
@@ -88,6 +89,37 @@ function normalizeName(value, maxLength = 80) {
     .replace(/\s+/g, " ")
     .replace(/[<>]/g, "")
     .slice(0, maxLength);
+}
+
+function normalizeAddressLine(value, maxLength = 96) {
+  return String(value || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/[<>]/g, "")
+    .slice(0, maxLength);
+}
+
+function normalizeCountry(value) {
+  const country = String(value || "US").trim().toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2);
+  return country || "US";
+}
+
+function collectShippingAddress(value) {
+  const source = value && typeof value === "object" ? value : {};
+  return {
+    name: normalizeName(source.name, 120),
+    line1: normalizeAddressLine(source.line1 || source.address1),
+    line2: normalizeAddressLine(source.line2 || source.address2),
+    city: normalizeAddressLine(source.city, 80),
+    state: normalizeAddressLine(source.state || source.state_code, 40),
+    postal_code: normalizeAddressLine(source.postal_code || source.zip, 20),
+    country: normalizeCountry(source.country || source.country_code || "US"),
+    phone: normalizeAddressLine(source.phone, 32),
+  };
+}
+
+function hasShippingAddress(address) {
+  return Boolean(address && address.line1 && address.city && address.state && address.postal_code && address.country);
 }
 
 function normalizeUsername(value) {
@@ -214,12 +246,15 @@ function developerEmails(env) {
 
 function publicProfile(record, env) {
   const profile = record.profile || {};
+  const shipping = collectShippingAddress(profile.shipping_address || {});
   return {
     username: profile.username || "",
     email: profile.email || "",
     first_name: profile.first_name || "",
     last_name: profile.last_name || "",
     nickname: profile.nickname || "",
+    display_name: [profile.first_name, profile.last_name].filter(Boolean).join(" ").trim() || profile.nickname || profile.username || profile.email || "",
+    shipping_address: hasShippingAddress(shipping) ? shipping : null,
     role: developerEmails(env).has(normalizeEmail(profile.email)) ? "developer" : "user",
     verified_at: record.verified_at || null,
   };
@@ -525,6 +560,14 @@ async function login(request, env) {
 }
 
 async function currentSession(request, env) {
+  const result = await currentAccountSession(request, env);
+  if (!result.ok) {
+    return result;
+  }
+  return { ok: true, status: 200, profile: publicProfile(result.record, env), session_expires_at: result.session.expires_at || null };
+}
+
+async function currentAccountSession(request, env) {
   if (!env.SMARTSLEEVE_AUTH) {
     return { ok: false, error: "auth_storage_not_configured", status: 503 };
   }
@@ -548,12 +591,47 @@ async function currentSession(request, env) {
     JSON.stringify({ ...session, last_seen_at: new Date().toISOString() }),
     { expirationTtl: SESSION_TTL_SECONDS }
   );
-  return { ok: true, status: 200, profile: publicProfile(record, env), session_expires_at: session.expires_at || null };
+  return { ok: true, status: 200, emailHash: session.email_hash, session, sessionKey, record };
 }
 
 async function me(request, env) {
   const result = await currentSession(request, env);
   return jsonResponse(request, env, result, result.status || (result.ok ? 200 : 401));
+}
+
+async function updateProfile(request, env) {
+  const session = await currentAccountSession(request, env);
+  if (!session.ok) {
+    return jsonResponse(request, env, session, session.status || 401);
+  }
+
+  let payload = {};
+  try {
+    payload = await request.json();
+  } catch (_err) {
+    return jsonResponse(request, env, { ok: false, error: "invalid_json" }, 400);
+  }
+
+  const record = session.record || {};
+  const current = record.profile || {};
+  const nextProfile = {
+    ...current,
+    first_name: normalizeName(payload.first_name != null ? payload.first_name : current.first_name),
+    last_name: normalizeName(payload.last_name != null ? payload.last_name : current.last_name),
+    nickname: normalizeName(payload.nickname != null ? payload.nickname : current.nickname, 40),
+  };
+  if (payload.shipping_address !== undefined) {
+    const shipping = collectShippingAddress(payload.shipping_address);
+    nextProfile.shipping_address = hasShippingAddress(shipping) ? shipping : null;
+  }
+
+  const nextRecord = {
+    ...record,
+    profile: nextProfile,
+    updated_at: new Date().toISOString(),
+  };
+  await env.SMARTSLEEVE_AUTH.put(`account:${session.emailHash}`, JSON.stringify(nextRecord));
+  return jsonResponse(request, env, { ok: true, status: "profile_updated", profile: publicProfile(nextRecord, env) });
 }
 
 async function logout(request, env) {
@@ -642,6 +720,7 @@ export default {
         storage_configured: Boolean(env.SMARTSLEEVE_AUTH),
         resend_configured: Boolean(env.RESEND_API_KEY),
         sessions_supported: true,
+        profile_supported: true,
       });
     }
     if (url.pathname === "/register" && request.method === "POST") {
@@ -652,6 +731,9 @@ export default {
     }
     if (url.pathname === "/me" && request.method === "GET") {
       return me(request, env);
+    }
+    if (url.pathname === "/profile" && request.method === "POST") {
+      return updateProfile(request, env);
     }
     if (url.pathname === "/logout" && request.method === "POST") {
       return logout(request, env);

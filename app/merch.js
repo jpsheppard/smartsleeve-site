@@ -13,6 +13,7 @@
     catalogLoaded: false,
     checkoutMode: "guest",
     customerEmail: "",
+    authProfile: null,
     account: {
       username: "",
       firstName: "",
@@ -61,6 +62,34 @@
 
   function validEmail(value) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(value));
+  }
+
+  function displayName(profile) {
+    profile = profile || {};
+    return profile.display_name
+      || [profile.first_name, profile.last_name].filter(Boolean).join(" ").trim()
+      || profile.username
+      || profile.email
+      || "";
+  }
+
+  function shippingAddress(profile) {
+    var address = profile && profile.shipping_address ? profile.shipping_address : null;
+    return address && address.line1 && address.city && address.state && address.postal_code ? address : null;
+  }
+
+  function currentAuthProfile() {
+    return state.authProfile || (window.SmartSleeveAuth && window.SmartSleeveAuth.state && window.SmartSleeveAuth.state.profile) || null;
+  }
+
+  function syncAuthProfile(profile) {
+    state.authProfile = profile || currentAuthProfile();
+    var signedInRadio = document.querySelector("input[name=\"merch-checkout-mode\"][value=\"signed_in\"]");
+    var guestRadio = document.querySelector("input[name=\"merch-checkout-mode\"][value=\"guest\"]");
+    if (state.authProfile && signedInRadio && guestRadio && guestRadio.checked && !state.customerEmail) {
+      signedInRadio.checked = true;
+    }
+    updateCheckoutUi();
   }
 
   function cssEscape(value) {
@@ -467,9 +496,14 @@
   }
 
   function readCheckoutForm() {
-    state.customerEmail = normalizeEmail(($("merch-customer-email") || {}).value || "");
     var checked = document.querySelector("input[name=\"merch-checkout-mode\"]:checked");
     state.checkoutMode = checked ? checked.value : "guest";
+    var profile = currentAuthProfile();
+    var emailInput = $("merch-customer-email");
+    if (state.checkoutMode === "signed_in" && profile && profile.email && emailInput) {
+      emailInput.value = profile.email;
+    }
+    state.customerEmail = normalizeEmail((emailInput || {}).value || "");
     state.account = {
       username: String(($("merch-account-username") || {}).value || "").trim(),
       firstName: String(($("merch-account-first-name") || {}).value || "").trim(),
@@ -484,6 +518,12 @@
     var count = state.cart.reduce(function (sum, item) { return sum + item.quantity; }, 0);
     if (!count) return {ok: false, message: "Your cart is empty."};
     if (!checkoutEndpoint) return {ok: false, message: "Checkout is not configured yet."};
+    if (state.checkoutMode === "signed_in") {
+      var profile = currentAuthProfile();
+      if (!profile || !profile.email) return {ok: false, message: "Sign in to use your SmartSleeve account at checkout."};
+      if (!shippingAddress(profile)) return {ok: true, message: "Signed in. Stripe will collect shipping; save an address in Account to prefill it next time."};
+      return {ok: true, message: "Signed in. Saved email and shipping profile will be sent securely to Stripe Checkout."};
+    }
     if (!validEmail(state.customerEmail)) return {ok: false, message: "Enter a valid email to receive your receipt."};
     if (state.checkoutMode !== "create_account") return {ok: true, message: "Shipping is free. Taxes are calculated by Stripe if applicable."};
     if (!registerEndpoint) return {ok: false, message: "Account creation is not available; use guest checkout."};
@@ -499,6 +539,25 @@
     readCheckoutForm();
     var fields = $("merch-account-fields");
     if (fields) fields.hidden = state.checkoutMode !== "create_account";
+    var signedInFields = $("merch-signed-in-fields");
+    var profile = currentAuthProfile();
+    var emailInput = $("merch-customer-email");
+    if (emailInput) {
+      emailInput.readOnly = state.checkoutMode === "signed_in" && Boolean(profile && profile.email);
+      if (state.checkoutMode === "signed_in" && profile && profile.email) {
+        emailInput.value = profile.email;
+      }
+    }
+    if (signedInFields) {
+      signedInFields.hidden = state.checkoutMode !== "signed_in";
+      text("merch-signed-in-title", profile ? "Signed in as " + displayName(profile) : "Use your SmartSleeve account");
+      text(
+        "merch-signed-in-detail",
+        profile
+          ? (shippingAddress(profile) ? "Saved shipping address is ready for Stripe Checkout." : "No saved shipping address yet. Add it in Account to reduce checkout typing.")
+          : "Sign in to reuse your saved profile across SmartSleeve."
+      );
+    }
     var next = validation();
     var button = $("merch-checkout-button");
     if (button) button.disabled = !next.ok;
@@ -599,6 +658,7 @@
     }
     text("merch-cart-note", state.checkoutMode === "create_account" ? "Creating SmartSleeve user, then opening checkout..." : "Opening checkout...");
     createAccountIfRequested().then(function () {
+      var profile = currentAuthProfile() || {};
       if (button) button.textContent = "Opening checkout...";
       return fetch(checkoutEndpoint, {
         method: "POST",
@@ -607,7 +667,10 @@
         body: JSON.stringify({
           customer_email: state.customerEmail,
           checkout_mode: state.checkoutMode,
-          account_username: state.checkoutMode === "create_account" ? state.account.username : "",
+          account_username: state.checkoutMode === "create_account" ? state.account.username : (profile.username || ""),
+          smartsleeve_account_email: state.checkoutMode === "signed_in" ? (profile.email || "") : "",
+          customer_name: state.checkoutMode === "signed_in" ? displayName(profile) : "",
+          shipping_address: state.checkoutMode === "signed_in" ? shippingAddress(profile) : null,
           items: state.cart.map(function (item) {
             return {product_key: item.product.key, size: item.size, quantity: item.quantity};
           })
@@ -663,6 +726,17 @@
     }
     var checkout = $("merch-checkout-button");
     if (checkout) checkout.addEventListener("click", startCheckout);
+    var signIn = $("merch-sign-in-button");
+    if (signIn) {
+      signIn.addEventListener("click", function () {
+        if (window.SmartSleeveAuth && typeof window.SmartSleeveAuth.open === "function") {
+          window.SmartSleeveAuth.open(currentAuthProfile() ? "profile" : "login");
+        }
+      });
+    }
+    window.addEventListener("smartsleeve-auth-change", function (event) {
+      syncAuthProfile(event.detail && event.detail.profile);
+    });
     window.addEventListener("hashchange", function () {
       if (isShopRoute()) showShop();
     });
@@ -678,6 +752,7 @@
 
   document.addEventListener("DOMContentLoaded", function () {
     wireShop();
+    syncAuthProfile();
     renderCart();
     if (isShopRoute()) {
       window.setTimeout(showShop, 0);

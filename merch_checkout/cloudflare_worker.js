@@ -247,11 +247,35 @@ function isValidEmail(value) {
 }
 
 function normalizedCheckoutMode(value) {
-  return String(value || "").trim().toLowerCase() === "create_account" ? "create_account" : "guest";
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized === "create_account" || normalized === "signed_in" ? normalized : "guest";
 }
 
 function safeMetadataValue(value, maxLength = 450) {
   return String(value || "").trim().slice(0, maxLength);
+}
+
+function safeAddressValue(value, maxLength = 96) {
+  return String(value || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/[<>]/g, "")
+    .slice(0, maxLength);
+}
+
+function normalizeCheckoutShippingAddress(value) {
+  const source = value && typeof value === "object" ? value : {};
+  const address = {
+    name: safeAddressValue(source.name, 120),
+    line1: safeAddressValue(source.line1 || source.address1),
+    line2: safeAddressValue(source.line2 || source.address2),
+    city: safeAddressValue(source.city, 80),
+    state: safeAddressValue(source.state || source.state_code, 40),
+    postal_code: safeAddressValue(source.postal_code || source.zip, 20),
+    country: safeAddressValue(source.country || source.country_code || "US", 2).toUpperCase() || "US",
+    phone: safeAddressValue(source.phone, 32),
+  };
+  return address.line1 && address.city && address.state && address.postal_code && address.country ? address : null;
 }
 
 function centsFromUsd(value, fallback = 0) {
@@ -557,6 +581,51 @@ function encodeForm(params, prefix = "") {
   return parts.join("&");
 }
 
+async function createStripeCustomerForCheckout(env, customerEmail, customerName, shippingAddress, metadata = {}) {
+  if (!shippingAddress) {
+    return "";
+  }
+  const params = {
+    email: customerEmail,
+    name: customerName || shippingAddress.name || customerEmail,
+    "shipping[name]": shippingAddress.name || customerName || customerEmail,
+    "shipping[address][line1]": shippingAddress.line1,
+    "shipping[address][city]": shippingAddress.city,
+    "shipping[address][state]": shippingAddress.state,
+    "shipping[address][postal_code]": shippingAddress.postal_code,
+    "shipping[address][country]": shippingAddress.country,
+  };
+  if (shippingAddress.line2) {
+    params["shipping[address][line2]"] = shippingAddress.line2;
+  }
+  if (shippingAddress.phone) {
+    params.phone = shippingAddress.phone;
+    params["shipping[phone]"] = shippingAddress.phone;
+  }
+  Object.entries(metadata).forEach(([key, value]) => {
+    if (value) {
+      params[`metadata[${key}]`] = safeMetadataValue(value, 120);
+    }
+  });
+  const response = await fetch("https://api.stripe.com/v1/customers", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: encodeForm(params),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || !payload.id) {
+    console.warn("SmartSleeve Stripe customer prefill failed", JSON.stringify({
+      status: response.status,
+      error: payload.error && payload.error.message || payload.error || "unknown",
+    }));
+    return "";
+  }
+  return payload.id;
+}
+
 function normalizeCheckoutItems(env, body) {
   const rawItems = Array.isArray(body.items) && body.items.length > 0
     ? body.items
@@ -615,6 +684,14 @@ async function createStripeCheckoutSession(request, env) {
   }
   const checkoutMode = normalizedCheckoutMode(body.checkout_mode);
   const accountUsername = safeMetadataValue(body.account_username || body.username, 64);
+  const smartsleeveAccountEmail = normalizeEmail(body.smartsleeve_account_email || "");
+  const customerName = safeMetadataValue(body.customer_name || body.name, 120);
+  const shippingAddress = normalizeCheckoutShippingAddress(body.shipping_address);
+  const stripeCustomerId = await createStripeCustomerForCheckout(env, customerEmail, customerName, shippingAddress, {
+    smartsleeve_account_email: smartsleeveAccountEmail,
+    account_username: accountUsername,
+    checkout_mode: checkoutMode,
+  });
   const shippingCents = centsFromUsd(env.MERCH_SHIPPING_USD, 0);
   const base = siteUrl(env);
   const successPath = String(env.MERCH_SUCCESS_PATH || DEFAULT_SUCCESS_PATH);
@@ -623,15 +700,22 @@ async function createStripeCheckoutSession(request, env) {
     mode: "payment",
     success_url: `${base}${successPath}?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${base}${cancelPath}`,
-    customer_email: customerEmail,
     "shipping_address_collection[allowed_countries][0]": "US",
     "metadata[cart_mode]": items.length > 1 ? "cart" : "single",
     "metadata[item_count]": String(items.length),
     "metadata[customer_email]": customerEmail,
     "metadata[checkout_mode]": checkoutMode,
   };
+  if (stripeCustomerId) {
+    params.customer = stripeCustomerId;
+  } else {
+    params.customer_email = customerEmail;
+  }
   if (accountUsername) {
     params["metadata[account_username]"] = accountUsername;
+  }
+  if (smartsleeveAccountEmail) {
+    params["metadata[smartsleeve_account_email]"] = smartsleeveAccountEmail;
   }
   items.forEach((item, index) => {
     const metadata = stripeLineItemProductMetadata(item);

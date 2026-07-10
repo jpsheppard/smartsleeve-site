@@ -18,7 +18,8 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
   <link rel="manifest" href="/site.webmanifest">
   <link rel="stylesheet" href="/app/styles.css?v=20260630-site-footer">
-  <link rel="stylesheet" href="/app/merch.css?v=20260703-merch-umbrella-sections">
+  <link rel="stylesheet" href="/app/merch.css?v=20260710-global-login">
+  <link rel="stylesheet" href="/site-auth.css?v=20260710-global-login">
 </head>
 <body>
   <div class="app-shell">
@@ -809,8 +810,14 @@
                 <input id="merch-customer-email" type="email" autocomplete="email" autocapitalize="none" spellcheck="false" required>
               </label>
               <div class="merch-checkout-choice" role="radiogroup" aria-label="Checkout type">
+                <label><input type="radio" name="merch-checkout-mode" value="signed_in"><span>SmartSleeve account</span></label>
                 <label><input type="radio" name="merch-checkout-mode" value="guest" checked><span>Guest checkout</span></label>
                 <label><input type="radio" name="merch-checkout-mode" value="create_account"><span>Create SmartSleeve user</span></label>
+              </div>
+              <div class="merch-signed-in-fields" id="merch-signed-in-fields" hidden>
+                <b id="merch-signed-in-title">Use your SmartSleeve account</b>
+                <span id="merch-signed-in-detail">Sign in to reuse your saved profile and shipping address.</span>
+                <button type="button" class="text-button" id="merch-sign-in-button">Sign in / manage profile</button>
               </div>
               <div class="merch-account-fields" id="merch-account-fields" hidden>
                 <label>Username
@@ -936,7 +943,8 @@
   </nav>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="/app/app.js?v=20260701-retirement-pending-transfer" defer></script>
-  <script src="/app/merch.js?v=20260710-ss-approved-v8-printful-refresh" defer></script>
+  <script src="/app/app.js?v=20260710-global-login" defer></script>
+  <script src="/site-auth.js?v=20260710-global-login" defer></script>
+  <script src="/app/merch.js?v=20260710-global-login" defer></script>
 </body>
 </html>

@@ -71,9 +71,13 @@ deployed with:
 - GitHub repo variable `SMARTSLEEVE_AUTH_ENDPOINT`, for example
   `https://auth.smartsleeve.ai`
 
-The Worker implementation lives in `site_auth/cloudflare_worker.js`; setup
-instructions are in `site_auth/README.md`. The Worker requires a Cloudflare KV
-binding named `SMARTSLEEVE_AUTH` and a `RESEND_API_KEY` Worker secret. It sends
-verification emails and stores pending/verified account records, but it does not
-yet provide login sessions, password resets, broker links, billing, or live
-trading authorization.
+The Worker implementation lives in `site_auth/cloudflare_worker.js`. The Worker
+requires a Cloudflare KV binding named `SMARTSLEEVE_AUTH` and a `RESEND_API_KEY`
+Worker secret. It sends verification emails, stores pending/verified account
+records, provides login sessions, and supports a lightweight website-wide
+profile with saved shipping address fields for merch checkout.
+
+The public pages and `/app/` load `site-auth.js` plus `site-auth.css`, which
+expose a shared `window.SmartSleeveAuth` identity state. The merch cart can use
+that profile to prefill email/name/shipping into Stripe Checkout while Stripe
+continues to own card collection and payment-method storage.

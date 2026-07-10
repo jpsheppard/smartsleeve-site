@@ -246,8 +246,8 @@
       "<label>Last name<input id=\"auth-last-name\" type=\"text\" autocomplete=\"family-name\" autocapitalize=\"words\"></label>",
       "</div>",
       "<label>Email<input id=\"auth-email\" type=\"email\" autocomplete=\"username\" autocapitalize=\"none\" spellcheck=\"false\" required></label>",
-      "<label>Password<input id=\"auth-password\" type=\"password\" autocomplete=\"off\" minlength=\"8\" data-lpignore=\"true\" data-1p-ignore=\"true\" autocapitalize=\"none\" spellcheck=\"false\" required></label>",
-      "<label class=\"auth-register-field\">Confirm password<input id=\"auth-password-confirm\" type=\"password\" autocomplete=\"off\" minlength=\"8\" data-lpignore=\"true\" data-1p-ignore=\"true\" autocapitalize=\"none\" spellcheck=\"false\"></label>",
+      "<label>Password<input id=\"auth-password\" type=\"password\" autocomplete=\"off\" minlength=\"12\" data-lpignore=\"true\" data-1p-ignore=\"true\" autocapitalize=\"none\" spellcheck=\"false\" required></label>",
+      "<label class=\"auth-register-field\">Confirm password<input id=\"auth-password-confirm\" type=\"password\" autocomplete=\"off\" minlength=\"12\" data-lpignore=\"true\" data-1p-ignore=\"true\" autocapitalize=\"none\" spellcheck=\"false\"></label>",
       "<label class=\"auth-check auth-register-field\"><input id=\"auth-accepted-terms\" type=\"checkbox\"><span>I understand SmartSleeve account access is for verified users and does not itself authorize broker trading.</span></label>",
       "<button type=\"submit\" id=\"auth-submit-button\">Sign in</button>",
       "<button type=\"button\" class=\"auth-link-button\" id=\"auth-reset-button\">Reset password</button>",
@@ -337,7 +337,7 @@
     text(
       "auth-gate-message",
       nextMode === "register"
-        ? "Create a verified SmartSleeve account. Passwords must be at least 8 characters. We will email a verification link before private data can load."
+        ? "Create a verified SmartSleeve account. Passwords must be at least 12 characters. We will email a verification link before private data can load."
         : "Sign in to load your private SmartSleeve data."
     );
     clearAuthPasswordFields();
@@ -5399,6 +5399,19 @@
     restoreOrderNotificationSeen();
     renderSession();
     wireEvents();
+    window.addEventListener("smartsleeve-auth-change", function (event) {
+      var detail = event.detail || {};
+      var profile = detail.profile || null;
+      if (!profile || !detail.sessionToken) return;
+      sessionToken = detail.sessionToken;
+      principalEmail = normalizeEmail(profile.email || principalEmail);
+      persistStoredSession(profile);
+      renderSession();
+      if ($("auth-gate") && ["shop", "shop-success", "shop-cancel", "store"].indexOf(currentHashSection()) === -1) {
+        removeAuthGate();
+        loadFeed();
+      }
+    });
     if (["shop", "shop-success", "shop-cancel", "store"].indexOf(String(window.location.hash || "").replace("#", "").split("?")[0]) === -1) {
       loadFeed();
     }
