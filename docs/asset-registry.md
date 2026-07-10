@@ -10,9 +10,14 @@ This file is the source-of-truth map for brand and merch artwork. When in doubt,
 - Human proof: `brand/smartsleeve-ss-current-best-proof.png`
 - High-res human proof: `brand/smartsleeve-ss-current-best-proof-hires.png`
 - Transparent production render: `brand/smartsleeve-ss-current-best-print-transparent.png`
-- Immutable Printful apparel file: `merch/smartsleeve-ss-approved-tight-front-print.png`
+- Immutable Printful apparel file: `merch/smartsleeve-ss-approved-reference-v2-front-print.png`
+- SS-only renderer: `scripts/render_approved_ss_asset.py`
 
-This is the approved tight-spacing SS lockup: no dark green haze, white `SmartSleeve`, white slogan, and no period after `Quantitative trading for the agentic age`.
+This is the explicitly approved reference-matched SS lockup: no dark green haze, white `SmartSleeve`, white slogan, and no period after `Quantitative trading for the agentic age`. The SVG uses `SmartSleeve` layer translation `322` and slogan baseline `490`; the renderer refuses to run if these coordinates drift.
+
+- Canonical SVG SHA-256: `a0d0a759a0cd9e1481e13c2baae78d693c0fa0d2cace3704ff9cace2efe00d63`
+- High-resolution proof SHA-256: `5d72929047c5f15758e9863ca77076afccb4a8897d92cb833642738c401539ba`
+- Printful production PNG SHA-256: `21352422afcc79ddf7cd890333d5fd3a541889b6522743d49f497ff0a47816b1`
 
 Do not use `brand/smartsleeve-apparel-logo-cropped.png` for current merch or homepage banners. It is a legacy green-wordmark/period-era asset.
 
@@ -28,7 +33,7 @@ The SQTS website banner and merch lockup are intentionally separate. The website
 The active SS apparel front print files should all be regenerated from `brand/smartsleeve-ss-current-best.svg`:
 
 - `merch/smartsleeve-ss-common-front-print.png`
-- `merch/smartsleeve-ss-approved-tight-front-print.png` (immutable Printful upload name)
+- `merch/smartsleeve-ss-approved-reference-v2-front-print.png` (immutable Printful upload name)
 - `merch/smartsleeve-ss-short-front-print.png`
 - `merch/smartsleeve-ss-tank-front-print.png`
 - `merch/smartsleeve-ss-front-print.png`
@@ -43,7 +48,7 @@ These files are used by Printful product fronts and the public merch-store inlay
 
 ## Regeneration Notes
 
-For an SS-only front-art correction, prefer a targeted regeneration of the SS files above. Avoid running the full merch generator in a dirty worktree because it may also rewrite unrelated preview, SQTS, outerwear, towel, or root logo files.
+For an SS-only front-art correction, run `python3 scripts/render_approved_ss_asset.py`. Avoid running the full merch generator in a dirty worktree because it may also rewrite unrelated preview, SQTS, outerwear, towel, or root logo files.
 
 Rejected one-off SS spacing, haze, and font experiment files were quarantined outside the repo on 2026-07-10 at `/tmp/smartsleeve-asset-quarantine-20260710-140324`. The canonical files listed above supersede those experiments.
 
