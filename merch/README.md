@@ -5,6 +5,7 @@ These files power the static shop preview at `/app/#shop`.
 ## Print Artwork
 
 - Current approved SmartSleeve SS slogan source: `../brand/smartsleeve-ss-current-best.svg`. The transparent production render is `../brand/smartsleeve-ss-current-best-print-transparent.png`. This is the no-haze SS mark with the approved tight SmartSleeve/slogan spacing and no period after the slogan. See `../docs/asset-registry.md` before replacing or regenerating merch assets.
+- `smartsleeve-ss-approved-tight-front-print.png`: immutable Printful upload of the approved tight-spacing SS apparel artwork. Use this file for slogan-bearing SS tees, muscle tees, and tanks; do not substitute a similarly named legacy PNG.
 - `sqts-llc-front-print.png`: high-resolution front art using the official `SmartSleeve Quantitative Trading Systems, LLC` banner lockup and white slogan.
 - `smartsleeve-ss-short-front-print.png`: high-resolution front art using the SS chip mark, short `SmartSleeve` lockup, and white slogan.
 - `smartsleeve-ss-tank-front-print.png`: tank-adjusted SS front art with the approved vertical placement for tank blanks.

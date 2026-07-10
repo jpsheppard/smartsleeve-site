@@ -206,7 +206,7 @@ def generate(args: argparse.Namespace) -> None:
     ca_file = default_ca_file()
     client = PrintfulClient(token, store_id, ca_file)
     asset_sha = args.asset_sha or current_git_sha()
-    front_ss_url = args.front_ss_url or f"{PUBLIC_REPO}/{asset_sha}/merch/smartsleeve-ss-common-front-print.png"
+    front_ss_url = args.front_ss_url or f"{PUBLIC_REPO}/{asset_sha}/merch/smartsleeve-ss-approved-tight-front-print.png"
     front_sqts_url = args.front_sqts_url or FRONT_SQTS
 
     catalog = json.loads(args.catalog.read_text())

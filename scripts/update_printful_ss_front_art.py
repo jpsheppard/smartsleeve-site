@@ -31,7 +31,7 @@ from sync_printful_storefront import (
 
 
 ROOT = Path(__file__).resolve().parents[1]
-FRONT_FILENAME = "smartsleeve-ss-common-front-print.png"
+FRONT_FILENAME = "smartsleeve-ss-approved-tight-front-print.png"
 PUBLIC_REPO = "https://raw.githubusercontent.com/jpsheppard/smartsleeve-site"
 FRONT_TYPES = {"default", "front", "front_dtf"}
 BACK_TYPES = {"back", "back_dtf"}
@@ -114,6 +114,7 @@ def build_files_payload(variant: dict[str, Any], sha: str) -> tuple[list[dict[st
         if file_type in FRONT_TYPES and (
             filename == FRONT_FILENAME
             or "smartsleeve-ss-common-front-print" in str(file.get("url") or "")
+            or "smartsleeve-ss-approved-tight-front-print" in str(file.get("url") or "")
             or "front" in file_type
         ):
             payload_type = "front" if file_type == "default" and has_back_file else file_type
