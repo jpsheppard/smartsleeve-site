@@ -110,18 +110,49 @@ body.public-shop main {
   grid-template-columns: 1fr;
 }
 
+.merch-product-images.with-front-detail:not(.single-view) {
+  grid-template-columns: minmax(0, 1.16fr) minmax(0, 0.84fr);
+}
+
 .merch-product-images figure {
+  position: relative;
   display: grid;
   grid-template-rows: 1fr auto;
   min-width: 0;
+  overflow: hidden;
   margin: 0;
   background: #f8fafc;
 }
 
-.merch-product-images img {
+.merch-product-images .merch-main-mockup {
+  display: block;
   width: 100%;
   aspect-ratio: 1 / 1.12;
   object-fit: contain;
+}
+
+.merch-front-inset {
+  position: absolute;
+  right: 7px;
+  bottom: 34px;
+  z-index: 2;
+  display: block;
+  width: min(60%, 154px);
+  min-width: 76px;
+  aspect-ratio: 16 / 11;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  border-radius: 12px;
+  background: #020617;
+  box-shadow: 0 14px 30px rgba(2, 6, 23, 0.32);
+}
+
+.merch-front-inset img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
+  object-fit: cover;
 }
 
 .merch-product-images figcaption {
@@ -391,5 +422,10 @@ body.public-shop main {
   .merch-checkout-choice,
   .merch-account-name-row {
     grid-template-columns: 1fr;
+  }
+
+  .merch-front-inset {
+    right: 10px;
+    width: min(55%, 180px);
   }
 }

@@ -5,7 +5,7 @@
   var catalogEndpoint = meta("smartsleeve-merch-catalog-endpoint");
   var authEndpoint = meta("smartsleeve-auth-endpoint");
   var registerEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/register" : "";
-  var merchImageVersion = "20260710-ss-current-best-visible-mockups";
+  var merchImageVersion = "20260710-shirt-detail-insets";
   var staticCatalogEndpoint = "/merch/printful-storefront-catalog.json";
   var state = {
     products: [],
@@ -209,6 +209,18 @@
     return product.front_mockup || product.preview || product.front_print_preview || merchPreviewFor(product);
   }
 
+  function merchFrontDetailImage(product) {
+    var cut = merchCut(product);
+    var brand = merchBrand(product);
+    if (cut === "Polo") {
+      return brand === "sqts" ? "/merch/insets/sqts-polo-detail.png" : "/merch/insets/smartsleeve-ss-polo-detail.png";
+    }
+    if (cut === "T-Shirt" || cut === "Muscle Tee" || cut === "Tank Top") {
+      return brand === "sqts" ? "/merch/insets/sqts-shirt-detail.png" : "/merch/insets/smartsleeve-ss-shirt-detail.png";
+    }
+    return "";
+  }
+
   function merchBackImage(product) {
     return product.back_mockup || product.back_print_preview || "";
   }
@@ -383,15 +395,18 @@
       return "<option value=\"" + html(item) + "\"" + (item === size ? " selected" : "") + ">" + html(merchSizeLabel(item)) + "</option>";
     }).join("");
     var frontCaption = isSingleSurfaceProduct(product) ? "Design" : "Front";
+    var frontDetail = merchFrontDetailImage(product);
     var chips = singleView
       ? ["Design: " + merchFrontLabel(product), merchBackType(product)]
       : isOuterwearProduct(product)
         ? ["Front: Right chest logo", "Back: Plain back"]
         : ["Front: " + merchFrontLabel(product), "Back: " + merchBackType(product)];
     return "<article class=\"merch-product-card\" data-merch-product-card=\"" + html(product.key) + "\">"
-      + "<div class=\"merch-product-images" + (backImage ? "" : " single-view") + "\">"
-      + "<figure><img src=\"" + html(merchImageSrc(merchFrontImage(product))) + "\" alt=\"" + html(merchDisplayName(product)) + "\" loading=\"lazy\"><figcaption>" + html(frontCaption) + "</figcaption></figure>"
-      + (backImage ? "<figure><img src=\"" + html(merchImageSrc(backImage)) + "\" alt=\"" + html(merchDisplayName(product)) + " back\" loading=\"lazy\"><figcaption>Back</figcaption></figure>" : "")
+      + "<div class=\"merch-product-images" + (backImage ? "" : " single-view") + (frontDetail ? " with-front-detail" : "") + "\">"
+      + "<figure class=\"merch-front-figure\"><img class=\"merch-main-mockup\" src=\"" + html(merchImageSrc(merchFrontImage(product))) + "\" alt=\"" + html(merchDisplayName(product)) + "\" loading=\"lazy\">"
+      + (frontDetail ? "<span class=\"merch-front-inset\" role=\"img\" aria-label=\"" + html(merchFrontLabel(product)) + " print detail\"><img src=\"" + html(merchImageSrc(frontDetail)) + "\" alt=\"\" loading=\"lazy\"></span>" : "")
+      + "<figcaption>" + html(frontCaption) + "</figcaption></figure>"
+      + (backImage ? "<figure><img class=\"merch-main-mockup\" src=\"" + html(merchImageSrc(backImage)) + "\" alt=\"" + html(merchDisplayName(product)) + " back\" loading=\"lazy\"><figcaption>Back</figcaption></figure>" : "")
       + "</div>"
       + "<div class=\"merch-product-copy\">"
       + "<h4>" + html(merchDisplayName(product)) + "</h4>"
