@@ -6,6 +6,7 @@ from __future__ import annotations
 import base64
 import re
 import subprocess
+import tempfile
 from io import BytesIO
 from collections import deque
 from pathlib import Path
@@ -20,7 +21,7 @@ TRANSPARENT = (0, 0, 0, 0)
 GREEN = (57, 255, 20, 255)
 GREEN_DIM = (57, 255, 20, 150)
 TEXT_SOFT = (205, 255, 210, 255)
-WHITE = (245, 247, 250, 255)
+WHITE = (255, 255, 255, 255)
 WHITE_SOFT = (226, 232, 240, 255)
 SLOGAN = "Quantitative trading for the agentic age"
 SITE_URL = "smartsleeve.ai"
@@ -60,6 +61,31 @@ def render_svg_to_png(svg_path: Path, png_path: Path) -> Path:
         check=True,
     )
     return png_path
+
+
+def render_transparent_svg(svg_path: Path, width: int = 6000) -> Image.Image:
+    """Render an SVG proof file as transparent merch artwork."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_png = Path(temp_dir) / f"{svg_path.stem}.png"
+        subprocess.run(
+            [
+                "/opt/homebrew/bin/inkscape",
+                str(svg_path),
+                "--export-type=png",
+                f"--export-filename={temp_png}",
+                "-w",
+                str(width),
+            ],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        rendered = transparentize_dark_background(
+            Image.open(temp_png).convert("RGBA"),
+            threshold=32,
+            green_floor=18,
+        )
+        return rendered
 
 
 def load_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
@@ -776,6 +802,18 @@ def make_sqts_llc_front_art() -> None:
 
 
 def make_ss_short_front_art() -> None:
+    current_best_svg = ROOT / "brand" / "smartsleeve-ss-current-best.svg"
+    if current_best_svg.exists():
+        source = render_transparent_svg(current_best_svg)
+        source_width = 3900
+        source = source.resize((source_width, round(source.height * (source_width / source.width))), Image.Resampling.LANCZOS)
+        art = Image.new("RGBA", (4500, 5400), TRANSPARENT)
+        centered_paste(art, source, 2250, 300)
+        art.save(OUT / "smartsleeve-ss-common-front-print.png")
+        art.save(OUT / "smartsleeve-ss-short-front-print.png")
+        art.save(OUT / "smartsleeve-ss-tank-front-print.png")
+        return
+
     source_path = ROOT / "brand" / "smartsleeve-ss-clean-banner-v2-no-lines.png"
     if not source_path.exists():
         svg_path = ROOT / "brand" / "smartsleeve-apparel-logo-source.svg"
