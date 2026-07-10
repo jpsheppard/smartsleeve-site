@@ -5,7 +5,7 @@
   var catalogEndpoint = meta("smartsleeve-merch-catalog-endpoint");
   var authEndpoint = meta("smartsleeve-auth-endpoint");
   var registerEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/register" : "";
-  var merchImageVersion = "20260710-ss-current-best-printful-refresh";
+  var merchImageVersion = "20260710-ss-current-best-visible-mockups";
   var staticCatalogEndpoint = "/merch/printful-storefront-catalog.json";
   var state = {
     products: [],
@@ -121,7 +121,7 @@
   }
 
   function merchFrontLabel(product) {
-    return merchBrand(product) === "sqts" ? "SQTS" : "SmartSleeve";
+    return merchBrand(product) === "sqts" ? "SQTS" : "SS";
   }
 
   function isMousepadProduct(product) {
@@ -262,10 +262,10 @@
 
   function merchCleanName(name) {
     var clean = String(name || "SmartSleeve merch").trim();
-    clean = clean.replace(/^SmartSleeve\s+SS\s*[- ]\s*/i, "SmartSleeve ");
-    clean = clean.replace(/^SS\s*[- ]\s*/i, "SmartSleeve ");
-    clean = clean.replace(/\bSS\b/g, "SmartSleeve");
+    clean = clean.replace(/^SmartSleeve\s+SS\s*[- ]\s*/i, "SS ");
+    clean = clean.replace(/^SS\s*[- ]\s*/i, "SS ");
     clean = clean.replace(/^SmartSleeve\s+SQTS\b/i, "SQTS");
+    clean = clean.replace(/\s+-\s+/g, " - ");
     clean = clean.replace(/\bWebsite\s*\+\s*QR\b/ig, "Website + QR");
     clean = clean.replace(/\bWebsite\s+QR\b/ig, "Website + QR");
     clean = clean.replace(/\bBlank Back\b/ig, "Plain Back");
@@ -296,7 +296,7 @@
     return sortValue(umbrellaKey(a), ["Apparel", "Towels", "Office"]) - sortValue(umbrellaKey(b), ["Apparel", "Towels", "Office"])
       || sortValue(merchGender(a), ["Men", "Women", "All"]) - sortValue(merchGender(b), ["Men", "Women", "All"])
       || sortValue(merchCut(a), ["T-Shirt", "Polo", "Tank Top", "Muscle Tee", "Fleece Jacket", "Windbreaker", "Socks", "Bandana", "Neck Gaiter", "Beach Towel", "Gym Towel", "Rally Towel", "Mouse Pad"]) - sortValue(merchCut(b), ["T-Shirt", "Polo", "Tank Top", "Muscle Tee", "Fleece Jacket", "Windbreaker", "Socks", "Bandana", "Neck Gaiter", "Beach Towel", "Gym Towel", "Rally Towel", "Mouse Pad"])
-      || sortValue(merchFrontLabel(a), ["SmartSleeve", "SQTS"]) - sortValue(merchFrontLabel(b), ["SmartSleeve", "SQTS"])
+      || sortValue(merchFrontLabel(a), ["SS", "SQTS"]) - sortValue(merchFrontLabel(b), ["SS", "SQTS"])
       || sortValue(merchBackType(a), ["Black", "Website", "Website + QR", "Left chest logo", "Right chest logo", "Outside logo", "Full-surface print"]) - sortValue(merchBackType(b), ["Black", "Website", "Website + QR", "Left chest logo", "Right chest logo", "Outside logo", "Full-surface print"])
       || merchDisplayName(a).localeCompare(merchDisplayName(b));
   }
@@ -368,7 +368,7 @@
       var aOrder = umbrellaKey(a) === "Office" ? officeOrder : umbrellaKey(a) === "Towels" ? towelOrder : apparelOrder;
       var bOrder = umbrellaKey(b) === "Office" ? officeOrder : umbrellaKey(b) === "Towels" ? towelOrder : apparelOrder;
       return sortValue(merchCut(a), aOrder) - sortValue(merchCut(b), bOrder)
-        || sortValue(merchFrontLabel(a), ["SmartSleeve", "SQTS"]) - sortValue(merchFrontLabel(b), ["SmartSleeve", "SQTS"])
+        || sortValue(merchFrontLabel(a), ["SS", "SQTS"]) - sortValue(merchFrontLabel(b), ["SS", "SQTS"])
         || sortValue(merchBackType(a), ["Black", "Website", "Website + QR", "Right chest logo", "Full-surface print"]) - sortValue(merchBackType(b), ["Black", "Website", "Website + QR", "Right chest logo", "Full-surface print"])
         || merchDisplayName(a).localeCompare(merchDisplayName(b));
     });

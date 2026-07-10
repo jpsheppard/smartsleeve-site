@@ -81,7 +81,6 @@ body.public-shop main {
   font-size: 15px;
   font-weight: 900;
   letter-spacing: 0;
-  text-transform: uppercase;
 }
 
 .merch-product-row {
@@ -132,7 +131,6 @@ body.public-shop main {
   font-size: 11px;
   font-weight: 900;
   text-align: center;
-  text-transform: uppercase;
   letter-spacing: 0;
 }
 
@@ -160,7 +158,6 @@ body.public-shop main {
   color: var(--muted);
   font-size: 11px;
   font-weight: 900;
-  text-transform: uppercase;
   letter-spacing: 0;
 }
 
@@ -191,7 +188,6 @@ body.public-shop main {
   color: var(--muted);
   font-size: 11px;
   font-weight: 900;
-  text-transform: uppercase;
   letter-spacing: 0;
 }
 
