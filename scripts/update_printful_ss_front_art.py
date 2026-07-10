@@ -74,6 +74,12 @@ def request_json(
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as err:
         text = err.read().decode("utf-8", errors="replace")
+        if err.code == 429:
+            match = re.search(r"after\s+(\d+)\s+seconds", text, re.IGNORECASE)
+            delay = int(match.group(1)) if match else 60
+            print(f"Printful rate limit for {path}; waiting {delay + 2}s")
+            time.sleep(delay + 2)
+            return request_json(path, token, store_id, ca_file, method, body)
         raise RuntimeError(f"Printful API {err.code} for {path}: {text}") from err
 
 
