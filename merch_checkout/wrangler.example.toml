@@ -49,3 +49,23 @@ PRINTFUL_CONFIRM_ORDERS = "false"
 # [[kv_namespaces]]
 # binding = "MERCH_ORDERS"
 # id = ""
+
+# Durable Object lock: makes shipment-notification idempotency fully atomic so the
+# real-time Printful webhook and the scheduled poll can never both send the same
+# "order shipped" email, even when they fire simultaneously. The Worker degrades to
+# KV claim-before-send if this binding is absent, so you can deploy the code first
+# and enable the lock when ready.
+# [[durable_objects.bindings]]
+# name = "NOTIFICATION_LOCK"
+# class_name = "NotificationLock"
+#
+# [[migrations]]
+# tag = "v1"
+# new_sqlite_classes = ["NotificationLock"]   # free-tier eligible. On legacy accounts
+#                                             # that require classic Durable Objects,
+#                                             # use: new_classes = ["NotificationLock"]
+
+# Optional cron so the shipment poll (a backstop for missed webhooks) runs on a
+# schedule. Keep it infrequent; each tick reconciles pollable orders against Printful.
+# [triggers]
+# crons = ["*/15 * * * *"]
