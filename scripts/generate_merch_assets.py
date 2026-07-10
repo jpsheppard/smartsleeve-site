@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import base64
 import re
+import subprocess
 from io import BytesIO
 from collections import deque
 from pathlib import Path
@@ -21,7 +22,7 @@ GREEN_DIM = (57, 255, 20, 150)
 TEXT_SOFT = (205, 255, 210, 255)
 WHITE = (245, 247, 250, 255)
 WHITE_SOFT = (226, 232, 240, 255)
-SLOGAN = "Quantitative trading for the agentic age."
+SLOGAN = "Quantitative trading for the agentic age"
 SITE_URL = "smartsleeve.ai"
 SITE_QR_URL = "https://smartsleeve.ai"
 PRINT_DPI = 300
@@ -44,6 +45,21 @@ COMPANY_FONT_PATHS = [
     "/System/Library/Fonts/Avenir Next.ttc",
     "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
 ]
+
+
+def render_svg_to_png(svg_path: Path, png_path: Path) -> Path:
+    png_path.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        [
+            "/opt/homebrew/bin/magick",
+            str(svg_path),
+            "-background",
+            "none",
+            str(png_path),
+        ],
+        check=True,
+    )
+    return png_path
 
 
 def load_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
@@ -761,6 +777,10 @@ def make_sqts_llc_front_art() -> None:
 
 def make_ss_short_front_art() -> None:
     source_path = ROOT / "brand" / "smartsleeve-ss-clean-banner-v2-no-lines.png"
+    if not source_path.exists():
+        svg_path = ROOT / "brand" / "smartsleeve-apparel-logo-source.svg"
+        if svg_path.exists():
+            source_path = render_svg_to_png(svg_path, source_path)
     if not source_path.exists() and (OUT / "smartsleeve-ss-common-front-print.png").exists():
         existing = Image.open(OUT / "smartsleeve-ss-common-front-print.png").convert("RGBA")
         existing.save(OUT / "smartsleeve-ss-short-front-print.png")
@@ -781,13 +801,10 @@ def make_ss_short_front_art() -> None:
     centered_paste(base, source, 2250, 520)
 
     art = Image.new("RGBA", base.size, TRANSPARENT)
-    name_shift = 130
-    art.alpha_composite(base.crop((0, 0, base.width, 2115 - name_shift)), (0, 0))
-    art.alpha_composite(base.crop((0, 2080, base.width, 2450)), (0, 2080 - name_shift))
-
+    art.alpha_composite(base, (0, 0))
     draw = ImageDraw.Draw(art)
     slogan_font = fit_font(draw, SLOGAN, 4100, round(230 * 1.25), min_size=100)
-    draw_centered_glow_text(art, SLOGAN, 2250, 2625 - name_shift, slogan_font, WHITE, glow_fill=(255, 255, 255, 255))
+    draw_centered_glow_text(art, SLOGAN, 2250, 2525, slogan_font, WHITE, glow_fill=(255, 255, 255, 255))
 
     art.save(OUT / "smartsleeve-ss-common-front-print.png")
     art.save(OUT / "smartsleeve-ss-short-front-print.png")
