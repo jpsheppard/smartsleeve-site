@@ -57,4 +57,8 @@ After regeneration, verify the rendered proof visually before any Printful uploa
 
 Updating the repo is not enough. If SS apparel artwork changes, the same corrected `merch/smartsleeve-ss-common-front-print.png` must be uploaded/replaced on every applicable SS Printful apparel design, then Printful mockups must be regenerated and synced back into `merch/printful-storefront-catalog.json`.
 
+Use `scripts/update_printful_ss_front_art.py --apply --sha <git-sha>` to replace SS tee, muscle tee, and tank fronts on Printful. The script skips SQTS, polos, fleeces, outerwear, towels, bandanas, and mousepads.
+
+Use `scripts/generate_printful_mockups.py --force --asset-sha <git-sha> --product-regex 'smartsleeve-ss.*(tee|tank|muscle)' --exclude-regex '(polo|fleece|windbreaker|mousepad|towel|bandana)'` after the Printful update. The raw git SHA URL avoids Printful mockup-generator caching of stale `smartsleeve.ai/merch/...` assets.
+
 Do not touch polos or fleeces for slogan-lockup updates; they use separate no-slogan chest assets.

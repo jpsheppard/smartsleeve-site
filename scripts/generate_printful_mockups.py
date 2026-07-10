@@ -29,9 +29,24 @@ from sync_printful_storefront import (
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUT_DIR = ROOT / "merch" / "mockups"
 PUBLIC_MERCH_BASE = "https://smartsleeve.ai/merch"
+PUBLIC_REPO = "https://raw.githubusercontent.com/jpsheppard/smartsleeve-site"
 FRONT_SS = f"{PUBLIC_MERCH_BASE}/smartsleeve-ss-common-front-print.png"
 FRONT_SQTS = f"{PUBLIC_MERCH_BASE}/sqts-llc-common-front-print.png"
 BLANK_BACK = f"{PUBLIC_MERCH_BASE}/smartsleeve-back-blank-print.png"
+
+
+def current_git_sha() -> str:
+    import subprocess
+
+    completed = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+    )
+    return completed.stdout.strip()
 
 
 def request_json(
@@ -82,9 +97,9 @@ def slug(value: str) -> str:
     return clean or "product"
 
 
-def brand_front_url(product: dict[str, Any]) -> str:
+def brand_front_url(product: dict[str, Any], front_ss_url: str, front_sqts_url: str) -> str:
     text = f"{product.get('name', '')} {product.get('key', '')}".lower()
-    return FRONT_SQTS if "sqts" in text else FRONT_SS
+    return front_sqts_url if "sqts" in text else front_ss_url
 
 
 def selected_variant(detail: dict[str, Any], preferred_size: str) -> dict[str, Any]:
@@ -190,10 +205,21 @@ def generate(args: argparse.Namespace) -> None:
     store_id = os.environ.get(args.store_id_env)
     ca_file = default_ca_file()
     client = PrintfulClient(token, store_id, ca_file)
+    asset_sha = args.asset_sha or current_git_sha()
+    front_ss_url = args.front_ss_url or f"{PUBLIC_REPO}/{asset_sha}/merch/smartsleeve-ss-common-front-print.png"
+    front_sqts_url = args.front_sqts_url or FRONT_SQTS
 
     catalog = json.loads(args.catalog.read_text())
     for product in catalog.get("products") or []:
         product_key = str(product.get("key") or product.get("printful_product_id"))
+        product_text = " ".join(
+            str(product.get(key) or "")
+            for key in ("key", "name", "printful_name")
+        )
+        if args.product_regex and not re.search(args.product_regex, product_text, re.IGNORECASE):
+            continue
+        if args.exclude_regex and re.search(args.exclude_regex, product_text, re.IGNORECASE):
+            continue
         front_path = args.out_dir / f"{slug(product_key)}-front.jpg"
         back_path = args.out_dir / f"{slug(product_key)}-back.jpg"
         product["front_mockup"] = f"/merch/mockups/{front_path.name}"
@@ -212,7 +238,7 @@ def generate(args: argparse.Namespace) -> None:
         task_key = create_task(
             catalog_product_id,
             variant_id,
-            brand_front_url(product),
+            brand_front_url(product, front_ss_url, front_sqts_url),
             back_url_from_variant(variant),
             position,
             token,
@@ -237,6 +263,11 @@ def main() -> None:
     parser.add_argument("--token-env", default="PRINTFUL_API_KEY")
     parser.add_argument("--store-id-env", default="PRINTFUL_STORE_ID")
     parser.add_argument("--size", default="L")
+    parser.add_argument("--asset-sha", help="Git SHA for raw GitHub SS merch asset URLs. Defaults to current HEAD.")
+    parser.add_argument("--front-ss-url", help="Override SS front art URL sent to Printful's mockup generator.")
+    parser.add_argument("--front-sqts-url", help="Override SQTS front art URL sent to Printful's mockup generator.")
+    parser.add_argument("--product-regex", help="Only generate mockups for products whose key/name matches this regex.")
+    parser.add_argument("--exclude-regex", help="Skip products whose key/name matches this regex.")
     parser.add_argument("--force", action="store_true")
     generate(parser.parse_args())
 

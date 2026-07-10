@@ -473,6 +473,15 @@ def mockup_paths_for_key(key: str, mockups_dir: Path = DEFAULT_MOCKUPS_DIR) -> d
     return mockups
 
 
+def public_display_name(name: str) -> str:
+    """Keep public merch labels concise while preserving Printful names elsewhere."""
+    display = re.sub(r"^SmartSleeve\s+SS\s*-?\s*", "SS ", name).strip()
+    display = display.replace("Website+QR", "Website + QR")
+    display = display.replace("Blank Back", "Plain Back")
+    display = re.sub(r"\s+", " ", display)
+    return display
+
+
 def variant_prices_and_ids(variants: list[dict[str, Any]]) -> tuple[dict[str, str], dict[str, int]]:
     prices: dict[str, str] = {}
     sync_variant_ids: dict[str, int] = {}
@@ -541,7 +550,7 @@ def public_product(
     mockups = mockup_paths_for_key(key)
     product = {
         "key": key,
-        "name": name,
+        "name": public_display_name(name),
         "printful_name": sync_product.get("name") or name,
         "printful_product_id": product_id,
         "preview": mockups.get("front_mockup") or preview or preview_url(sync_product, matched),
