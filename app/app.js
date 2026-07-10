@@ -14,6 +14,7 @@
   var registerEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/register" : "";
   var passwordResetEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/password-reset/request" : "";
   var sessionToken = params.get("session_token") || "";
+  var lastAuthProfile = null;
 
   var state = {
     payload: null,
@@ -211,6 +212,54 @@
     }
   }
 
+  function currentGlobalAuthState() {
+    return window.SmartSleeveAuth && window.SmartSleeveAuth.state ? window.SmartSleeveAuth.state : null;
+  }
+
+  function isShopSection() {
+    return ["shop", "shop-success", "shop-cancel", "store"].indexOf(currentHashSection()) !== -1;
+  }
+
+  function hasPortalAccess(profile) {
+    return Boolean(profile && (
+      profile.platform_access === true ||
+      profile.platform_access === "true" ||
+      profile.role === "developer"
+    ));
+  }
+
+  function applyAuthProfile(profile, token) {
+    if (!profile) return;
+    if (token) sessionToken = token;
+    if (!profile.email && !profile.username && !profile.role && profile.platform_access == null) return;
+    lastAuthProfile = profile;
+    principalEmail = normalizeEmail(profile.email || principalEmail);
+    if (profile.role === "developer" && requestedDeveloperView) {
+      appEdition = "developer";
+      accountScope = "all";
+    } else {
+      appEdition = appEdition === "developer" ? "web" : appEdition;
+      accountScope = "user";
+    }
+    persistStoredSession(profile);
+  }
+
+  function openGlobalAccount(mode) {
+    if (window.SmartSleeveAuth && typeof window.SmartSleeveAuth.open === "function") {
+      window.SmartSleeveAuth.open(mode || (lastAuthProfile ? "profile" : "login"));
+      return true;
+    }
+    text("auth-gate-message", "SmartSleeve account controls are still loading. Try again in a moment.");
+    return false;
+  }
+
+  function portalAccessError(profile, message) {
+    var error = new Error(message || "This SmartSleeve account is active, but investment Portal access has not been enabled yet.");
+    error.portalAccessRequired = true;
+    error.profile = profile || lastAuthProfile || null;
+    return error;
+  }
+
   function currentHashSection() {
     return String(window.location.hash || "#dashboard").replace("#", "").split("?")[0] || "dashboard";
   }
@@ -223,63 +272,42 @@
   }
 
   function showAuthGate(message) {
-    if ($("auth-gate")) {
-      text("auth-gate-message", message || "Sign in to load your private SmartSleeve data.");
-      return;
-    }
+    var options = arguments.length > 1 && arguments[1] ? arguments[1] : {};
+    var profile = options.profile || lastAuthProfile || (currentGlobalAuthState() && currentGlobalAuthState().profile) || null;
+    var accessPending = Boolean(options.portalAccessRequired || (profile && !hasPortalAccess(profile)));
+    removeAuthGate();
     var gate = document.createElement("div");
     gate.id = "auth-gate";
     gate.className = "auth-gate";
+    var signedInLine = profile && profile.email
+      ? "Signed in as " + (profile.display_name || [profile.first_name, profile.last_name].filter(Boolean).join(" ").trim() || profile.email) + "."
+      : "";
+    var title = accessPending ? "Portal Access Pending" : "SmartSleeve Portal";
+    var detail = message || (accessPending
+      ? "Your website account works for merch and profile settings. Investment Portal access is enabled separately after SmartSleeve approves or configures the account."
+      : "Sign in with your SmartSleeve account. The same account works across the website, merch checkout, and any enabled Portal access.");
     gate.innerHTML = [
-      "<form class=\"auth-card\" id=\"auth-gate-form\" data-mode=\"login\">",
-      "<button type=\"button\" class=\"auth-exit-button\" id=\"auth-exit-button\" aria-label=\"Exit private login\" title=\"Exit\">&times;</button>",
+      "<article class=\"auth-card auth-portal-card\">",
+      "<button type=\"button\" class=\"auth-exit-button\" id=\"auth-exit-button\" aria-label=\"Exit Portal\" title=\"Exit\">&times;</button>",
       "<img src=\"/brand/smartsleeve-apparel-logo-cropped.png\" alt=\"SmartSleeve\">",
-      "<h2>Private SmartSleeve Access</h2>",
-      "<p id=\"auth-gate-message\">" + html(message || "Sign in to load your private SmartSleeve data.") + "</p>",
-      "<div class=\"auth-switch\" role=\"tablist\" aria-label=\"SmartSleeve access mode\">",
-      "<button type=\"button\" data-auth-mode=\"login\" aria-selected=\"true\">Sign in</button>",
-      "<button type=\"button\" data-auth-mode=\"register\" aria-selected=\"false\">Create account</button>",
-      "</div>",
-      "<label class=\"auth-register-field\">Username<input id=\"auth-username\" type=\"text\" autocomplete=\"username\" minlength=\"3\"></label>",
-      "<div class=\"auth-name-grid auth-register-field\">",
-      "<label>First name<input id=\"auth-first-name\" type=\"text\" autocomplete=\"given-name\" autocapitalize=\"words\"></label>",
-      "<label>Last name<input id=\"auth-last-name\" type=\"text\" autocomplete=\"family-name\" autocapitalize=\"words\"></label>",
-      "</div>",
-      "<label>Email<input id=\"auth-email\" type=\"email\" autocomplete=\"username\" autocapitalize=\"none\" spellcheck=\"false\" required></label>",
-      "<label>Password<input id=\"auth-password\" type=\"password\" autocomplete=\"off\" minlength=\"12\" data-lpignore=\"true\" data-1p-ignore=\"true\" autocapitalize=\"none\" spellcheck=\"false\" required></label>",
-      "<label class=\"auth-register-field\">Confirm password<input id=\"auth-password-confirm\" type=\"password\" autocomplete=\"off\" minlength=\"12\" data-lpignore=\"true\" data-1p-ignore=\"true\" autocapitalize=\"none\" spellcheck=\"false\"></label>",
-      "<label class=\"auth-check auth-register-field\"><input id=\"auth-accepted-terms\" type=\"checkbox\"><span>I understand SmartSleeve account access is for verified users and does not itself authorize broker trading.</span></label>",
-      "<button type=\"submit\" id=\"auth-submit-button\">Sign in</button>",
-      "<button type=\"button\" class=\"auth-link-button\" id=\"auth-reset-button\">Reset password</button>",
-      "<small>Account data is served only after the private API verifies your session.</small>",
-      "</form>"
+      "<h2>" + html(title) + "</h2>",
+      (signedInLine ? "<p>" + html(signedInLine) + "</p>" : ""),
+      "<p id=\"auth-gate-message\">" + html(detail) + "</p>",
+      "<button type=\"button\" id=\"auth-global-button\">" + html(accessPending && profile ? "Manage account" : "Sign in / create account") + "</button>",
+      "<button type=\"button\" class=\"auth-link-button\" id=\"auth-shop-button\">Shop merch instead</button>",
+      "<small>General SmartSleeve accounts do not authorize broker access or trading. Portal access is granted separately.</small>",
+      "</article>"
     ].join("");
     document.body.appendChild(gate);
-    var emailInput = $("auth-email");
-    if (emailInput && principalEmail) {
-      emailInput.value = principalEmail;
-    }
-    clearAuthPasswordFields();
-    window.setTimeout(clearAuthPasswordFields, 120);
-    window.setTimeout(clearAuthPasswordFields, 650);
-    $("auth-gate-form").addEventListener("submit", function (event) {
-      event.preventDefault();
-      if ($("auth-gate-form").getAttribute("data-mode") === "register") {
-        registerFromGate();
-      } else {
-        loginFromGate();
-      }
-    });
-    $all("[data-auth-mode]", gate).forEach(function (button) {
-      button.addEventListener("click", function () {
-        setAuthMode(button.getAttribute("data-auth-mode") || "login");
-      });
-    });
     $("auth-exit-button").addEventListener("click", function () {
       window.location.assign("/");
     });
-    $("auth-reset-button").addEventListener("click", requestPasswordResetFromGate);
-    wireAuthFieldFocus(gate);
+    $("auth-global-button").addEventListener("click", function () {
+      openGlobalAccount(accessPending && profile ? "profile" : "login");
+    });
+    $("auth-shop-button").addEventListener("click", function () {
+      window.location.assign("/app/#shop");
+    });
   }
 
   function clearAuthPasswordFields() {
@@ -316,7 +344,7 @@
       "<h2>" + html(title) + "</h2>",
       "<p>" + html(message) + "</p>",
       "<button type=\"button\" id=\"auth-notice-action\">" + html(actionLabel || "Return to sign in") + "</button>",
-      "<small>Account data is served only after the private API verifies your session.</small>"
+      "<small>Account data is served only after the Portal API verifies your session.</small>"
     ].join("");
     $("auth-notice-action").addEventListener("click", function () {
       removeAuthGate();
@@ -337,8 +365,8 @@
     text(
       "auth-gate-message",
       nextMode === "register"
-        ? "Create a verified SmartSleeve account. Passwords must be at least 12 characters. We will email a verification link before private data can load."
-        : "Sign in to load your private SmartSleeve data."
+        ? "Create a verified SmartSleeve account. Passwords must be at least 12 characters. We will email a verification link before Portal data can load."
+        : "Sign in to load your SmartSleeve Portal data."
     );
     clearAuthPasswordFields();
   }
@@ -1870,9 +1898,10 @@
   }
 
   function renderSession() {
+    var pendingPortal = lastAuthProfile && !hasPortalAccess(lastAuthProfile);
     text("edition-label", appEdition === "developer" ? "Developer Edition" : "SmartSleeve");
-    text("session-title", appEdition === "developer" ? "All-account dashboard" : (principalEmail || "Verified user"));
-    text("session-detail", appEdition === "developer" ? "Cross-account diagnostics and operator tools." : "User-scoped accounts only.");
+    text("session-title", pendingPortal ? "Portal access pending" : appEdition === "developer" ? "All-account dashboard" : (principalEmail || "Verified user"));
+    text("session-detail", pendingPortal ? "Website account active; investment Portal access is enabled separately." : appEdition === "developer" ? "Cross-account diagnostics and operator tools." : "User-scoped accounts only.");
     text("portfolio-value-label", appEdition === "developer" ? "All tracked account value" : "Your tracked account value");
   }
 
@@ -2412,7 +2441,7 @@
     }).join("");
     return "<article class=\"panel-card wide-card account-detail-chart-card\"><div class=\"card-head\"><div><span>Account chart</span><h2>Account Holdings Value ($)</h2></div><span class=\"status-chip " + html(trendClass) + "\">" + html(meta) + "</span></div>"
       + (last ? "<div class=\"chart-readout\" data-chart-readout=\"" + html(chartId) + "\"><b>" + html(money(last.value)) + "</b><span class=\"" + html(trendClass) + "\">" + html(meta) + "</span></div>" : "")
-      + (cleanPoints.length ? buildLineChart(cleanPoints, lineColor, "Account value", {interactive: true, compact: true, chartId: chartId, baseline: first ? first.value : null, range: range}) : emptyItem("No account history", "Private account history has not synced for this account yet."))
+      + (cleanPoints.length ? buildLineChart(cleanPoints, lineColor, "Account value", {interactive: true, compact: true, chartId: chartId, baseline: first ? first.value : null, range: range}) : emptyItem("No account history", "Portal account history has not synced for this account yet."))
       + "<div class=\"time-tabs\" role=\"tablist\" aria-label=\"Account chart range\">" + tabs + "</div>"
       + (last ? "<p class=\"chart-footnote\"><b>Latest market point</b> " + html(money(last.value)) + " / " + html(latestProvenance) + " / plotting all " + html(cleanPoints.length + " market point" + (cleanPoints.length === 1 ? "" : "s")) + (account.sourceIsStale ? " / stale broker export; awaiting fresh daemon sync" : "") + "</p>" : "")
       + "</article>";
@@ -2669,7 +2698,7 @@
     var points = accountHistoryPoints(account).sort(function (a, b) {
       return new Date(a.at).getTime() - new Date(b.at).getTime();
     });
-    if (!points.length) return "No private account-history points synced yet.";
+    if (!points.length) return "No Portal account-history points synced yet.";
     var first = points[0];
     var last = points[points.length - 1];
     return points.length + " history point" + (points.length === 1 ? "" : "s") + " from " + shortTimestamp(first.at) + " to " + shortTimestamp(last.at) + ". This is the visible app-feed history window, not guaranteed broker-account inception history.";
@@ -2781,7 +2810,7 @@
       expected = expected.filter(function (row) { return rowOwnerEmail(row) === canonicalEmail(principalEmail); });
     }
     if (!expected.length) {
-      target.innerHTML = emptyItem("Account coverage unavailable", "The private feed did not include an expected-account checklist.");
+      target.innerHTML = emptyItem("Account coverage unavailable", "The Portal feed did not include an expected-account checklist.");
       return;
     }
     var missing = coverage.missing || [];
@@ -2826,7 +2855,7 @@
           ? "Stale broker export / " + accountHistoryCoverage(account)
           : sourceCopy + " / market data ET " + accountMarketDataLabel(account);
         return lineChartCard(account.account, meta, points, "equity", "Account value", null, account.sourceIsStale);
-      }).join("") || emptyItem("No account history", "Account value charts appear after private feed history syncs.");
+      }).join("") || emptyItem("No account history", "Account value charts appear after Portal feed history syncs.");
     }
     if (holdingTarget) {
       var latestByKey = {};
@@ -2862,7 +2891,7 @@
         var title = row.position.symbol + " / " + row.account.account;
         var meta = (row.position.name || tickerNames[row.position.symbol] || row.position.symbol) + " holding value / yfinance 1m and broker sync points";
         return lineChartCard(title, meta, points, "value", "Stock value", row.position.totalPnl);
-      }).join("") || emptyItem("No holding history", "Stock holding charts appear after private feed history syncs.");
+      }).join("") || emptyItem("No holding history", "Stock holding charts appear after Portal feed history syncs.");
     }
   }
 
@@ -2954,7 +2983,7 @@
         sleeves: ["Grand Sage", "Semi Sage"],
         title: "Grand Sage stock picks",
         date: "latest",
-        summary: "Latest known Grand Sage/Semi Sage archive universe. The private report gateway remains authoritative for thesis notes and sizing context.",
+        summary: "Latest known Grand Sage/Semi Sage archive universe. The Portal report gateway remains authoritative for thesis notes and sizing context.",
         candidateSymbols: ["SNDK", "ALAB", "MU", "CRDO", "NBIS", "AMD", "CAT", "TSM", "SMCI", "VRT", "NVDA", "AVGO", "MRVL"],
         url: "/app/reports/stock-picks/grand_sage/latest.html",
         latestUrl: "/app/reports/stock-picks/grand_sage/latest.html"
@@ -3072,7 +3101,7 @@
         + "<b>" + html(sleeve.name) + "</b>"
         + "<small>" + html(sleeve.reportCount + " archived report" + (sleeve.reportCount === 1 ? "" : "s") + " / " + holdings) + "</small>"
         + "</button>";
-    }).join("") || emptyItem("No subscribed stock-pick sleeves", "Stock-pick universes will appear after the private feed includes subscriptions or stock-pick reports.");
+    }).join("") || emptyItem("No subscribed stock-pick sleeves", "Stock-pick universes will appear after the Portal feed includes subscriptions or stock-pick reports.");
     var selected = sleeves.find(function (sleeve) { return sleeve.name === state.selectedStockPickSleeve; });
     text("stock-pick-title", selected ? selected.name + " stock-pick archive" : "Stock-pick reports");
     if (!selected) {
@@ -3304,7 +3333,7 @@
           return stackItem(symbol, thesisStatus(symbol, 0), "Review behavior and portfolio role before reallocating.", 55);
         }).join("") : emptyItem("No holdings", "No current symbols are tagged to this sleeve."))
       + "</div></article>",
-      "<article class=\"panel-card wide-card\"><div class=\"card-head\"><div><span>Trades</span><h2>Recent sleeve activity</h2></div><span class=\"status-chip\">Private feed</span></div><div class=\"stack-list\">"
+      "<article class=\"panel-card wide-card\"><div class=\"card-head\"><div><span>Trades</span><h2>Recent sleeve activity</h2></div><span class=\"status-chip\">Portal feed</span></div><div class=\"stack-list\">"
         + (trades.map(function (trade) {
           return stackItem(trade.symbol || trade.ticker || "Trade", orderStatusLabel(trade), (trade.account || trade.accountId || "Account") + " / " + orderTypeLabel(trade), 55);
         }).join("") || emptyItem("No sleeve trades", "No current server trade rows are tagged to this sleeve."))
@@ -4720,7 +4749,7 @@
       if (result.ok && result.updated) {
         toast("Latest app feed synced; stale account exports are called out separately.");
       } else if (!result.ok && !state.payload) {
-        toast("Private feed unavailable. Sign in or retry.");
+        toast("Portal feed unavailable. Sign in or retry.");
       }
       resetPullRefresh(result.updated ? 750 : 350);
     });
@@ -4926,9 +4955,9 @@
       var refreshStarted = requestServerFeedRefresh();
       loadFeed({silent: true, interactiveRefresh: true}).then(function (ok) {
         if (ok) {
-          toast(refreshStarted ? "Refresh requested. Latest available app feed is showing; stale accounts are called out separately." : "Private feed checked.");
+          toast(refreshStarted ? "Refresh requested. Latest available app feed is showing; stale accounts are called out separately." : "Portal feed checked.");
         } else if (!state.payload) {
-          toast("Private feed unavailable. Sign in or retry.");
+          toast("Portal feed unavailable. Sign in or retry.");
         }
       });
     });
@@ -4944,7 +4973,7 @@
       state.recommendations = [];
       text("sync-pill", "Signed out");
       renderAll();
-      showAuthGate("Signed out. Sign in again to load private SmartSleeve data.");
+      showAuthGate("Signed out. Sign in again to load SmartSleeve Portal data.");
     });
     var form = $("trade-form");
     if (form) {
@@ -5236,9 +5265,9 @@
     state.reports = ensureStockPickReports(scopedRowsForVisibleAccounts(payload.reports || [], visibleAccountIds));
     state.accountCoverage = payload.accountCoverage || null;
     state.feedWarning = null;
-    text("snapshot-source", appEdition === "developer" ? (payload.source || "Private SmartSleeve API") : "");
+    text("snapshot-source", appEdition === "developer" ? (payload.source || "SmartSleeve Portal API") : "");
     text("snapshot-time", feedSyncLabel(payload));
-    text("sync-pill", "Private API synced");
+    text("sync-pill", "Portal API synced");
     addActivity("Cloud feed synced", "EXTERNAL_BROKER_SYNC", appEdition === "developer" ? "All accounts" : principalEmail, state.accounts.length + " account(s), " + state.serverTrades.length + " trades, " + state.brain.length + " brain rows.");
     renderAll();
     handleNav((window.location.hash || "#dashboard").replace("#", "") || "dashboard");
@@ -5307,6 +5336,43 @@
     return String(payload.published_at || payload.generated_at || payload.generatedAt || payload.updated_at || payload.updatedAt || "");
   }
 
+  function ensurePortalAccess() {
+    var globalState = currentGlobalAuthState();
+    if (globalState && globalState.sessionToken) {
+      applyAuthProfile(globalState.profile || lastAuthProfile || {}, globalState.sessionToken);
+    }
+    if (globalState && globalState.ready && globalState.profile) {
+      applyAuthProfile(globalState.profile, globalState.sessionToken || sessionToken);
+      if (!hasPortalAccess(globalState.profile)) {
+        return Promise.reject(portalAccessError(globalState.profile));
+      }
+      return Promise.resolve(globalState.profile);
+    }
+    if (!authEndpoint) {
+      var missing = new Error("SmartSleeve Portal auth endpoint is not configured.");
+      missing.authRequired = true;
+      return Promise.reject(missing);
+    }
+    return authFetch(authEndpoint.replace(/\/$/, "") + "/me")
+      .then(function (response) {
+        return response.json().catch(function () { return {}; }).then(function (payload) {
+          if (response.status === 401) {
+            var unauthorized = new Error("Sign in with your SmartSleeve account to open the Portal.");
+            unauthorized.authRequired = true;
+            throw unauthorized;
+          }
+          if (!response.ok || !payload.ok || !payload.profile) {
+            throw new Error(payload.error || "Portal auth check failed.");
+          }
+          applyAuthProfile(payload.profile, sessionToken);
+          if (!hasPortalAccess(payload.profile)) {
+            throw portalAccessError(payload.profile);
+          }
+          return payload.profile;
+        });
+      });
+  }
+
   function wait(ms) {
     return new Promise(function (resolve) {
       window.setTimeout(resolve, ms);
@@ -5330,27 +5396,31 @@
   function fetchAppFeed(options) {
     options = options || {};
     if (!appFeedEndpoint) {
-      return Promise.reject(new Error("SmartSleeve private API is not configured."));
+      return Promise.reject(new Error("SmartSleeve Portal API is not configured."));
     }
-    var separator = appFeedEndpoint.indexOf("?") === -1 ? "?" : "&";
-    var query = [];
-    if (options.refresh) query.push("refresh=1");
-    query.push("ts=" + Date.now());
-    var headers = options.refresh ? {"X-SmartSleeve-Refresh": "pull-to-refresh"} : {};
-    return authFetch(appFeedEndpoint + separator + query.join("&"), {headers: headers})
-      .then(function (response) {
-        return response.json().catch(function () { return {}; }).then(function (payload) {
-          if (response.status === 401) {
-            var err = new Error("Please sign in to load your private portfolio feed.");
-            err.authRequired = true;
-            throw err;
-          }
-          if (!response.ok || payload.ok === false) {
-            throw new Error(payload.error || "Private API returned HTTP " + response.status);
-          }
-          return {payload: payload.feed || payload, url: appFeedEndpoint};
+    return ensurePortalAccess().then(function () {
+      var separator = appFeedEndpoint.indexOf("?") === -1 ? "?" : "&";
+      var query = [];
+      if (options.refresh) query.push("refresh=1");
+      query.push("ts=" + Date.now());
+      var headers = options.refresh ? {"X-SmartSleeve-Refresh": "pull-to-refresh"} : {};
+      return authFetch(appFeedEndpoint + separator + query.join("&"), {headers: headers})
+        .then(function (response) {
+          return response.json().catch(function () { return {}; }).then(function (payload) {
+            if (response.status === 401 || response.status === 403) {
+              var err = new Error(response.status === 403 ? "This SmartSleeve account does not have Portal access yet." : "Sign in with your SmartSleeve account to load the Portal feed.");
+              err.authRequired = response.status === 401;
+              err.portalAccessRequired = response.status === 403;
+              err.profile = lastAuthProfile;
+              throw err;
+            }
+            if (!response.ok || payload.ok === false) {
+              throw new Error(payload.error || "Portal API returned HTTP " + response.status);
+            }
+            return {payload: payload.feed || payload, url: appFeedEndpoint};
+          });
         });
-      });
+    });
   }
 
   function loadFeed(options) {
@@ -5361,6 +5431,17 @@
         return true;
       })
       .catch(function (error) {
+        if (error.portalAccessRequired) {
+          text("snapshot-time", "Portal access pending");
+          state.accounts = [];
+          state.allAccounts = [];
+          state.holdings = [];
+          state.sleeves = [];
+          state.recommendations = [recommendation("portal-access-pending", "Portal access not enabled yet", "Account active", "SmartSleeve", "Access", 0, error.message, "Your website account can still shop merch and save a profile. SmartSleeve enables investment Portal access separately.", "EXTERNAL_BROKER_SYNC")];
+          renderAll();
+          showAuthGate(error.message, {portalAccessRequired: true, profile: error.profile || lastAuthProfile});
+          return false;
+        }
         if (state.payload && (options.refresh || options.silent || options.interactiveRefresh || error.authRequired)) {
           text("sync-pill", options.interactiveRefresh || options.silent ? "Checked" : "Showing latest loaded data");
           text("snapshot-time", feedSyncLabel(state.payload) || "Latest loaded app feed is still displayed.");
@@ -5383,7 +5464,7 @@
             clearStoredSession();
             showAuthGate(error.message);
           } else {
-            showAuthGate("Private feed unavailable: " + error.message);
+            showAuthGate("Portal feed unavailable: " + error.message);
           }
         }
         if (!options.silent && !(state.payload && (options.refresh || options.interactiveRefresh || error.authRequired))) {
@@ -5403,16 +5484,18 @@
       var detail = event.detail || {};
       var profile = detail.profile || null;
       if (!profile || !detail.sessionToken) return;
-      sessionToken = detail.sessionToken;
-      principalEmail = normalizeEmail(profile.email || principalEmail);
-      persistStoredSession(profile);
+      applyAuthProfile(profile, detail.sessionToken);
       renderSession();
-      if ($("auth-gate") && ["shop", "shop-success", "shop-cancel", "store"].indexOf(currentHashSection()) === -1) {
+      if (!isShopSection()) {
+        if (!hasPortalAccess(profile)) {
+          showAuthGate("This SmartSleeve website account is active, but investment Portal access has not been enabled yet.", {portalAccessRequired: true, profile: profile});
+          return;
+        }
         removeAuthGate();
         loadFeed();
       }
     });
-    if (["shop", "shop-success", "shop-cancel", "store"].indexOf(String(window.location.hash || "").replace("#", "").split("?")[0]) === -1) {
+    if (!isShopSection()) {
       loadFeed();
     }
   });

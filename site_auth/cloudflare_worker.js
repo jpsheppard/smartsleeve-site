@@ -9,6 +9,7 @@
 //   - SMARTSLEEVE_AUTH_REPLY_TO_EMAIL
 //   - SMARTSLEEVE_AUTH_APP_URL
 //   - SMARTSLEEVE_AUTH_ALLOWED_ORIGINS
+//   - SMARTSLEEVE_PLATFORM_ACCESS_EMAILS
 //
 // Routes:
 //   POST /register
@@ -244,9 +245,31 @@ function developerEmails(env) {
   );
 }
 
+function platformAccessEmails(env) {
+  return new Set([
+    ...developerEmails(env),
+    ...String(env.SMARTSLEEVE_PLATFORM_ACCESS_EMAILS || "")
+      .split(",")
+      .map(normalizeEmail)
+      .filter(Boolean),
+  ]);
+}
+
+function accountHasPlatformAccess(profile, env) {
+  const email = normalizeEmail(profile.email);
+  return Boolean(
+    platformAccessEmails(env).has(email) ||
+    profile.platform_access === true ||
+    profile.platform_access === "true"
+  );
+}
+
 function publicProfile(record, env) {
   const profile = record.profile || {};
   const shipping = collectShippingAddress(profile.shipping_address || {});
+  const email = normalizeEmail(profile.email);
+  const role = developerEmails(env).has(email) ? "developer" : "user";
+  const platformAccess = accountHasPlatformAccess(profile, env);
   return {
     username: profile.username || "",
     email: profile.email || "",
@@ -255,7 +278,9 @@ function publicProfile(record, env) {
     nickname: profile.nickname || "",
     display_name: [profile.first_name, profile.last_name].filter(Boolean).join(" ").trim() || profile.nickname || profile.username || profile.email || "",
     shipping_address: hasShippingAddress(shipping) ? shipping : null,
-    role: developerEmails(env).has(normalizeEmail(profile.email)) ? "developer" : "user",
+    role,
+    platform_access: platformAccess,
+    platform_status: platformAccess ? "enabled" : "not_enabled",
     verified_at: record.verified_at || null,
   };
 }
@@ -721,6 +746,7 @@ export default {
         resend_configured: Boolean(env.RESEND_API_KEY),
         sessions_supported: true,
         profile_supported: true,
+        platform_access_supported: true,
       });
     }
     if (url.pathname === "/register" && request.method === "POST") {

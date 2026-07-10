@@ -28,6 +28,11 @@
       .replace(/'/g, "&#39;");
   }
 
+  function text(id, value) {
+    var element = $(id);
+    if (element) element.textContent = value;
+  }
+
   function normalizeEmail(value) {
     return String(value || "").trim().toLowerCase();
   }
@@ -106,6 +111,14 @@
     return profile && (profile.display_name || [profile.first_name, profile.last_name].filter(Boolean).join(" ").trim() || profile.username || profile.email) || "SmartSleeve user";
   }
 
+  function hasPortalAccess(profile) {
+    return Boolean(profile && (
+      profile.platform_access === true ||
+      profile.platform_access === "true" ||
+      profile.role === "developer"
+    ));
+  }
+
   function ensureWidget() {
     if ($("ss-auth-widget")) return;
     var widget = document.createElement("div");
@@ -136,7 +149,7 @@
     }
     if (profile) {
       if (title) title.textContent = displayName(profile);
-      if (subtitle) subtitle.textContent = profile.email || "Signed in";
+      if (subtitle) subtitle.textContent = hasPortalAccess(profile) ? "Portal access enabled" : "Website account";
       if (open) open.textContent = "Account";
       if (logoutButton) logoutButton.hidden = false;
     } else {
@@ -172,7 +185,7 @@
       "<p id=\"ss-auth-message\" class=\"ss-auth-message\">Sign in once and SmartSleeve can reuse your profile across the site.</p>",
       "<div class=\"ss-auth-tabs\" role=\"tablist\" aria-label=\"SmartSleeve account mode\">",
       "<button type=\"button\" data-ss-auth-mode=\"login\" aria-selected=\"true\">Sign in</button>",
-      "<button type=\"button\" data-ss-auth-mode=\"register\" aria-selected=\"false\">Create user</button>",
+      "<button type=\"button\" data-ss-auth-mode=\"register\" aria-selected=\"false\">Create account</button>",
       "<button type=\"button\" data-ss-auth-mode=\"profile\" aria-selected=\"false\">Profile</button>",
       "</div>",
       "<label class=\"ss-auth-register-fields\">Username<input id=\"ss-auth-username\" type=\"text\" autocomplete=\"username\" minlength=\"3\"></label>",
@@ -180,7 +193,7 @@
       "<label>First name<input id=\"ss-auth-first-name\" type=\"text\" autocomplete=\"given-name\"></label>",
       "<label>Last name<input id=\"ss-auth-last-name\" type=\"text\" autocomplete=\"family-name\"></label>",
       "</div>",
-      "<label class=\"ss-auth-login-field\">Email or username<input id=\"ss-auth-identity\" type=\"text\" autocomplete=\"username\" autocapitalize=\"none\" spellcheck=\"false\"></label>",
+      "<label class=\"ss-auth-login-field\"><span id=\"ss-auth-identity-label\">Email or username</span><input id=\"ss-auth-identity\" type=\"text\" autocomplete=\"username\" autocapitalize=\"none\" spellcheck=\"false\"></label>",
       "<label class=\"ss-auth-login-field\">Password<input id=\"ss-auth-password\" type=\"password\" autocomplete=\"current-password\" minlength=\"12\" data-lpignore=\"true\" data-1p-ignore=\"true\"></label>",
       "<label class=\"ss-auth-register-fields\">Confirm password<input id=\"ss-auth-password-confirm\" type=\"password\" autocomplete=\"new-password\" minlength=\"12\" data-lpignore=\"true\" data-1p-ignore=\"true\"></label>",
       "<label class=\"ss-auth-register-fields\"><span><input id=\"ss-auth-terms\" type=\"checkbox\"> I understand this creates a general SmartSleeve user and does not authorize broker trading.</span></label>",
@@ -232,9 +245,10 @@
     });
     var profileFields = form.querySelector(".ss-auth-profile-fields");
     if (profileFields) profileFields.hidden = next !== "profile";
-    $("ss-auth-submit").textContent = next === "register" ? "Create user" : next === "profile" ? "Save profile" : "Sign in";
+    text("ss-auth-identity-label", next === "register" ? "Email" : "Email or username");
+    $("ss-auth-submit").textContent = next === "register" ? "Create account" : next === "profile" ? "Save profile" : "Sign in";
     $("ss-auth-message").textContent = next === "register"
-      ? "Create a verified SmartSleeve user. You will need to confirm your email before sign-in."
+      ? "Create a verified SmartSleeve website account. You will need to confirm your email before sign-in."
       : next === "profile"
         ? "Save the profile and shipping address SmartSleeve can use across the site."
         : "Sign in once and SmartSleeve can reuse your profile across the site.";
@@ -391,7 +405,8 @@
     refresh: refresh,
     open: openModal,
     logout: logout,
-    saveProfile: saveProfile
+    saveProfile: saveProfile,
+    hasPortalAccess: hasPortalAccess
   };
 
   document.addEventListener("DOMContentLoaded", function () {

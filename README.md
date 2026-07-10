@@ -81,3 +81,11 @@ The public pages and `/app/` load `site-auth.js` plus `site-auth.css`, which
 expose a shared `window.SmartSleeveAuth` identity state. The merch cart can use
 that profile to prefill email/name/shipping into Stripe Checkout while Stripe
 continues to own card collection and payment-method storage.
+
+Verified SmartSleeve accounts are website-wide by default: they can manage a
+profile and use merch checkout, but they do not automatically unlock the
+investment Portal. Portal access is returned as `profile.platform_access` by
+the auth Worker and is enabled separately through
+`SMARTSLEEVE_PLATFORM_ACCESS_EMAILS`, `SMARTSLEEVE_DEVELOPER_EMAILS`, or a
+trusted KV profile update. The `/app/` Portal consumes the same global session
+and shows an access-pending state instead of asking for a second login.

@@ -6,6 +6,7 @@ compatibility_date = "2026-06-21"
 SMARTSLEEVE_AUTH_APP_URL = "https://smartsleeve.ai/app/"
 SMARTSLEEVE_AUTH_ALLOWED_ORIGINS = "https://smartsleeve.ai,https://www.smartsleeve.ai"
 SMARTSLEEVE_DEVELOPER_EMAILS = "john@smartsleeve.ai,jpsheppard88@gmail.com"
+SMARTSLEEVE_PLATFORM_ACCESS_EMAILS = "jpsheppard88@gmail.com"
 
 [[kv_namespaces]]
 binding = "SMARTSLEEVE_AUTH"
