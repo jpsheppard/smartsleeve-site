@@ -1,6 +1,6 @@
 # Realtime portfolio clients: Phase 0 inventory and integration plan
 
-Status: web routing fix and shared feed-layer refactor complete locally; realtime wiring blocked on the published client protocol and platform-repo coordination.
+Status: Phase 0 complete. The protocol was subsequently published and the web implementation is documented in `docs/realtime-portfolio-client-v1.md`.
 
 ## Repository boundary
 
@@ -104,9 +104,9 @@ Verification:
 - The same dashboard -> shop -> browser Back sequence was run against the local fixed site.
 - After Back, the URL was `#dashboard`, `body.public-shop` was absent, dashboard was the only active panel, shop was hidden, and the document title was restored to `SmartSleeve Portfolio OS`.
 
-## Protocol gate
+## Protocol status
 
-`platform/docs/realtime_portfolio_freshness_design.md` currently describes the architecture and an illustrative account slice, but its status is proposed and it is not a complete published client-facing protocol. Client WebSocket wiring must wait for the backend owner to publish at least:
+At the end of Phase 0, `platform/docs/realtime_portfolio_freshness_design.md` described the architecture but was not a complete client-facing contract. The later `platform/docs/realtime_portfolio_protocol_v1.md` publication resolved the required ticket, transport, schema, ordering, freshness, and compatibility details. The historical gate required:
 
 - ticket endpoint, method, request/response schema, expiry/error behavior, and how the one-use ticket is presented during upgrade;
 - WebSocket URL and any required subprotocol;
@@ -118,7 +118,7 @@ Verification:
 - `valueMethod`/derived-value vocabulary and null/missing-field behavior;
 - feature-flag source and production/shadow endpoint selection.
 
-No client implementation should infer these details from the illustrative JSON.
+The v1 implementation uses the published contract rather than inferring these details from the earlier illustrative JSON.
 
 ## Realtime integration plan after protocol publication
 

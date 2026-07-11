@@ -10,6 +10,7 @@
   <meta name="sqts-analytics-endpoint" content="__SQTS_SITE_ANALYTICS_ENDPOINT__">
   <meta name="smartsleeve-auth-endpoint" content="https://smartsleeve-auth.jpsheppard88.workers.dev">
   <meta name="smartsleeve-order-intent-endpoint" content="https://smartsleeve-auth.jpsheppard88.workers.dev/order-intents">
+  <meta name="smartsleeve-realtime-enabled" content="true">
   <meta name="smartsleeve-merch-checkout-endpoint" content="https://smartsleeve-merch-checkout.jpsheppard88.workers.dev/checkout">
   <meta name="smartsleeve-merch-catalog-endpoint" content="/merch/printful-storefront-catalog.json">
   <!-- SmartSleeve Console Prototype: secure backend integration surface. Custom Sage (Grand Sage). -->
@@ -17,7 +18,7 @@
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
   <link rel="manifest" href="/site.webmanifest">
-  <link rel="stylesheet" href="/app/styles.css?v=20260630-site-footer">
+  <link rel="stylesheet" href="/app/styles.css?v=20260710-realtime-v1">
   <link rel="stylesheet" href="/app/merch.css?v=20260710-general-accounts-v1">
   <link rel="stylesheet" href="/site-auth.css?v=20260710-special-offers-v1">
 </head>
@@ -61,7 +62,10 @@
         <div class="topbar-actions">
           <button type="button" class="text-button" id="refresh-feed-button">Refresh</button>
           <button type="button" class="text-button subtle" id="sign-out-button">Sign out</button>
-          <div class="sync-pill" id="sync-pill">Syncing</div>
+          <div class="realtime-summary" aria-live="polite">
+            <div class="sync-pill" id="sync-pill">Syncing</div>
+            <small id="realtime-detail">Loading polling fallback.</small>
+          </div>
         </div>
       </header>
       <div id="pull-refresh-indicator" class="pull-refresh-indicator" aria-live="polite">
@@ -949,9 +953,10 @@
   </nav>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="/app/portfolio-data.js?v=20260710-phase0-v1" defer></script>
-  <script src="/app/app.js?v=20260710-phase0-v1" defer></script>
+  <script src="/app/portfolio-data.js?v=20260710-realtime-v1" defer></script>
+  <script src="/app/portfolio-realtime.js?v=20260710-realtime-v1" defer></script>
+  <script src="/app/app.js?v=20260710-realtime-v1" defer></script>
   <script src="/site-auth.js?v=20260710-special-offers-v1" defer></script>
-  <script src="/app/merch.js?v=20260710-phase0-v1" defer></script>
+  <script src="/app/merch.js?v=20260710-realtime-v1" defer></script>
 </body>
 </html>

@@ -10,12 +10,19 @@
   var orderIntentEndpoint = metaContent("smartsleeve-order-intent-endpoint") || (authEndpoint ? authEndpoint.replace(/\/$/, "") + "/order-intents" : "");
   var appFeedEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/api/app-feed" : "";
   var appFeedRefreshEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/api/app-feed/refresh" : "";
+  var realtimeTicketEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/api/realtime-ticket" : "";
+  var realtimeParam = params.get("realtime");
+  var realtimeEnabled = realtimeParam == null
+    ? metaContent("smartsleeve-realtime-enabled") === "true"
+    : /^(1|true|on)$/i.test(realtimeParam);
   var sessionToken = params.get("session_token") || "";
   var lastAuthProfile = null;
+  var realtimeClient = null;
+  var realtimeLifecycleWired = false;
   var portfolioDataLayer = window.SmartSleevePortfolioData.create({
     fetchPoll: fetchAppFeed,
     applySnapshot: function (payload, metadata) {
-      applyFeed(payload, metadata.sourceUrl);
+      applyFeed(payload, metadata.sourceUrl, metadata);
     }
   });
 
@@ -35,6 +42,14 @@
     history: {accounts: [], positions: []},
     accountCoverage: null,
     feedWarning: null,
+    realtime: {
+      enabled: realtimeEnabled,
+      status: realtimeEnabled ? "fallback" : "disabled",
+      detail: realtimeEnabled ? "Polling fallback active." : "Realtime disabled; polling active.",
+      accounts: {},
+      diagnostics: [],
+      freshnessTimer: null
+    },
     selectedOwnerEmail: "all",
     selectedAccountId: "all",
     selectedDetailAccountId: "",
@@ -235,6 +250,10 @@
     if (!profile) return;
     if (token) sessionToken = token;
     if (!profile.email && !profile.username && !profile.role && profile.platform_access == null) return;
+    var nextPrincipal = normalizeEmail(profile.email || "");
+    if (principalEmail && nextPrincipal && canonicalEmail(principalEmail) !== canonicalEmail(nextPrincipal)) {
+      resetRealtimeClient(true);
+    }
     lastAuthProfile = profile;
     principalEmail = normalizeEmail(profile.email || principalEmail);
     if (profile.role === "developer" && requestedDeveloperView) {
@@ -265,6 +284,161 @@
 
   function currentHashSection() {
     return String(window.location.hash || "#dashboard").replace("#", "").split("?")[0] || "dashboard";
+  }
+
+  function realtimeClientPlatform() {
+    var agent = String(window.navigator && window.navigator.userAgent || "").toLowerCase();
+    if (window.smartSleeveCommand || agent.indexOf("electron") !== -1) return "desktop";
+    if (agent.indexOf("android") !== -1) return "android";
+    if (/iphone|ipad|ipod/.test(agent)) return "ios";
+    return "web";
+  }
+
+  function fetchRealtimeTicket() {
+    if (!realtimeTicketEndpoint) return Promise.reject(new Error("realtime_ticket_not_configured"));
+    return ensurePortalAccess().then(function () {
+      return authFetch(realtimeTicketEndpoint, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          protocol: "smartsleeve.portfolio.v1",
+          client: {platform: realtimeClientPlatform(), version: "2026.7.1"}
+        })
+      });
+    }).then(function (response) {
+      return response.json().catch(function () { return {}; }).then(function (payload) {
+        if (!response.ok || payload.ok !== true) throw new Error(payload.error || "realtime_ticket_http_" + response.status);
+        return payload;
+      });
+    });
+  }
+
+  function renderRealtimeStatus() {
+    var pill = $("sync-pill");
+    var detail = $("realtime-detail");
+    if (!pill || !detail) return;
+    var status = state.realtime.status;
+    pill.classList.remove("warning", "stale", "neutral");
+    if (status === "live") {
+      pill.textContent = "Realtime live";
+      detail.textContent = Object.keys(state.realtime.accounts).length + " realtime account" + (Object.keys(state.realtime.accounts).length === 1 ? "" : "s") + "; polling fallback retained.";
+      return;
+    }
+    if (status === "connecting") {
+      pill.classList.add("neutral");
+      pill.textContent = "Connecting";
+      detail.textContent = "Polling data remains visible while realtime connects.";
+      return;
+    }
+    if (status === "disabled") {
+      pill.classList.add("neutral");
+      pill.textContent = "Polling";
+      detail.textContent = "Realtime feature flag is off.";
+      return;
+    }
+    pill.classList.add(status === "fallback" ? "warning" : "stale");
+    pill.textContent = "Polling fallback";
+    detail.textContent = state.realtime.detail || "Realtime disconnected; last good data remains visible.";
+  }
+
+  function handleRealtimeStatus(next) {
+    state.realtime.status = next.state || "fallback";
+    state.realtime.detail = next.detail || "Polling fallback active.";
+    renderRealtimeStatus();
+  }
+
+  function handleRealtimeDiagnostic(diagnostic) {
+    state.realtime.diagnostics.push(diagnostic);
+    state.realtime.diagnostics = state.realtime.diagnostics.slice(-30);
+  }
+
+  function handleRealtimeAccount(account, metadata) {
+    var result = portfolioDataLayer.ingestRealtime(account, metadata);
+    if (!result.applied) {
+      handleRealtimeDiagnostic({code: result.reason, accountId: result.accountId || account.accountId, at: new Date().toISOString()});
+      return;
+    }
+    state.realtime.accounts[account.accountId] = {
+      sourceEpoch: account.sourceEpoch,
+      sourceSequence: account.sourceSequence,
+      clientReceivedAt: metadata.clientReceivedAt
+    };
+    state.realtime.status = "live";
+    state.realtime.detail = "Realtime account update applied; polling fallback retained.";
+    text("snapshot-source", "Realtime + Portal fallback");
+    renderRealtimeStatus();
+  }
+
+  function startRealtimeFreshnessTimer() {
+    if (state.realtime.freshnessTimer) return;
+    state.realtime.freshnessTimer = window.setInterval(function () {
+      state.accounts.forEach(function (account) {
+        if (account.realtime) account.sourceIsStale = realtimeAccountIsStale(account);
+      });
+      renderRealtimeStatus();
+      renderAccounts();
+      renderAccountDirectory();
+      if (currentHashSection() === "account-detail") renderAccountDetail();
+      renderBrokerAccuracyMetric();
+    }, 15000);
+  }
+
+  function wireRealtimeLifecycle() {
+    if (realtimeLifecycleWired) return;
+    realtimeLifecycleWired = true;
+    document.addEventListener("visibilitychange", function () {
+      if (!realtimeClient) return;
+      if (document.hidden) realtimeClient.pause("App is in the background; polling fallback active");
+      else if (state.payload && window.navigator.onLine !== false) realtimeClient.start();
+    });
+    window.addEventListener("offline", function () {
+      if (realtimeClient) realtimeClient.pause("Offline; last good data and polling fallback retained");
+    });
+    window.addEventListener("online", function () {
+      if (realtimeClient && state.payload && !document.hidden) realtimeClient.start();
+    });
+    window.addEventListener("pageshow", function () {
+      if (realtimeClient && state.payload && !document.hidden && window.navigator.onLine !== false) realtimeClient.start();
+    });
+    window.addEventListener("smartsleeve-route-mode", function (event) {
+      if (!realtimeClient) return;
+      if (event.detail && event.detail.shop) realtimeClient.pause("Shop open; portfolio realtime paused");
+      else if (state.payload && !document.hidden && window.navigator.onLine !== false) realtimeClient.start();
+    });
+  }
+
+  function startRealtimeClient() {
+    if (!realtimeEnabled || realtimeClient || !state.payload || isShopSection()) {
+      renderRealtimeStatus();
+      return;
+    }
+    if (!window.SmartSleevePortfolioRealtime || !window.WebSocket) {
+      state.realtime.status = "fallback";
+      state.realtime.detail = "Realtime is unavailable in this client; polling fallback active.";
+      renderRealtimeStatus();
+      return;
+    }
+    realtimeClient = window.SmartSleevePortfolioRealtime.create({
+      enabled: true,
+      fetchTicket: fetchRealtimeTicket,
+      WebSocketCtor: window.WebSocket,
+      onStatus: handleRealtimeStatus,
+      onAccount: handleRealtimeAccount,
+      onDiagnostic: handleRealtimeDiagnostic
+    });
+    wireRealtimeLifecycle();
+    startRealtimeFreshnessTimer();
+    realtimeClient.start();
+  }
+
+  function resetRealtimeClient(clearSlices) {
+    if (realtimeClient) realtimeClient.stop();
+    realtimeClient = null;
+    state.realtime.accounts = {};
+    state.realtime.status = realtimeEnabled ? "fallback" : "disabled";
+    state.realtime.detail = realtimeEnabled ? "Polling fallback active." : "Realtime disabled; polling active.";
+    if (clearSlices) portfolioDataLayer.clearRealtime();
+    renderRealtimeStatus();
   }
 
   function removeAuthGate() {
@@ -704,29 +878,37 @@
     );
   }
 
+  function realtimeAccountIsStale(account) {
+    if (!account || !account.realtime) return Boolean(account && account.sourceIsStale);
+    if (account.sourceStatus === "stale" || account.sourceStatus === "degraded") return true;
+    var received = new Date(account.collectorReceivedAt || "").getTime();
+    var staleAfter = numeric(account.staleAfterSeconds);
+    return !Number.isNaN(received) && staleAfter != null && Date.now() > received + staleAfter * 1000;
+  }
+
   function normalizeAccount(account) {
     var positions = (account.positions || []).map(function (position) {
       return {
         symbol: String(position.symbol || "").toUpperCase(),
         name: position.name || tickerNames[String(position.symbol || "").toUpperCase()],
-        shares: numeric(position.shares != null ? position.shares : position.quantity),
-        price: numeric(position.price != null ? position.price : position.current_price),
-        brokerPrice: numeric(position.brokerPrice != null ? position.brokerPrice : position.broker_price),
+        shares: firstNumeric([position.shares, position.quantity]),
+        price: firstNumeric([position.price, position.current_price]),
+        brokerPrice: firstNumeric([position.brokerPrice, position.broker_price]),
         priceAsOf: position.priceAsOf || position.price_as_of || position.quoteAsOf || position.quote_as_of || position.marketDataAsOf || position.market_data_as_of,
         marketDataAsOf: position.marketDataAsOf || position.market_data_as_of || position.priceAsOf || position.price_as_of || position.quoteAsOf || position.quote_as_of,
         priceSource: position.priceSource || position.price_source || position.quoteSource || position.quote_source || position.marketDataSource || position.market_data_source,
         priceDerivedFromMarketValue: Boolean(position.priceDerivedFromMarketValue || position.price_derived_from_market_value),
-        value: numeric(position.value != null ? position.value : position.market_value_usd),
-        brokerValue: numeric(position.brokerValue != null ? position.brokerValue : position.broker_value),
-        quotePrice: numeric(position.quotePrice != null ? position.quotePrice : position.quote_price),
+        value: firstNumeric([position.value, position.marketValue, position.market_value_usd]),
+        brokerValue: firstNumeric([position.brokerValue, position.broker_value]),
+        quotePrice: firstNumeric([position.quotePrice, position.quote_price]),
         quoteAsOf: position.quoteAsOf || position.quote_as_of,
         quoteSource: position.quoteSource || position.quote_source,
-        averageCost: numeric(position.averageCost != null ? position.averageCost : position.average_cost),
-        costBasis: numeric(position.costBasis != null ? position.costBasis : position.cost_basis),
-        dailyPnl: numeric(position.dailyPnl != null ? position.dailyPnl : position.daily_pnl),
-        unrealizedPnl: numeric(position.unrealizedPnl != null ? position.unrealizedPnl : position.unrealized_pnl),
-        realizedPnl: numeric(position.realizedPnl != null ? position.realizedPnl : position.realized_pnl),
-        totalPnl: numeric(position.totalPnl != null ? position.totalPnl : position.total_pnl),
+        averageCost: firstNumeric([position.averageCost, position.average_cost]),
+        costBasis: firstNumeric([position.costBasis, position.cost_basis]),
+        dailyPnl: firstNumeric([position.dailyPnl, position.daily_pnl]),
+        unrealizedPnl: firstNumeric([position.unrealizedPnl, position.unrealized_pnl]),
+        realizedPnl: firstNumeric([position.realizedPnl, position.realized_pnl]),
+        totalPnl: firstNumeric([position.totalPnl, position.total_pnl]),
         currency: position.currency || "USD"
       };
     });
@@ -741,7 +923,7 @@
       account.netLiquidationValue,
       account.net_liquidation_value
     ]);
-    var equity = firstNumeric([
+    var equity = account.realtime ? firstNumeric([account.equity]) : firstNumeric([
       account.equity,
       account.account_equity,
       account.accountEquity,
@@ -759,7 +941,7 @@
       account.totalBalance,
       account.total_balance
     ]);
-    var cash = firstNumeric([
+    var cash = account.realtime ? firstNumeric([account.cash]) : firstNumeric([
       account.cash,
       account.cashBalance,
       account.cash_balance,
@@ -770,7 +952,7 @@
       account.uninvestedCash,
       account.uninvested_cash
     ]);
-    var buyPower = firstNumeric([
+    var buyPower = account.realtime ? firstNumeric([account.buyingPower]) : firstNumeric([
       account.buyPower,
       account.buy_power,
       account.buyingPower,
@@ -796,7 +978,7 @@
       accountValueAuthority = accountValueAuthority || "Robinhood API equity (ground truth)";
       equitySource = "broker_reported_equity";
     }
-    if (brokerEquity != null && Math.abs(brokerEquity) >= 0.005 && (equity == null || Math.abs(brokerEquity - equity) > Math.max(100, Math.abs(brokerEquity) * 0.01))) {
+    if (account.valueMethod !== "streaming_mark_to_market" && brokerEquity != null && Math.abs(brokerEquity) >= 0.005 && (equity == null || Math.abs(brokerEquity - equity) > Math.max(100, Math.abs(brokerEquity) * 0.01))) {
       equity = brokerEquity;
       equitySource = "broker_equity";
     }
@@ -834,9 +1016,34 @@
       marketDataAsOf: account.marketDataAsOf || account.market_data_as_of || account.quoteAsOf || account.quote_as_of || account.pricesAsOf || account.prices_as_of,
       portfolioSource: account.portfolioSource || account.portfolio_source,
       sourceAgeMinutes: numeric(account.sourceAgeMinutes != null ? account.sourceAgeMinutes : account.source_age_minutes),
-      sourceIsStale: Boolean(account.sourceIsStale || account.source_is_stale),
+      sourceIsStale: account.realtime ? realtimeAccountIsStale(account) : Boolean(account.sourceIsStale || account.source_is_stale),
       sourceFreshness: account.sourceFreshness || account.source_freshness,
       sourceFreshnessLabel: account.sourceFreshnessLabel || account.source_freshness_label,
+      realtime: Boolean(account.realtime),
+      schemaVersion: account.schemaVersion,
+      sourceStatus: account.sourceStatus,
+      sourceEpoch: account.sourceEpoch,
+      sourceSequence: numeric(account.sourceSequence),
+      positionsAsOf: account.positionsAsOf,
+      cashAsOf: account.cashAsOf,
+      priceAsOf: account.priceAsOf,
+      brokerEquityAsOf: account.brokerEquityAsOf,
+      collectorReceivedAt: account.collectorReceivedAt,
+      collectorSentAt: account.collectorSentAt,
+      hubReceivedAt: account.hubReceivedAt,
+      clockQuality: account.clockQuality,
+      valueMethod: account.valueMethod,
+      staleAfterSeconds: numeric(account.staleAfterSeconds),
+      markedEquity: firstNumeric([account.markedEquity]),
+      positionsValue: firstNumeric([account.positionsValue]),
+      realtimeClientReceivedAt: account.realtimeClientReceivedAt,
+      realtimeServerTime: account.realtimeServerTime,
+      realtimeRevision: firstNumeric([account.realtimeRevision]),
+      realtimePositionsFallback: Boolean(account.realtimePositionsFallback),
+      realtimeCashFallback: Boolean(account.realtimeCashFallback),
+      realtimePriceFallback: Boolean(account.realtimePriceFallback),
+      realtimeBrokerEquityFallback: Boolean(account.realtimeBrokerEquityFallback),
+      realtimeValueFallback: Boolean(account.realtimeValueFallback),
       brokerEquity: brokerEquity,
       brokerReportedEquity: brokerReportedEquity,
       holdingsValue: holdingsValue,
@@ -1815,6 +2022,48 @@
     }).join("");
   }
 
+  function fieldFreshness(account, timestamp, field) {
+    if (!account.realtime) return {state: "fallback", label: "Fallback", timestamp: timestamp || ""};
+    var fallbackFlag = field === "positions" ? account.realtimePositionsFallback
+      : field === "cash" ? account.realtimeCashFallback
+        : field === "prices" ? account.realtimePriceFallback
+          : field === "brokerEquity" ? account.realtimeBrokerEquityFallback : false;
+    if (fallbackFlag) return {state: "fallback", label: "Fallback", timestamp: timestamp || ""};
+    if (!timestamp) return {state: "fallback", label: "No clock", timestamp: ""};
+    if (account.sourceStatus === "delayed") return {state: "delayed", label: "Delayed", timestamp: timestamp};
+    if (realtimeAccountIsStale(account)) return {state: "stale", label: "Stale", timestamp: timestamp};
+    if (account.sourceStatus === "dormant") return {state: "fallback", label: "Dormant", timestamp: timestamp};
+    var fieldTime = new Date(timestamp).getTime();
+    var staleAfter = numeric(account.staleAfterSeconds);
+    if (!Number.isNaN(fieldTime) && staleAfter != null && Date.now() > fieldTime + staleAfter * 1000) {
+      return {state: "stale", label: "Stale", timestamp: timestamp};
+    }
+    return {state: "live", label: "Live", timestamp: timestamp};
+  }
+
+  function freshnessChip(account, label, timestamp, field) {
+    var freshness = fieldFreshness(account, timestamp, field);
+    var timeLabel = freshness.timestamp ? shortTimestamp(freshness.timestamp) : "poll data";
+    var full = label + ": " + freshness.label + ", " + timeLabel;
+    return "<span class=\"freshness-chip freshness-" + html(freshness.state) + "\" title=\"" + html(full) + "\"><i>" + html(label) + "</i><b>" + html(freshness.label) + "</b><small>" + html(timeLabel) + "</small></span>";
+  }
+
+  function accountFreshnessStrip(account) {
+    return "<div class=\"account-freshness-strip\" aria-label=\"Per-field portfolio freshness\">"
+      + freshnessChip(account, "Positions", account.positionsAsOf, "positions")
+      + freshnessChip(account, "Cash", account.cashAsOf, "cash")
+      + freshnessChip(account, "Prices", account.priceAsOf, "prices")
+      + freshnessChip(account, "Broker equity", account.brokerEquityAsOf, "brokerEquity")
+      + "</div>";
+  }
+
+  function freshnessMetric(account, label, timestamp, field) {
+    var freshness = fieldFreshness(account, timestamp, field);
+    var value = freshness.timestamp ? freshness.label + " / " + shortTimestamp(freshness.timestamp) : freshness.label;
+    var body = label + " truth time is independent from the other portfolio fields. Transport is " + (account.realtime ? "realtime" : "polling fallback") + ".";
+    return detailMetric(label + " freshness", value, body, "freshness-" + freshness.state);
+  }
+
   function renderAccounts() {
     var target = $("account-cards");
     if (!target) return;
@@ -1823,6 +2072,7 @@
       return "<article class=\"account-card interactive-card\" data-account-detail=\"" + html(account.id) + "\" tabindex=\"0\">"
         + "<div class=\"stack-item-head\"><b>" + html(account.account) + "</b><span>" + html(account.broker) + "</span></div>"
         + accountValueSourceStrip(account)
+        + accountFreshnessStrip(account)
         + accountPositionsStrip(account)
         + "<div class=\"account-mini-grid\">"
         + miniMetric("Equity", money(account.equity))
@@ -1884,7 +2134,7 @@
     if (!totalGaps) {
       value.classList.add("positive");
       value.textContent = "Broker-matched";
-      note.textContent = state.accounts.length + " account" + (state.accounts.length === 1 ? "" : "s") + " have current broker values in the app feed.";
+      note.textContent = state.accounts.length + " account" + (state.accounts.length === 1 ? " has" : "s have") + " current broker values across realtime and polling sources.";
       return;
     }
     value.classList.add("needs-sync");
@@ -1915,6 +2165,7 @@
       return "<article class=\"account-card interactive-card\" data-account-detail=\"" + html(account.id) + "\" tabindex=\"0\">"
         + "<div class=\"stack-item-head\"><b>" + html(account.account) + "</b><span>" + html(accountOwnerLabel(account.ownerEmail)) + " / " + html(account.broker) + "</span></div>"
         + accountValueSourceStrip(account)
+        + accountFreshnessStrip(account)
         + accountPositionsStrip(account)
         + "<div class=\"account-mini-grid\">"
         + miniMetric("Value", money(account.equity))
@@ -1942,6 +2193,18 @@
   }
 
   function accountValueSourceBadge(account) {
+    if (account.realtime && account.realtimeValueFallback) {
+      return {label: "Fallback value", className: "source-chip fallback-chip"};
+    }
+    if (account.realtime && account.valueMethod === "streaming_mark_to_market") {
+      return {label: "Derived marked value", className: "source-chip derived-chip"};
+    }
+    if (account.realtime && account.valueMethod === "fallback") {
+      return {label: "Realtime fallback", className: "source-chip fallback-chip"};
+    }
+    if (account.realtime) {
+      return {label: "Realtime broker value", className: "source-chip positive-chip"};
+    }
     if (account.accountValueSource === "broker_reported_equity" || account.equitySource === "broker_reported_equity") {
       return {
         label: /robinhood/i.test(account.broker || "") ? "RH broker value" : "Broker value",
@@ -1958,9 +2221,11 @@
   }
 
   function compactAccountEquation(account) {
-    var equity = numeric(account.equity);
+    var equity = firstNumeric([account.equity]);
     if (equity == null) return "Equation: needs broker value";
-    var delta = equity - (accountPositionValue(account) + (numeric(account.cash) || 0));
+    var cash = firstNumeric([account.cash]);
+    if (account.realtime && cash == null) return "Equation: needs current cash";
+    var delta = equity - (accountPositionValue(account) + (cash || 0));
     return Math.abs(delta) < 0.005
       ? "Equation: matches to cent"
       : "Equation delta: " + signedMoney(delta, "$0.00");
@@ -2059,6 +2324,10 @@
       "<article class=\"panel-card account-detail-summary\"><div class=\"card-head\"><div><span>Broker values</span><h2>Cash and margin</h2></div><span class=\"" + brokerStatusClass + "\">" + html(account.broker) + "</span></div><div class=\"account-detail-metrics\">"
         + detailMetric("Account value", money(account.equity), accountValueSourceCopy(account))
         + brokerGroundTruthMetric(account)
+        + freshnessMetric(account, "Positions", account.positionsAsOf, "positions")
+        + freshnessMetric(account, "Cash", account.cashAsOf, "cash")
+        + freshnessMetric(account, "Prices", account.priceAsOf, "prices")
+        + freshnessMetric(account, "Broker equity", account.brokerEquityAsOf, "brokerEquity")
         + detailMetric("Market data as-of", accountMarketDataLabel(account), "Latest broker mark or quote timestamp shown in ET; app refresh time is separate.", accountMarketDataIsMissing(account) ? "warning" : "")
         + detailMetric("Last app sync", accountFreshnessLabel(account), account.sourceIsStale ? "Broker export is stale; refresh the daemon/account analytics before trading from this view." : "Broker/account export is inside the expected sync window.", account.sourceIsStale ? "warning" : "")
         + detailMetric("Chart history", accountHistoryRangeLabel(account), accountHistoryCoverage(account), accountHistoryIsThin(account) ? "warning" : "")
@@ -2340,12 +2609,17 @@
   }
 
   function accountFreshnessLabel(account) {
+    if (account.realtime) {
+      var positions = fieldFreshness(account, account.positionsAsOf, "positions");
+      return positions.timestamp ? positions.label + " / " + shortTimestamp(positions.timestamp) : positions.label;
+    }
     if (account.sourceFreshnessLabel) return account.sourceFreshnessLabel;
     if (account.sourceAgeMinutes != null) return Math.round(account.sourceAgeMinutes) + " min old";
     return account.generatedAt ? shortTimestamp(account.generatedAt) : "needs sync";
   }
 
   function accountMarketDataTimestamp(account) {
+    if (account.realtime && account.priceAsOf) return account.priceAsOf;
     var quoteTimes = (account.positions || []).map(function (position) {
       return position.quoteAsOf || position.quote_as_of || position.marketDataAsOf || position.market_data_as_of;
     }).filter(Boolean);
@@ -2379,6 +2653,10 @@
 
   function accountStatusLabel(account) {
     var status = account.status || "synced";
+    if (account.realtime) {
+      if (account.valueMethod === "streaming_mark_to_market") return realtimeAccountIsStale(account) ? "stale derived value" : "live derived value";
+      return realtimeAccountIsStale(account) ? "realtime stale" : account.sourceStatus || "realtime";
+    }
     var problem = accountDiagnosticProblem(account);
     if (problem) {
       return problem.short;
@@ -2504,12 +2782,16 @@
   }
 
   function accountEquationMetric(account) {
-    var equity = numeric(account.equity);
+    var equity = firstNumeric([account.equity]);
     var positionValue = accountPositionValue(account);
-    var cash = numeric(account.cash) || 0;
+    var cash = firstNumeric([account.cash]);
     if (equity == null) {
       return detailMetric("Accounting equation", "Needs broker value", "Cannot reconcile holdings plus cash until account value syncs.", "warning");
     }
+    if (account.realtime && cash == null) {
+      return detailMetric("Accounting equation", "Needs current cash", "Realtime marked value is visible, but the accounting equation remains incomplete until cash is available.", "warning");
+    }
+    cash = cash || 0;
     var delta = equity - (positionValue + cash);
     var status = Math.abs(delta) < 0.005 ? "Matches to cent" : "Delta " + signedMoney(delta, "$0.00");
     var body = "Account value " + money(equity) + " - holdings " + money(positionValue) + " - cash " + money(cash) + " = " + signedMoney(delta, "$0.00") + ". Broker app remains ground truth when available. All displayed dollar amounts are rounded to the nearest cent.";
@@ -4756,6 +5038,8 @@
   function syncPortfolioRoute() {
     if (isShopSection()) return;
     handleNav(currentHashSection());
+    if (!state.payload) loadFeed();
+    else if (realtimeClient && !document.hidden && window.navigator.onLine !== false) realtimeClient.start();
   }
 
   function wireEvents() {
@@ -4795,6 +5079,7 @@
     wireBottomNavScroller();
     var signOut = $("sign-out-button");
     if (signOut) signOut.addEventListener("click", function () {
+      resetRealtimeClient(true);
       clearStoredSession();
       state.accounts = [];
       state.allAccounts = [];
@@ -5050,7 +5335,9 @@
     toast("Recommendation loaded into the trade ticket.");
   }
 
-  function applyFeed(payload, sourceUrl) {
+  function applyFeed(payload, sourceUrl, metadata) {
+    metadata = metadata || {};
+    var isRealtimeUpdate = metadata.transport === "realtime";
     removeAuthGate();
     var session = payload.session || {};
     var profile = session.profile || {};
@@ -5067,7 +5354,7 @@
     }
     var accounts = (payload.accounts || []).map(normalizeAccount);
     state.payload = payload;
-    state.feedSource = sourceUrl;
+    state.feedSource = isRealtimeUpdate ? "realtime" : sourceUrl;
     state.allAccounts = visibleAccountRows(accounts);
     state.accounts = developerFilteredAccounts(state.allAccounts);
     if (requestedPrincipal && appEdition !== "developer" && principalEmail !== requestedPrincipal) {
@@ -5095,13 +5382,24 @@
     state.reports = ensureStockPickReports(scopedRowsForVisibleAccounts(payload.reports || [], visibleAccountIds));
     state.accountCoverage = payload.accountCoverage || null;
     state.feedWarning = null;
-    text("snapshot-source", appEdition === "developer" ? (payload.source || "SmartSleeve Portal API") : "");
-    text("snapshot-time", feedSyncLabel(payload));
-    text("sync-pill", "Portal API synced");
-    addActivity("Cloud feed synced", "EXTERNAL_BROKER_SYNC", appEdition === "developer" ? "All accounts" : principalEmail, state.accounts.length + " account(s), " + state.serverTrades.length + " trades, " + state.brain.length + " brain rows.");
-    renderAll();
+    text("snapshot-source", Object.keys(state.realtime.accounts).length ? "Realtime + Portal fallback" : (appEdition === "developer" ? (payload.source || "SmartSleeve Portal API") : "Portal fallback"));
+    text("snapshot-time", isRealtimeUpdate
+      ? "Realtime account slice applied at " + easternTimestamp(new Date(), {hour: "2-digit", minute: "2-digit", second: "2-digit", month: "short", day: "numeric"}) + ". Field clocks are shown per account."
+      : feedSyncLabel(payload));
+    if (!isRealtimeUpdate) {
+      addActivity("Cloud feed synced", "EXTERNAL_BROKER_SYNC", appEdition === "developer" ? "All accounts" : principalEmail, state.accounts.length + " account(s), " + state.serverTrades.length + " trades, " + state.brain.length + " brain rows.");
+    }
+    if (isRealtimeUpdate) {
+      renderSession();
+      renderDashboard();
+      renderRisk();
+    } else {
+      renderAll();
+    }
+    renderRealtimeStatus();
     handleNav((window.location.hash || "#dashboard").replace("#", "") || "dashboard");
     scheduleFeedRefresh();
+    if (!isRealtimeUpdate) startRealtimeClient();
   }
 
   function latestDaemonLabel(payload) {
@@ -5272,7 +5570,11 @@
           return false;
         }
         if (state.payload && (options.refresh || options.silent || options.interactiveRefresh || error.authRequired)) {
-          text("sync-pill", options.interactiveRefresh || options.silent ? "Checked" : "Showing latest loaded data");
+          if (state.realtime.status !== "live") {
+            state.realtime.status = "fallback";
+            state.realtime.detail = "Poll refresh failed; last good data remains visible.";
+          }
+          renderRealtimeStatus();
           text("snapshot-time", feedSyncLabel(state.payload) || "Latest loaded app feed is still displayed.");
           state.feedWarning = options.interactiveRefresh || options.silent
             ? null
@@ -5313,7 +5615,10 @@
     window.addEventListener("smartsleeve-auth-change", function (event) {
       var detail = event.detail || {};
       var profile = detail.profile || null;
-      if (!profile || !detail.sessionToken) return;
+      if (!profile) {
+        if (detail.ready) resetRealtimeClient(true);
+        return;
+      }
       applyAuthProfile(profile, detail.sessionToken);
       renderSession();
       if (!isShopSection()) {
@@ -5325,8 +5630,5 @@
         loadFeed();
       }
     });
-    if (!isShopSection()) {
-      loadFeed();
-    }
   });
 })();

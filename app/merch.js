@@ -105,6 +105,7 @@
   }
 
   function showShop() {
+    var wasPublicShop = document.body.classList.contains("public-shop");
     document.body.classList.add("public-shop");
     all("[data-section]").forEach(function (panel) {
       panel.classList.toggle("active", panel.getAttribute("data-section") === "shop");
@@ -116,10 +117,13 @@
     var gate = $("auth-gate");
     if (gate) gate.remove();
     loadCatalogOnce();
+    if (!wasPublicShop) window.dispatchEvent(new CustomEvent("smartsleeve-route-mode", {detail: {shop: true}}));
   }
 
   function hideShop() {
+    var wasPublicShop = document.body.classList.contains("public-shop");
     document.body.classList.remove("public-shop");
+    if (wasPublicShop) window.dispatchEvent(new CustomEvent("smartsleeve-route-mode", {detail: {shop: false}}));
   }
 
   function syncShopRoute() {
