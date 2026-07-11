@@ -17,7 +17,9 @@
     account: {
       username: "",
       firstName: "",
+      middleName: "",
       lastName: "",
+      phone: "",
       password: "",
       passwordConfirm: "",
       acceptedTerms: false
@@ -522,7 +524,9 @@
     state.account = {
       username: String(($("merch-account-username") || {}).value || "").trim(),
       firstName: String(($("merch-account-first-name") || {}).value || "").trim(),
+      middleName: String(($("merch-account-middle-name") || {}).value || "").trim(),
       lastName: String(($("merch-account-last-name") || {}).value || "").trim(),
+      phone: String(($("merch-account-phone") || {}).value || "").trim(),
       password: String(($("merch-account-password") || {}).value || ""),
       passwordConfirm: String(($("merch-account-password-confirm") || {}).value || ""),
       acceptedTerms: Boolean(($("merch-account-terms") || {}).checked)
@@ -643,7 +647,9 @@
         username: state.account.username,
         email: state.customerEmail,
         first_name: state.account.firstName,
+        middle_name: state.account.middleName,
         last_name: state.account.lastName,
+        phone: state.account.phone,
         password: state.account.password,
         password_confirm: state.account.passwordConfirm,
         accepted_terms: state.account.acceptedTerms

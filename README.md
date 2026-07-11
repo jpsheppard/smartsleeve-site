@@ -63,7 +63,7 @@ fallbacks, quota errors, stack traces, or internal failure details. Developer
 reports may include concise generation diagnostics, but should prioritize the
 model used, or state that no LLM was used.
 
-## Email-Verified Account Registration
+## Website Accounts
 
 The console can send account registration requests to a Cloudflare Worker when
 deployed with:
@@ -71,11 +71,31 @@ deployed with:
 - GitHub repo variable `SMARTSLEEVE_AUTH_ENDPOINT`, for example
   `https://auth.smartsleeve.ai`
 
-The Worker implementation lives in `site_auth/cloudflare_worker.js`. The Worker
-requires a Cloudflare KV binding named `SMARTSLEEVE_AUTH` and a `RESEND_API_KEY`
-Worker secret. It sends verification emails, stores pending/verified account
-records, provides login sessions, and supports a lightweight website-wide
-profile with saved shipping address fields for merch checkout.
+The Worker implementation lives in `site_auth/cloudflare_worker.js`. It requires
+a Cloudflare KV binding named `SMARTSLEEVE_AUTH` and a `RESEND_API_KEY` Worker
+secret. Transactional mail is sent by
+`SmartSleeve Accounts <accounts@smartsleeve.ai>`.
+
+New general website accounts use a distinct username and password. The verified
+email address is used for activation and recovery, not as the normal login
+identity. Registration stores first, optional middle, and last names plus an
+optional phone number and complete-or-empty shipping address. Passwords are
+salted and hashed; raw passwords and action tokens are never stored. Public
+account routes are:
+
+- `POST /register`
+- `POST /verify`
+- `POST /login`
+- `GET /me`
+- `POST /profile`
+- `POST /logout`
+- `POST /password-reset/request`
+- `POST /password-reset/confirm`
+
+Verification links expire after 24 hours. Password-reset links expire after one
+hour, are single-use, supersede older reset links, and invalidate all sessions
+created before the password change. Recovery requests always return the same
+public response so they do not disclose whether a username exists.
 
 The public pages and `/app/` load `site-auth.js` plus `site-auth.css`, which
 expose a shared `window.SmartSleeveAuth` identity state. The merch cart can use
@@ -89,3 +109,24 @@ the auth Worker and is enabled separately through
 `SMARTSLEEVE_PLATFORM_ACCESS_EMAILS`, `SMARTSLEEVE_DEVELOPER_EMAILS`, or a
 trusted KV profile update. The `/app/` Portal consumes the same global session
 and shows an access-pending state instead of asking for a second login.
+
+Existing verified accounts are intentionally migrated to email-address
+usernames while preserving password hashes and Portal/developer access. Preview
+the remote migration first, then apply it after deploying the matching Worker:
+
+```sh
+node site_auth/migrate_existing_usernames.mjs
+node site_auth/migrate_existing_usernames.mjs --apply
+```
+
+The migration does not write account records to local files and restores the
+current account record if one of its remote updates fails. Because Cloudflare KV
+is eventually consistent, allow propagation time before diagnosing a newly
+changed username or profile from another region.
+
+Run the Worker lifecycle tests with:
+
+```sh
+cd site_auth
+npm test
+```

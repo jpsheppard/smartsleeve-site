@@ -37,6 +37,24 @@
     return String(value || "").trim().toLowerCase();
   }
 
+  function friendlyError(value) {
+    var key = String(value || "");
+    var messages = {
+      username_unavailable: "That username is already in use. Please choose another.",
+      username_required: "Enter your username.",
+      valid_email_required: "Enter a valid verification email.",
+      first_name_required: "Enter your first name.",
+      last_name_required: "Enter your last name.",
+      valid_phone_number_required: "Enter a valid phone number including country code, or leave it blank.",
+      shipping_address_must_be_complete_or_empty: "Complete the shipping address or leave every shipping field blank.",
+      password_must_be_at_least_12_characters: "Password must be at least 12 characters.",
+      password_confirmation_mismatch: "The password confirmation does not match.",
+      invalid_credentials: "The username or password is incorrect.",
+      rate_limited: "Too many attempts. Please wait a few minutes and try again."
+    };
+    return messages[key] || key.replace(/_/g, " ");
+  }
+
   function sessionKey() {
     return "smartsleeve_session:user";
   }
@@ -108,7 +126,7 @@
   }
 
   function displayName(profile) {
-    return profile && (profile.display_name || [profile.first_name, profile.last_name].filter(Boolean).join(" ").trim() || profile.username || profile.email) || "SmartSleeve user";
+    return profile && (profile.display_name || [profile.first_name, profile.middle_name, profile.last_name].filter(Boolean).join(" ").trim() || profile.username || profile.email) || "SmartSleeve user";
   }
 
   function hasPortalAccess(profile) {
@@ -188,20 +206,33 @@
       "<button type=\"button\" data-ss-auth-mode=\"register\" aria-selected=\"false\">Create account</button>",
       "<button type=\"button\" data-ss-auth-mode=\"profile\" aria-selected=\"false\">Profile</button>",
       "</div>",
-      "<label class=\"ss-auth-register-fields\">Username<input id=\"ss-auth-username\" type=\"text\" autocomplete=\"username\" minlength=\"3\"></label>",
-      "<div class=\"ss-auth-grid ss-auth-register-fields\">",
+      "<label class=\"ss-auth-register-fields\">Username<input id=\"ss-auth-username\" type=\"text\" autocomplete=\"username\" minlength=\"3\" maxlength=\"32\" pattern=\"[A-Za-z0-9][A-Za-z0-9._-]*[A-Za-z0-9]\" autocapitalize=\"none\" spellcheck=\"false\" placeholder=\"your_username\"></label>",
+      "<p class=\"ss-auth-register-fields ss-auth-field-note\">Your username is used with your password to sign in. It is not your verification email.</p>",
+      "<div class=\"ss-auth-name-grid ss-auth-register-fields\">",
       "<label>First name<input id=\"ss-auth-first-name\" type=\"text\" autocomplete=\"given-name\"></label>",
+      "<label>Middle name <small>Optional</small><input id=\"ss-auth-middle-name\" type=\"text\" autocomplete=\"additional-name\"></label>",
       "<label>Last name<input id=\"ss-auth-last-name\" type=\"text\" autocomplete=\"family-name\"></label>",
       "</div>",
-      "<label class=\"ss-auth-login-field\"><span id=\"ss-auth-identity-label\">Email or username</span><input id=\"ss-auth-identity\" type=\"text\" autocomplete=\"username\" autocapitalize=\"none\" spellcheck=\"false\"></label>",
+      "<label class=\"ss-auth-login-field\"><span id=\"ss-auth-identity-label\">Username</span><input id=\"ss-auth-identity\" type=\"text\" autocomplete=\"username\" autocapitalize=\"none\" spellcheck=\"false\"></label>",
       "<label class=\"ss-auth-login-field\">Password<input id=\"ss-auth-password\" type=\"password\" autocomplete=\"current-password\" minlength=\"12\" data-lpignore=\"true\" data-1p-ignore=\"true\"></label>",
       "<label class=\"ss-auth-register-fields\">Confirm password<input id=\"ss-auth-password-confirm\" type=\"password\" autocomplete=\"new-password\" minlength=\"12\" data-lpignore=\"true\" data-1p-ignore=\"true\"></label>",
-      "<label class=\"ss-auth-register-fields\"><span><input id=\"ss-auth-terms\" type=\"checkbox\"> I understand this creates a general SmartSleeve user and does not authorize broker trading.</span></label>",
+      "<label class=\"ss-auth-register-fields\">Phone <small>Optional</small><input id=\"ss-auth-phone\" type=\"tel\" autocomplete=\"tel\" placeholder=\"+1 (773) 530-8525\"></label>",
+      "<fieldset class=\"ss-auth-register-fields ss-auth-address-group\"><legend>Shipping address <small>Optional</small></legend>",
+      "<label>Recipient name<input id=\"ss-auth-ship-name\" type=\"text\" autocomplete=\"shipping name\"></label>",
+      "<label>Address line 1<input id=\"ss-auth-line1\" type=\"text\" autocomplete=\"shipping address-line1\"></label>",
+      "<label>Address line 2 <small>Optional</small><input id=\"ss-auth-line2\" type=\"text\" autocomplete=\"shipping address-line2\"></label>",
+      "<div class=\"ss-auth-grid\"><label>City<input id=\"ss-auth-city\" type=\"text\" autocomplete=\"shipping address-level2\"></label><label>State<input id=\"ss-auth-state\" type=\"text\" autocomplete=\"shipping address-level1\"></label></div>",
+      "<div class=\"ss-auth-grid\"><label>ZIP<input id=\"ss-auth-postal\" type=\"text\" autocomplete=\"shipping postal-code\"></label><label>Country<input value=\"United States\" disabled></label></div>",
+      "</fieldset>",
+      "<label class=\"ss-auth-register-fields ss-auth-check\"><span><input id=\"ss-auth-terms\" type=\"checkbox\"> I understand this creates a general SmartSleeve website account and does not grant investment Portal or broker access.</span></label>",
       "<div class=\"ss-auth-profile-fields\" hidden>",
-      "<div class=\"ss-auth-grid\">",
+      "<div class=\"ss-auth-name-grid\">",
       "<label>First name<input id=\"ss-profile-first-name\" type=\"text\" autocomplete=\"given-name\"></label>",
+      "<label>Middle name <small>Optional</small><input id=\"ss-profile-middle-name\" type=\"text\" autocomplete=\"additional-name\"></label>",
       "<label>Last name<input id=\"ss-profile-last-name\" type=\"text\" autocomplete=\"family-name\"></label>",
       "</div>",
+      "<label>Phone <small>Optional</small><input id=\"ss-profile-phone\" type=\"tel\" autocomplete=\"tel\" placeholder=\"+1 (773) 530-8525\"></label>",
+      "<fieldset class=\"ss-auth-address-group\"><legend>Saved shipping address <small>Optional</small></legend>",
       "<label>Shipping name<input id=\"ss-profile-ship-name\" type=\"text\" autocomplete=\"name\"></label>",
       "<label>Address line 1<input id=\"ss-profile-line1\" type=\"text\" autocomplete=\"shipping address-line1\"></label>",
       "<label>Address line 2<input id=\"ss-profile-line2\" type=\"text\" autocomplete=\"shipping address-line2\"></label>",
@@ -211,9 +242,11 @@
       "</div>",
       "<div class=\"ss-auth-grid\">",
       "<label>ZIP<input id=\"ss-profile-postal\" type=\"text\" autocomplete=\"shipping postal-code\"></label>",
-      "<label>Phone<input id=\"ss-profile-phone\" type=\"tel\" autocomplete=\"tel\"></label>",
+      "<label>Country<input value=\"United States\" disabled></label>",
       "</div>",
+      "</fieldset>",
       "</div>",
+      "<button type=\"button\" class=\"ss-auth-recovery\" id=\"ss-auth-forgot\">Forgot password?</button>",
       "<button type=\"submit\" class=\"ss-auth-submit\" id=\"ss-auth-submit\">Sign in</button>",
       "</form>"
     ].join("");
@@ -226,6 +259,7 @@
       button.addEventListener("click", function () { setMode(button.getAttribute("data-ss-auth-mode")); });
     });
     $("ss-auth-form").addEventListener("submit", submitModal);
+    $("ss-auth-forgot").addEventListener("click", requestPasswordReset);
   }
 
   function setMode(mode) {
@@ -245,7 +279,16 @@
     });
     var profileFields = form.querySelector(".ss-auth-profile-fields");
     if (profileFields) profileFields.hidden = next !== "profile";
-    text("ss-auth-identity-label", next === "register" ? "Email" : "Email or username");
+    text("ss-auth-identity-label", next === "register" ? "Verification email" : "Username");
+    var identity = $("ss-auth-identity");
+    if (identity) {
+      identity.type = next === "register" ? "email" : "text";
+      identity.setAttribute("autocomplete", next === "register" ? "email" : "username");
+    }
+    var password = $("ss-auth-password");
+    if (password) password.setAttribute("autocomplete", next === "register" ? "new-password" : "current-password");
+    var forgot = $("ss-auth-forgot");
+    if (forgot) forgot.hidden = next !== "login";
     $("ss-auth-submit").textContent = next === "register" ? "Create account" : next === "profile" ? "Save profile" : "Sign in";
     $("ss-auth-message").textContent = next === "register"
       ? "Create a verified SmartSleeve website account. You will need to confirm your email before sign-in."
@@ -258,7 +301,9 @@
   function profilePayloadFromForm() {
     return {
       first_name: ($("ss-profile-first-name") || {}).value || "",
+      middle_name: ($("ss-profile-middle-name") || {}).value || "",
       last_name: ($("ss-profile-last-name") || {}).value || "",
+      phone: ($("ss-profile-phone") || {}).value || "",
       shipping_address: {
         name: ($("ss-profile-ship-name") || {}).value || "",
         line1: ($("ss-profile-line1") || {}).value || "",
@@ -266,8 +311,7 @@
         city: ($("ss-profile-city") || {}).value || "",
         state: ($("ss-profile-state") || {}).value || "",
         postal_code: ($("ss-profile-postal") || {}).value || "",
-        country: "US",
-        phone: ($("ss-profile-phone") || {}).value || ""
+        country: "US"
       }
     };
   }
@@ -277,6 +321,7 @@
     var shipping = profile.shipping_address || {};
     [
       ["ss-profile-first-name", profile.first_name || ""],
+      ["ss-profile-middle-name", profile.middle_name || ""],
       ["ss-profile-last-name", profile.last_name || ""],
       ["ss-profile-ship-name", shipping.name || displayName(profile)],
       ["ss-profile-line1", shipping.line1 || ""],
@@ -284,7 +329,7 @@
       ["ss-profile-city", shipping.city || ""],
       ["ss-profile-state", shipping.state || ""],
       ["ss-profile-postal", shipping.postal_code || ""],
-      ["ss-profile-phone", shipping.phone || ""]
+      ["ss-profile-phone", profile.phone || shipping.phone || ""]
     ].forEach(function (pair) {
       var input = $(pair[0]);
       if (input && !input.value) input.value = pair[1];
@@ -311,7 +356,7 @@
       body: JSON.stringify({identity: identity, password: password})
     }).then(function (response) {
       return response.json().catch(function () { return {}; }).then(function (payload) {
-        if (!response.ok || !payload.ok) throw new Error(payload.error || "login_failed");
+        if (!response.ok || !payload.ok) throw new Error(friendlyError(payload.error || "login_failed"));
         storeSession(payload.profile, payload.session_token);
         state.ready = true;
         emitChange();
@@ -330,10 +375,21 @@
       method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({
-        username: ($("ss-auth-username") || {}).value || email.split("@")[0],
+        username: ($("ss-auth-username") || {}).value || "",
         email: email,
         first_name: ($("ss-auth-first-name") || {}).value || "",
+        middle_name: ($("ss-auth-middle-name") || {}).value || "",
         last_name: ($("ss-auth-last-name") || {}).value || "",
+        phone: ($("ss-auth-phone") || {}).value || "",
+        shipping_address: {
+          name: ($("ss-auth-ship-name") || {}).value || "",
+          line1: ($("ss-auth-line1") || {}).value || "",
+          line2: ($("ss-auth-line2") || {}).value || "",
+          city: ($("ss-auth-city") || {}).value || "",
+          state: ($("ss-auth-state") || {}).value || "",
+          postal_code: ($("ss-auth-postal") || {}).value || "",
+          country: "US"
+        },
         password: password,
         password_confirm: ($("ss-auth-password-confirm") || {}).value || "",
         accepted_terms: Boolean(($("ss-auth-terms") || {}).checked)
@@ -341,13 +397,35 @@
     }).then(function (response) {
       return response.json().catch(function () { return {}; }).then(function (payload) {
         if (!response.ok || !payload.ok) {
-          throw new Error(payload.errors && payload.errors.length ? payload.errors.join(", ") : payload.error || "registration_failed");
+          throw new Error(payload.errors && payload.errors.length ? payload.errors.map(friendlyError).join(" ") : friendlyError(payload.error || "registration_failed"));
         }
-        $("ss-auth-message").textContent = "Check your email for the SmartSleeve verification link, then come back to sign in.";
         setMode("login");
+        $("ss-auth-identity").value = ($("ss-auth-username") || {}).value || "";
+        $("ss-auth-message").textContent = "Check your email for the SmartSleeve verification link, then sign in with your username and password.";
       });
     }).catch(function (error) {
       $("ss-auth-message").textContent = "Account creation failed: " + error.message;
+    });
+  }
+
+  function requestPasswordReset() {
+    var username = String(($("ss-auth-identity") || {}).value || "").trim();
+    if (!username) {
+      $("ss-auth-message").textContent = "Enter your username first, then choose Forgot password.";
+      return;
+    }
+    $("ss-auth-message").textContent = "Requesting a secure password reset link...";
+    authFetch("/password-reset/request", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({username: username})
+    }).then(function (response) {
+      return response.json().catch(function () { return {}; }).then(function (payload) {
+        if (!response.ok || !payload.ok) throw new Error(friendlyError(payload.error || "password_reset_failed"));
+        $("ss-auth-message").textContent = "If that username belongs to a verified account, SmartSleeve Accounts will email a reset link shortly.";
+      });
+    }).catch(function (error) {
+      $("ss-auth-message").textContent = "Password reset request failed: " + error.message;
     });
   }
 

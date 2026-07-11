@@ -1,0 +1,8 @@
+{
+  "name": "smartsleeve-site-auth",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test cloudflare_worker.test.mjs"
+  }
+}

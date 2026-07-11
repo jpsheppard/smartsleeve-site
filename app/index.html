@@ -18,8 +18,8 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
   <link rel="manifest" href="/site.webmanifest">
   <link rel="stylesheet" href="/app/styles.css?v=20260630-site-footer">
-  <link rel="stylesheet" href="/app/merch.css?v=20260710-global-login-v3">
-  <link rel="stylesheet" href="/site-auth.css?v=20260710-global-login-v3">
+  <link rel="stylesheet" href="/app/merch.css?v=20260710-general-accounts-v1">
+  <link rel="stylesheet" href="/site-auth.css?v=20260710-general-accounts-v1">
 </head>
 <body>
   <div class="app-shell">
@@ -827,10 +827,16 @@
                   <label>First name
                     <input id="merch-account-first-name" type="text" autocomplete="given-name">
                   </label>
+                  <label>Middle name (optional)
+                    <input id="merch-account-middle-name" type="text" autocomplete="additional-name">
+                  </label>
                   <label>Last name
                     <input id="merch-account-last-name" type="text" autocomplete="family-name">
                   </label>
                 </div>
+                <label>Phone (optional)
+                  <input id="merch-account-phone" type="tel" autocomplete="tel" placeholder="+1 (773) 530-8525">
+                </label>
                 <label>Password
                   <input id="merch-account-password" type="password" autocomplete="new-password" minlength="12" data-lpignore="true" data-1p-ignore="true">
                 </label>
@@ -943,8 +949,8 @@
   </nav>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="/app/app.js?v=20260710-global-login-v3" defer></script>
-  <script src="/site-auth.js?v=20260710-global-login-v3" defer></script>
-  <script src="/app/merch.js?v=20260710-approved-ss-reference-v3" defer></script>
+  <script src="/app/app.js?v=20260710-general-accounts-v1" defer></script>
+  <script src="/site-auth.js?v=20260710-general-accounts-v1" defer></script>
+  <script src="/app/merch.js?v=20260710-general-accounts-v1" defer></script>
 </body>
 </html>
