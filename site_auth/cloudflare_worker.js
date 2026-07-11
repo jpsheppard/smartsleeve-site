@@ -12,6 +12,11 @@
 //   - SMARTSLEEVE_PLATFORM_ACCESS_EMAILS
 //   - SMARTSLEEVE_AUTH_VERIFY_URL
 //   - SMARTSLEEVE_AUTH_RESET_URL
+//   - SMARTSLEEVE_ADMIN_TOKEN
+//   - SMARTSLEEVE_APP_FEED_REFRESH_URL
+//   - SMARTSLEEVE_APP_FEED_REFRESH_TOKEN
+//   - SMARTSLEEVE_APP_FEED_REFRESH_REF
+//   - SMARTSLEEVE_SPECIAL_OFFER_CODES
 //
 // Routes:
 //   POST /register
@@ -23,6 +28,14 @@
 //   POST /verify
 //   POST /password-reset/request
 //   POST /password-reset/confirm
+//   GET  /api/app-feed
+//   POST /api/app-feed/refresh
+//   POST /admin/app-feed
+//   GET  /order-intents
+//   POST /order-intents
+//   POST /special-offers/redeem
+//   POST /retirement-sage/enrollment
+//   GET  /admin/retirement-sage-enrollees
 //   GET  /health
 
 const DEFAULT_SITE = "https://smartsleeve.ai";
@@ -35,10 +48,23 @@ const RATE_LIMIT_TTL_SECONDS = 60 * 10;
 const MAX_REGISTRATIONS_PER_WINDOW = 6;
 const MAX_LOGINS_PER_WINDOW = 12;
 const MAX_PASSWORD_RESETS_PER_WINDOW = 5;
+const MAX_ORDER_INTENTS_PER_WINDOW = 60;
+const APP_FEED_REFRESH_USER_TTL_SECONDS = 60;
+const APP_FEED_REFRESH_GLOBAL_TTL_SECONDS = 15;
+const MAX_APP_FEED_BODY_BYTES = 2 * 1024 * 1024;
+const MAX_ORDER_INTENT_BODY_BYTES = 65536;
 const MIN_PASSWORD_LENGTH = 12;
+const APP_FEED_MEMORY_CACHE_TTL_MS = 75 * 1000;
 const PBKDF2_ITERATIONS = 100000;
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
 const SESSION_COOKIE = "smartsleeve_session";
+const APP_FEED_OBJECT_KEY = "app_feed/latest.json";
+const CEDARS_VOYA_PROSPECTUS_OBJECT_KEY = "special_offers/cedars_voya_retirement_sage_prospectus.html";
+const APP_FEED_REFRESH_STATUS_KEY = "app_feed_refresh:last";
+const ORDER_INTENT_TTL_SECONDS = 60 * 60 * 24 * 365;
+const CEDARS_VOYA_OFFER_ID = "cedars_sinai_voya";
+const RETIREMENT_SAGE_PLAN_SCOPE = "THE CEDARS-SINAI MEDICAL CENTER 403B RETIREMENT PLAN (core, non-SDBA)";
+let appFeedMemoryCache = { raw: "", loaded_at_ms: 0 };
 
 function allowedOrigins(env) {
   const configured = String(env.SMARTSLEEVE_AUTH_ALLOWED_ORIGINS || "")
@@ -322,6 +348,29 @@ function accountHasPlatformAccess(profile, env) {
   );
 }
 
+function unlockedSpecialOffers(profile) {
+  const offers = profile && profile.special_offers && typeof profile.special_offers === "object"
+    ? profile.special_offers
+    : {};
+  return Object.entries(offers)
+    .filter(([, value]) => value && value.status === "unlocked")
+    .map(([offerId]) => offerId)
+    .sort();
+}
+
+function publicRetirementSageEnrollment(profile) {
+  const enrollment = profile && profile.retirement_sage_enrollment;
+  if (!enrollment || typeof enrollment !== "object") return null;
+  return {
+    status: enrollment.status || "inactive",
+    enrollment_date: enrollment.enrollment_date || null,
+    cadence: enrollment.cadence || "monthly",
+    cadence_days_floor: Number(enrollment.cadence_days_floor || 30),
+    plan_account_scope: enrollment.plan_account_scope || RETIREMENT_SAGE_PLAN_SCOPE,
+    updated_at: enrollment.updated_at || null,
+  };
+}
+
 function publicProfile(record, env) {
   const profile = record.profile || {};
   const shipping = collectShippingAddress(profile.shipping_address || {});
@@ -342,6 +391,8 @@ function publicProfile(record, env) {
     role,
     platform_access: platformAccess,
     platform_status: platformAccess ? "enabled" : "not_enabled",
+    special_offers: unlockedSpecialOffers(profile),
+    retirement_sage_enrollment: publicRetirementSageEnrollment(profile),
     verified_at: record.verified_at || null,
   };
 }
@@ -366,6 +417,10 @@ function bearerToken(request) {
   const header = String(request.headers.get("Authorization") || "");
   const match = /^Bearer\s+(.+)$/i.exec(header);
   return match ? match[1].trim() : "";
+}
+
+function adminToken(request) {
+  return bearerToken(request) || String(request.headers.get("X-SmartSleeve-Admin-Token") || "").trim();
 }
 
 function sessionCookie(token, maxAge = SESSION_TTL_SECONDS) {
@@ -525,6 +580,41 @@ function sendPasswordResetEmail(env, profile, resetUrl, tokenHash) {
     html: passwordResetEmailHtml(profile, resetUrl),
     text: passwordResetEmailText(profile, resetUrl),
     idempotencyKey: `smartsleeve-reset-${tokenHash}`,
+  });
+}
+
+function sendRetirementSageEnrollmentEmail(env, profile, enrollment, idempotencyKey) {
+  const active = enrollment.status === "active";
+  const actionLink = `${DEFAULT_SITE}/special-offers.html#cedars-voya`;
+  return sendTransactionalEmail(env, {
+    to: profile.email,
+    subject: active ? "Cedars-Voya Retirement Sage enrollment confirmed" : "Cedars-Voya Retirement Sage enrollment canceled",
+    html: accountEmailHtml({
+      profile,
+      eyebrow: "Sage by SmartSleeve",
+      title: active ? "You are enrolled" : "Enrollment canceled",
+      intro: active
+        ? "Your monthly Cedars-Sinai Voya 403(b) Retirement Sage emails are now active."
+        : "Your Cedars-Sinai Voya 403(b) Retirement Sage monthly emails have been canceled.",
+      detail: active
+        ? "Each eligible monthly email presents Safe, Steady, and Savage Sage allocation recommendations for the plan's Core Funds. You decide whether and how to act in Voya."
+        : "You can return to Special Offers and enroll again at any time while the offer remains unlocked on your account.",
+      buttonLabel: "View Cedars-Voya page",
+      actionLink,
+      securityNote: active
+        ? "Recommendations are informational and do not place trades or access your Voya account."
+        : "No further Retirement Sage recommendation emails will be scheduled for this account unless you enroll again.",
+    }),
+    text: [
+      active ? "Cedars-Voya Retirement Sage enrollment confirmed." : "Cedars-Voya Retirement Sage enrollment canceled.",
+      active
+        ? "You will receive eligible monthly Safe, Steady, and Savage Sage allocation recommendations for the Cedars-Sinai Voya 403(b) plan's Core Funds."
+        : "No further Retirement Sage recommendation emails will be scheduled unless you enroll again.",
+      actionLink,
+      "",
+      "© 2026 SmartSleeve Quantitative Trading Systems, LLC",
+    ].join("\n"),
+    idempotencyKey,
   });
 }
 
@@ -812,6 +902,577 @@ async function currentAccountSession(request, env) {
   return { ok: true, status: 200, emailHash: session.email_hash, session, sessionKey, record };
 }
 
+// Production Portal modules retained from the platform Worker.
+async function enforceOrderIntentRateLimit(request, env, emailHash) {
+  const ipHash = await sha256Hex(requestIp(request));
+  const ipCount = await incrementWithTtl(env.SMARTSLEEVE_AUTH, `rate:order_intent:ip:${ipHash}`, RATE_LIMIT_TTL_SECONDS);
+  const emailCount = await incrementWithTtl(
+    env.SMARTSLEEVE_AUTH,
+    `rate:order_intent:email:${emailHash}`,
+    RATE_LIMIT_TTL_SECONDS
+  );
+  return ipCount <= MAX_ORDER_INTENTS_PER_WINDOW && emailCount <= MAX_ORDER_INTENTS_PER_WINDOW;
+}
+
+async function enforceAppFeedRefreshRateLimit(request, env, emailHash) {
+  const ipHash = await sha256Hex(requestIp(request));
+  const globalCount = await incrementWithTtl(
+    env.SMARTSLEEVE_AUTH,
+    "rate:app_feed_refresh:global",
+    APP_FEED_REFRESH_GLOBAL_TTL_SECONDS
+  );
+  const ipCount = await incrementWithTtl(
+    env.SMARTSLEEVE_AUTH,
+    `rate:app_feed_refresh:ip:${ipHash}`,
+    APP_FEED_REFRESH_USER_TTL_SECONDS
+  );
+  const emailCount = await incrementWithTtl(
+    env.SMARTSLEEVE_AUTH,
+    `rate:app_feed_refresh:email:${emailHash}`,
+    APP_FEED_REFRESH_USER_TTL_SECONDS
+  );
+  return globalCount <= 1 && ipCount <= 2 && emailCount <= 2;
+}
+
+function isDeveloperProfile(profile) {
+  return String((profile || {}).role || "") === "developer";
+}
+
+function knownOwnerEmailFromText(value) {
+  const text = String(value || "").toLowerCase();
+  if (!text) return "";
+  if (
+    text.includes("criseldasarenas") ||
+    text.includes("criselda") ||
+    text.includes("crissy") ||
+    /\bcrissy[\s_-]*(rh|ibkr|margin)\b/.test(text) ||
+    /\bcriselda[\s_-]*(rh|ibkr|margin)\b/.test(text)
+  ) {
+    return "criseldasarenas@gmail.com";
+  }
+  if (
+    text.includes("jpsheppard88") ||
+    text.includes("john@smartsleeve.ai") ||
+    text.includes("john sheppard") ||
+    /\bjohn[\s_-]*(rh|ibkr|etrade|e[-\s]?trade)\b/.test(text)
+  ) {
+    return "jpsheppard88@gmail.com";
+  }
+  return "";
+}
+
+function rowOwnerEmail(row) {
+  const direct = normalizeEmail(
+    row && (
+      row.ownerEmail ||
+      row.owner_email ||
+      row.profile_email ||
+      row.userEmail ||
+      row.user_email ||
+      row.principalEmail ||
+      row.principal_email ||
+      row.email
+    )
+  );
+  if (direct) return direct;
+  const id = String(row && (row.id || row.accountId || row.account_id || row.account || "") || "").trim().toLowerCase();
+  const accountOwnerById = {
+    "criselda": "criseldasarenas@gmail.com",
+    "crissy": "criseldasarenas@gmail.com",
+    "crissy-rh": "criseldasarenas@gmail.com",
+    "crissy-ibkr": "criseldasarenas@gmail.com",
+    "crissy-ibkr-margin": "criseldasarenas@gmail.com",
+    "criselda-ibkr": "criseldasarenas@gmail.com",
+    "criselda-ibkr-margin": "criseldasarenas@gmail.com",
+    "u26691376": "criseldasarenas@gmail.com",
+    "john": "jpsheppard88@gmail.com",
+    "john-rh": "jpsheppard88@gmail.com",
+    "john-etrade": "jpsheppard88@gmail.com",
+    "etrade": "jpsheppard88@gmail.com",
+    "u25739525": "jpsheppard88@gmail.com",
+    "u25815215": "jpsheppard88@gmail.com",
+    "john-ibkr-margin": "jpsheppard88@gmail.com",
+    "john-ibkr-roth": "jpsheppard88@gmail.com",
+  };
+  if (accountOwnerById[id]) return accountOwnerById[id];
+  return knownOwnerEmailFromText([
+    row && row.account,
+    row && row.name,
+    row && row.nickname,
+    row && row.label,
+    row && row.displayName,
+    row && row.display_name,
+    row && row.owner,
+    row && row.user,
+  ].filter(Boolean).join(" "));
+}
+
+function isAuthorizedRow(row, profile, options = {}) {
+  if (isDeveloperProfile(profile) && !options.forceUserScope) {
+    return true;
+  }
+  const email = normalizeEmail((profile || {}).email);
+  if (!email) {
+    return false;
+  }
+  if (rowHasConflictingOwner(row, email)) {
+    return false;
+  }
+  const audience = Array.isArray(row && row.audienceEmails)
+    ? row.audienceEmails.map(normalizeEmail)
+    : [];
+  return (
+    rowOwnerEmail(row) === email ||
+    audience.includes(email)
+  );
+}
+
+function isAuthorizedAccountRow(row, profile, options = {}) {
+  if (isDeveloperProfile(profile) && !options.forceUserScope) {
+    return true;
+  }
+  const email = normalizeEmail((profile || {}).email);
+  return Boolean(email && rowOwnerEmail(row) === email);
+}
+
+function rowHasConflictingOwner(row, email) {
+  const owner = rowOwnerEmail(row);
+  return Boolean(owner && email && owner !== email);
+}
+
+function scopedAppFeed(feed, profile, options = {}) {
+  const source = feed && typeof feed === "object" ? feed : {};
+  const accounts = Array.isArray(source.accounts) ? source.accounts.filter((row) => isAuthorizedAccountRow(row, profile, options)) : [];
+  const coverage = source.accountCoverage && typeof source.accountCoverage === "object" ? source.accountCoverage : {};
+  const filterCoverageRows = (rows) => Array.isArray(rows) ? rows.filter((row) => isAuthorizedAccountRow(row, profile, options)) : [];
+  const coverageExpected = filterCoverageRows(coverage.expected);
+  const accountCoverage = {
+    ...coverage,
+    expected: coverageExpected,
+    missing: filterCoverageRows(coverage.missing),
+    configured_without_live: filterCoverageRows(coverage.configured_without_live),
+    visible_count: coverageExpected.filter((row) => row && row.visible).length,
+    expected_count: coverageExpected.length,
+  };
+  const visibleAccountIds = new Set(
+    accounts.map((account) => String(account.id || account.accountId || account.account_id || account.account || ""))
+  );
+  const filterAccountRow = (row) => {
+    const email = normalizeEmail((profile || {}).email);
+    if (!isDeveloperProfile(profile) && rowHasConflictingOwner(row, email)) {
+      return false;
+    }
+    if (isAuthorizedRow(row, profile, options)) {
+      return true;
+    }
+    const accountId = String(row && (row.accountId || row.account_id || row.id || row.account || ""));
+    return Boolean(accountId && visibleAccountIds.has(accountId));
+  };
+  return {
+    ...source,
+    accounts,
+    accountCoverage,
+    trades: Array.isArray(source.trades) ? source.trades.filter(filterAccountRow) : [],
+    brain: Array.isArray(source.brain) ? source.brain.filter(filterAccountRow) : [],
+    reports: Array.isArray(source.reports) ? source.reports.filter((row) => isAuthorizedRow(row, profile, options)) : [],
+    session: {
+      profile,
+      account_scope: isDeveloperProfile(profile) && !options.forceUserScope ? "all" : "user",
+    },
+  };
+}
+
+async function loadAppFeedRaw(env, options = {}) {
+  const now = Date.now();
+  if (
+    !options.bypassCache &&
+    appFeedMemoryCache.raw &&
+    now - appFeedMemoryCache.loaded_at_ms < APP_FEED_MEMORY_CACHE_TTL_MS
+  ) {
+    return appFeedMemoryCache.raw;
+  }
+  if (!env.APP_FEED_BUCKET) {
+    return null;
+  }
+  const object = await env.APP_FEED_BUCKET.get(APP_FEED_OBJECT_KEY);
+  const raw = object ? await object.text() : null;
+  if (raw) {
+    appFeedMemoryCache = { raw, loaded_at_ms: now };
+  }
+  return raw;
+}
+
+function rememberAppFeedRaw(raw) {
+  appFeedMemoryCache = { raw, loaded_at_ms: Date.now() };
+}
+
+function normalizeSymbol(value) {
+  return String(value || "").trim().toUpperCase().replace(/[^A-Z0-9.-]/g, "").slice(0, 16);
+}
+
+function finiteNumberOrNull(value) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function validateOrderIntent(intent) {
+  const errors = [];
+  const allowedActions = new Set(["buy", "sell", "exit", "reallocate", "protect"]);
+  const allowedOrderTypes = new Set([
+    "market",
+    "limit",
+    "stop_market",
+    "stop_limit",
+    "trailing_stop_market",
+    "trailing_stop_limit",
+    "bracket",
+    "pair_switch",
+  ]);
+  const allowedSessions = new Set(["regular", "extended", "all_day"]);
+  const allowedTif = new Set(["day", "gtc"]);
+  const symbol = normalizeSymbol(intent.symbol);
+  if (!symbol) errors.push("symbol_required");
+  if (!String(intent.account_id || "").trim()) errors.push("account_id_required");
+  if (!String(intent.sleeve || "").trim()) errors.push("sleeve_required");
+  if (!allowedActions.has(String(intent.action || ""))) errors.push("unsupported_action");
+  if (!allowedOrderTypes.has(String(intent.order_type || ""))) errors.push("unsupported_order_type");
+  if (!allowedSessions.has(String(intent.session || ""))) errors.push("unsupported_session");
+  if (!allowedTif.has(String(intent.time_in_force || ""))) errors.push("unsupported_time_in_force");
+
+  const quantity = finiteNumberOrNull(intent.quantity);
+  const notional = finiteNumberOrNull(intent.notional_usd);
+  const targetPct = finiteNumberOrNull(intent.target_portfolio_pct);
+  if (!(quantity > 0) && !(notional > 0) && !(targetPct > 0)) {
+    errors.push("positive_sizing_required");
+  }
+  if (["limit", "stop_limit"].includes(String(intent.order_type || "")) && !(finiteNumberOrNull(intent.limit_price) > 0)) {
+    errors.push("limit_price_required");
+  }
+  if (["stop_market", "stop_limit"].includes(String(intent.order_type || "")) && !(finiteNumberOrNull(intent.stop_price) > 0)) {
+    errors.push("stop_price_required");
+  }
+  if (
+    ["trailing_stop_market", "trailing_stop_limit"].includes(String(intent.order_type || "")) &&
+    !(finiteNumberOrNull(intent.trailing_amount) > 0 || finiteNumberOrNull(intent.trailing_percent) > 0)
+  ) {
+    errors.push("trailing_value_required");
+  }
+  if (String(intent.action || "") === "reallocate" && !normalizeSymbol(intent.target_symbol)) {
+    errors.push("target_symbol_required_for_reallocation");
+  }
+  return { ok: errors.length === 0, errors };
+}
+
+function sanitizeOrderIntent(intent, profile) {
+  const now = new Date().toISOString();
+  return {
+    schema_version: 1,
+    event_type: "advanced_order_intent",
+    intent_id: String(intent.intent_id || crypto.randomUUID()).slice(0, 80),
+    created_at: String(intent.created_at || now).slice(0, 40),
+    received_at: now,
+    status: "queued_for_server_preview",
+    profile_email: normalizeEmail(profile.email),
+    profile_role: profile.role || "user",
+    account_id: String(intent.account_id || "").trim().slice(0, 80),
+    account_label: String(intent.account_label || "").trim().slice(0, 120),
+    ownerEmail: normalizeEmail(intent.ownerEmail || profile.email),
+    sleeve: String(intent.sleeve || "").trim().slice(0, 80),
+    symbol: normalizeSymbol(intent.symbol),
+    target_symbol: normalizeSymbol(intent.target_symbol) || null,
+    side: String(intent.side || "").trim().toLowerCase() === "buy" ? "buy" : "sell",
+    action: String(intent.action || "").trim().toLowerCase(),
+    asset_type: String(intent.asset_type || "equity").trim().toLowerCase().slice(0, 24),
+    order_type: String(intent.order_type || "").trim().toLowerCase(),
+    execution_route: String(intent.execution_route || "").trim().toLowerCase().slice(0, 80),
+    session: String(intent.session || "").trim().toLowerCase(),
+    time_in_force: String(intent.time_in_force || "").trim().toLowerCase(),
+    sizing_mode: String(intent.sizing_mode || "").trim().toLowerCase().slice(0, 24),
+    quantity: finiteNumberOrNull(intent.quantity),
+    notional_usd: finiteNumberOrNull(intent.notional_usd),
+    target_portfolio_pct: finiteNumberOrNull(intent.target_portfolio_pct),
+    limit_price: finiteNumberOrNull(intent.limit_price),
+    stop_price: finiteNumberOrNull(intent.stop_price),
+    trailing_amount: finiteNumberOrNull(intent.trailing_amount),
+    trailing_percent: finiteNumberOrNull(intent.trailing_percent),
+    limit_offset: finiteNumberOrNull(intent.limit_offset),
+    strategy: String(intent.strategy || "").trim().slice(0, 80),
+    execution_mode: String(intent.execution_mode || "server_preview").trim().slice(0, 80),
+    operator_id: String(intent.operator_id || "USER_DIRECTED").trim().slice(0, 80),
+    originator: String(intent.originator || "smartsleeve_app").trim().slice(0, 80),
+    notes: String(intent.notes || "").trim().slice(0, 2000),
+    autoguard: {
+      window_end_local: String(((intent.autoguard || intent.autoGuard || {}).window_end_local || (intent.smartTrade || {}).window_end_local || "")).trim().slice(0, 80) || null,
+      margin_limit_usd: finiteNumberOrNull((intent.autoguard || intent.autoGuard || {}).margin_limit_usd),
+      broker_preview_required: true,
+      account_guardrails_required: true,
+    },
+    smartTrade: {
+      enabled: Boolean((intent.smartTrade || {}).enabled),
+      workflow: String((intent.smartTrade || {}).workflow || "").trim().slice(0, 120) || null,
+      window_end_local: String((intent.smartTrade || {}).window_end_local || "").trim().slice(0, 80) || null,
+    },
+  };
+}
+
+async function createOrderIntent(request, env) {
+  if (!env.SMARTSLEEVE_AUTH) {
+    return jsonResponse(request, env, { ok: false, error: "auth_storage_not_configured" }, 503);
+  }
+  const session = await currentSession(request, env);
+  if (!session.ok) {
+    return jsonResponse(request, env, session, session.status || 401);
+  }
+  const length = Number(request.headers.get("Content-Length") || "0");
+  if (length > MAX_ORDER_INTENT_BODY_BYTES) {
+    return jsonResponse(request, env, { ok: false, error: "request_too_large" }, 413);
+  }
+  let payload = {};
+  try {
+    payload = await request.json();
+  } catch (_err) {
+    return jsonResponse(request, env, { ok: false, error: "invalid_json" }, 400);
+  }
+  const rawIntent = payload.intent || payload;
+  if (!rawIntent || typeof rawIntent !== "object" || Array.isArray(rawIntent)) {
+    return jsonResponse(request, env, { ok: false, error: "intent_object_required" }, 400);
+  }
+  const profile = session.profile || {};
+  const userEmail = normalizeEmail(profile.email);
+  const ownerEmail = normalizeEmail(rawIntent.ownerEmail || userEmail);
+  if (profile.role !== "developer" && ownerEmail !== userEmail) {
+    return jsonResponse(request, env, { ok: false, error: "intent_owner_not_authorized" }, 403);
+  }
+  const validation = validateOrderIntent(rawIntent);
+  if (!validation.ok) {
+    return jsonResponse(request, env, { ok: false, error: "validation_failed", errors: validation.errors }, 400);
+  }
+  const emailHash = await sha256Hex(userEmail);
+  const allowed = await enforceOrderIntentRateLimit(request, env, emailHash);
+  if (!allowed) {
+    return jsonResponse(request, env, { ok: false, error: "rate_limited" }, 429);
+  }
+  const intent = sanitizeOrderIntent(rawIntent, profile);
+  const key = `order_intent:${Date.now()}:${crypto.randomUUID()}`;
+  await env.SMARTSLEEVE_AUTH.put(key, JSON.stringify(intent), {
+    expirationTtl: ORDER_INTENT_TTL_SECONDS,
+    metadata: {
+      email: userEmail,
+      ownerEmail: intent.ownerEmail,
+      status: intent.status,
+      symbol: intent.symbol,
+    },
+  });
+  return jsonResponse(request, env, {
+    ok: true,
+    status: "queued_for_server_preview",
+    intent_id: intent.intent_id,
+    queue_key: key,
+    message: "Order intent queued. Broker preview/place/reconcile must run server-side.",
+  });
+}
+
+async function listOrderIntents(request, env) {
+  if (!env.SMARTSLEEVE_AUTH) {
+    return jsonResponse(request, env, { ok: false, error: "auth_storage_not_configured" }, 503);
+  }
+  const session = await currentSession(request, env);
+  if (!session.ok) {
+    return jsonResponse(request, env, session, session.status || 401);
+  }
+  const profile = session.profile || {};
+  const listed = await env.SMARTSLEEVE_AUTH.list({ prefix: "order_intent:", limit: 100 });
+  const rows = [];
+  for (const item of listed.keys) {
+    const raw = await env.SMARTSLEEVE_AUTH.get(item.name);
+    if (!raw) continue;
+    const intent = JSON.parse(raw);
+    if (profile.role !== "developer" && normalizeEmail(intent.ownerEmail || intent.profile_email) !== normalizeEmail(profile.email)) {
+      continue;
+    }
+    rows.push(intent);
+  }
+  rows.sort((a, b) => String(b.received_at || "").localeCompare(String(a.received_at || "")));
+  return jsonResponse(request, env, { ok: true, order_intents: rows.slice(0, 50) });
+}
+
+async function readAppFeed(request, env) {
+  if (!env.SMARTSLEEVE_AUTH) {
+    return jsonResponse(request, env, { ok: false, error: "auth_storage_not_configured" }, 503);
+  }
+  const session = await currentSession(request, env);
+  if (!session.ok) {
+    return jsonResponse(request, env, session, session.status || 401);
+  }
+  let refresh = null;
+  const url = new URL(request.url);
+  if (url.searchParams.get("refresh") === "1") {
+    refresh = await requestAppFeedRefresh(request, env, session);
+  }
+  const forceUserScope = url.searchParams.get("scope") === "user";
+  const raw = await loadAppFeedRaw(env, { bypassCache: Boolean(refresh) });
+  if (!raw) {
+    return jsonResponse(request, env, { ok: false, error: "app_feed_not_published" }, 404);
+  }
+  let feed = {};
+  try {
+    feed = JSON.parse(raw);
+  } catch (_err) {
+    return jsonResponse(request, env, { ok: false, error: "app_feed_corrupt" }, 500);
+  }
+  return jsonResponse(request, env, {
+    ok: true,
+    refresh,
+    feed: scopedAppFeed(feed, session.profile || {}, { forceUserScope }),
+  });
+}
+
+function appFeedRefreshPayload(env, profile) {
+  const ref = String(env.SMARTSLEEVE_APP_FEED_REFRESH_REF || "main").trim() || "main";
+  const url = String(env.SMARTSLEEVE_APP_FEED_REFRESH_URL || "");
+  if (url.indexOf("api.github.com/repos/") !== -1 && url.indexOf("/dispatches") !== -1) {
+    return { ref };
+  }
+  return {
+    ref,
+    reason: "app_pull_to_refresh",
+    requested_by: normalizeEmail((profile || {}).email),
+    requested_at: new Date().toISOString(),
+  };
+}
+
+async function requestAppFeedRefresh(request, env, session) {
+  if (!env.SMARTSLEEVE_AUTH) {
+    return { ok: false, error: "auth_storage_not_configured" };
+  }
+  const profile = session.profile || {};
+  const email = normalizeEmail(profile.email);
+  if (!email) {
+    return { ok: false, error: "profile_email_required" };
+  }
+  const refreshUrl = String(env.SMARTSLEEVE_APP_FEED_REFRESH_URL || "").trim();
+  const refreshToken = String(env.SMARTSLEEVE_APP_FEED_REFRESH_TOKEN || "").trim();
+  if (!refreshUrl || !refreshToken) {
+    return { ok: false, error: "app_feed_refresh_not_configured" };
+  }
+  const emailHash = await sha256Hex(email);
+  const allowed = await enforceAppFeedRefreshRateLimit(request, env, emailHash);
+  if (!allowed) {
+    const lastRaw = await env.SMARTSLEEVE_AUTH.get(APP_FEED_REFRESH_STATUS_KEY);
+    let lastRefresh = null;
+    try {
+      lastRefresh = lastRaw ? JSON.parse(lastRaw) : null;
+    } catch (_err) {
+      lastRefresh = null;
+    }
+    return {
+      ok: false,
+      error: "refresh_rate_limited",
+      retry_after_seconds: APP_FEED_REFRESH_USER_TTL_SECONDS,
+      last_refresh: lastRefresh,
+    };
+  }
+  const requestedAt = new Date().toISOString();
+  const body = appFeedRefreshPayload(env, profile);
+  const response = await fetch(refreshUrl, {
+    method: "POST",
+    headers: {
+      "Accept": "application/json",
+      "Authorization": `Bearer ${refreshToken}`,
+      "Content-Type": "application/json",
+      "User-Agent": "SmartSleeveAppFeedRefresh/1.0 (+https://smartsleeve.ai)",
+      "X-GitHub-Api-Version": "2022-11-28",
+    },
+    body: JSON.stringify(body),
+  });
+  const responseText = await response.text();
+  const status = {
+    ok: response.ok,
+    status: response.ok ? "refresh_requested" : "refresh_request_failed",
+    requested_at: requestedAt,
+    requested_by_hash: emailHash,
+    workflow_status: response.status,
+    provider: refreshUrl.indexOf("api.github.com/") !== -1 ? "github_actions" : "webhook",
+  };
+  await env.SMARTSLEEVE_AUTH.put(APP_FEED_REFRESH_STATUS_KEY, JSON.stringify(status), {
+    expirationTtl: 60 * 60,
+  });
+  if (!response.ok) {
+    return {
+      ...status,
+      error: "refresh_webhook_failed",
+      detail: responseText.slice(0, 240),
+    };
+  }
+  return status;
+}
+
+async function refreshAppFeed(request, env) {
+  if (!env.SMARTSLEEVE_AUTH) {
+    return jsonResponse(request, env, { ok: false, error: "auth_storage_not_configured" }, 503);
+  }
+  const session = await currentSession(request, env);
+  if (!session.ok) {
+    return jsonResponse(request, env, session, session.status || 401);
+  }
+  const refresh = await requestAppFeedRefresh(request, env, session);
+  const status = refresh.ok
+    ? 202
+    : refresh.error === "app_feed_refresh_not_configured" ? 503
+    : refresh.error === "refresh_rate_limited" ? 429
+    : 502;
+  return jsonResponse(request, env, { ok: Boolean(refresh.ok), refresh }, status);
+}
+
+async function publishAppFeed(request, env) {
+  if (!env.APP_FEED_BUCKET) {
+    return jsonResponse(request, env, { ok: false, error: "app_feed_storage_not_configured" }, 503);
+  }
+  if (!env.SMARTSLEEVE_ADMIN_TOKEN) {
+    return jsonResponse(request, env, { ok: false, error: "admin_token_not_configured" }, 503);
+  }
+  if (!constantTimeEqual(adminToken(request), env.SMARTSLEEVE_ADMIN_TOKEN)) {
+    return jsonResponse(request, env, { ok: false, error: "not_authorized" }, 403);
+  }
+  const length = Number(request.headers.get("Content-Length") || "0");
+  if (length > MAX_APP_FEED_BODY_BYTES) {
+    return jsonResponse(request, env, { ok: false, error: "request_too_large" }, 413);
+  }
+  let payload = {};
+  try {
+    payload = await request.json();
+  } catch (_err) {
+    return jsonResponse(request, env, { ok: false, error: "invalid_json" }, 400);
+  }
+  const feed = payload.feed && typeof payload.feed === "object" ? payload.feed : payload;
+  if (!Array.isArray(feed.accounts)) {
+    return jsonResponse(request, env, { ok: false, error: "feed_accounts_required" }, 400);
+  }
+  const now = new Date().toISOString();
+  const stored = {
+    ...feed,
+    published_at: now,
+    public_static_feed_disabled: true,
+  };
+  const raw = JSON.stringify(stored);
+  await env.APP_FEED_BUCKET.put(APP_FEED_OBJECT_KEY, raw, {
+    httpMetadata: { contentType: "application/json" },
+  });
+  rememberAppFeedRaw(raw);
+  return jsonResponse(request, env, {
+    ok: true,
+    status: "app_feed_published",
+    published_at: now,
+    accounts: feed.accounts.length,
+    trades: Array.isArray(feed.trades) ? feed.trades.length : 0,
+    brain: Array.isArray(feed.brain) ? feed.brain.length : 0,
+    reports: Array.isArray(feed.reports) ? feed.reports.length : 0,
+  });
+}
+
 async function me(request, env) {
   const result = await currentSession(request, env);
   return jsonResponse(request, env, result, result.status || (result.ok ? 200 : 401));
@@ -864,6 +1525,205 @@ async function updateProfile(request, env) {
   };
   await env.SMARTSLEEVE_AUTH.put(`account:${session.emailHash}`, JSON.stringify(nextRecord));
   return jsonResponse(request, env, { ok: true, status: "profile_updated", profile: publicProfile(nextRecord, env) });
+}
+
+function configuredSpecialOfferForCode(env, submittedCode) {
+  const candidate = String(submittedCode || "").trim().toUpperCase();
+  if (!candidate || !env.SMARTSLEEVE_SPECIAL_OFFER_CODES) return "";
+  let configured = {};
+  try {
+    configured = JSON.parse(String(env.SMARTSLEEVE_SPECIAL_OFFER_CODES));
+  } catch (_err) {
+    return "";
+  }
+  for (const [code, offerId] of Object.entries(configured)) {
+    if (constantTimeEqual(candidate, String(code).trim().toUpperCase())) {
+      return String(offerId || "");
+    }
+  }
+  return "";
+}
+
+async function redeemSpecialOffer(request, env) {
+  const session = await currentAccountSession(request, env);
+  if (!session.ok) return jsonResponse(request, env, session, session.status || 401);
+  let payload = {};
+  try {
+    payload = await request.json();
+  } catch (_err) {
+    return jsonResponse(request, env, { ok: false, error: "invalid_json" }, 400);
+  }
+  const offerId = configuredSpecialOfferForCode(env, payload.code);
+  if (offerId !== CEDARS_VOYA_OFFER_ID) {
+    return jsonResponse(request, env, { ok: false, error: "special_offer_code_invalid" }, 400);
+  }
+  const record = session.record || {};
+  const profile = record.profile || {};
+  const offers = profile.special_offers && typeof profile.special_offers === "object"
+    ? profile.special_offers
+    : {};
+  if (!offers[offerId] || offers[offerId].status !== "unlocked") {
+    offers[offerId] = {
+      status: "unlocked",
+      unlocked_at: new Date().toISOString(),
+      unlocked_via: "special_offer_code",
+    };
+  }
+  const nextRecord = {
+    ...record,
+    profile: { ...profile, special_offers: offers },
+    updated_at: new Date().toISOString(),
+  };
+  await env.SMARTSLEEVE_AUTH.put(`account:${session.emailHash}`, JSON.stringify(nextRecord));
+  return jsonResponse(request, env, {
+    ok: true,
+    status: "special_offer_unlocked",
+    offer_id: offerId,
+    profile: publicProfile(nextRecord, env),
+  });
+}
+
+async function readCedarsVoyaProspectus(request, env) {
+  const session = await currentAccountSession(request, env);
+  if (!session.ok) return jsonResponse(request, env, session, session.status || 401);
+  if (!unlockedSpecialOffers(session.record && session.record.profile).includes(CEDARS_VOYA_OFFER_ID)) {
+    return jsonResponse(request, env, { ok: false, error: "special_offer_not_unlocked" }, 403);
+  }
+  if (!env.APP_FEED_BUCKET) {
+    return jsonResponse(request, env, { ok: false, error: "special_offer_content_not_configured" }, 503);
+  }
+  const object = await env.APP_FEED_BUCKET.get(CEDARS_VOYA_PROSPECTUS_OBJECT_KEY);
+  if (!object) {
+    return jsonResponse(request, env, { ok: false, error: "special_offer_content_not_published" }, 404);
+  }
+  return new Response(await object.text(), {
+    status: 200,
+    headers: {
+      ...corsHeaders(request, env),
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "private, no-store",
+    },
+  });
+}
+
+async function updateRetirementSageEnrollment(request, env) {
+  const session = await currentAccountSession(request, env);
+  if (!session.ok) return jsonResponse(request, env, session, session.status || 401);
+  let payload = {};
+  try {
+    payload = await request.json();
+  } catch (_err) {
+    return jsonResponse(request, env, { ok: false, error: "invalid_json" }, 400);
+  }
+  const action = payload.action === "cancel" ? "cancel" : "enroll";
+  const record = session.record || {};
+  const profile = record.profile || {};
+  if (action === "enroll") {
+    if (!unlockedSpecialOffers(profile).includes(CEDARS_VOYA_OFFER_ID)) {
+      return jsonResponse(request, env, { ok: false, error: "special_offer_not_unlocked" }, 403);
+    }
+    if (payload.consent !== true) {
+      return jsonResponse(request, env, { ok: false, error: "retirement_sage_email_consent_required" }, 400);
+    }
+  }
+  const previous = profile.retirement_sage_enrollment || {};
+  const now = new Date();
+  const status = action === "cancel" ? "canceled" : "active";
+  if (previous.status === status) {
+    return jsonResponse(request, env, {
+      ok: true,
+      status: status === "active" ? "already_enrolled" : "already_canceled",
+      profile: publicProfile(record, env),
+    });
+  }
+  const emailHash = await sha256Hex(normalizeEmail(profile.email));
+  const slug = [profile.first_name, profile.last_name]
+    .map((value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""))
+    .filter(Boolean)
+    .join("-") || "website-user";
+  const enrollment = {
+    schema_version: 1,
+    enrollee_id: previous.enrollee_id || `${slug}-${emailHash.slice(0, 8)}`,
+    status,
+    enrollment_date: previous.enrollment_date || now.toISOString().slice(0, 10),
+    cadence: "monthly",
+    cadence_days_floor: 30,
+    plan_account_scope: RETIREMENT_SAGE_PLAN_SCOPE,
+    maintains_own_trade_ledger: false,
+    source: "smartsleeve_website_special_offer",
+    offer_id: CEDARS_VOYA_OFFER_ID,
+    updated_at: now.toISOString(),
+    canceled_at: status === "canceled" ? now.toISOString() : null,
+  };
+  const nextRecord = {
+    ...record,
+    profile: { ...profile, retirement_sage_enrollment: enrollment },
+    updated_at: now.toISOString(),
+  };
+  await env.SMARTSLEEVE_AUTH.put(`account:${session.emailHash}`, JSON.stringify(nextRecord));
+  let emailStatus = "sent";
+  try {
+    await sendRetirementSageEnrollmentEmail(
+      env,
+      profile,
+      enrollment,
+      `retirement-sage-enrollment-${emailHash}-${status}-${Date.parse(now.toISOString())}`
+    );
+  } catch (err) {
+    emailStatus = "failed";
+    console.error(JSON.stringify({ event: "retirement_sage_enrollment_email_failed", error: String(err && err.message || err).slice(0, 240) }));
+  }
+  return jsonResponse(request, env, {
+    ok: true,
+    status: status === "active" ? "retirement_sage_enrolled" : "retirement_sage_canceled",
+    confirmation_email: emailStatus,
+    profile: publicProfile(nextRecord, env),
+  });
+}
+
+async function exportRetirementSageEnrollees(request, env) {
+  if (!env.SMARTSLEEVE_AUTH || !env.SMARTSLEEVE_ADMIN_TOKEN) {
+    return jsonResponse(request, env, { ok: false, error: "admin_export_not_configured" }, 503);
+  }
+  if (!constantTimeEqual(adminToken(request), env.SMARTSLEEVE_ADMIN_TOKEN)) {
+    return jsonResponse(request, env, { ok: false, error: "not_authorized" }, 403);
+  }
+  const enrollees = [];
+  let cursor = undefined;
+  do {
+    const listed = await env.SMARTSLEEVE_AUTH.list({ prefix: "account:", limit: 1000, cursor });
+    for (const item of listed.keys) {
+      const record = JSON.parse((await env.SMARTSLEEVE_AUTH.get(item.name)) || "null");
+      const profile = record && record.profile || {};
+      const enrollment = profile.retirement_sage_enrollment;
+      if (!enrollment || !enrollment.enrollee_id) continue;
+      enrollees.push({
+        enrollee_id: enrollment.enrollee_id,
+        first_name: profile.first_name || "",
+        middle_name: profile.middle_name || "",
+        last_name: profile.last_name || "",
+        full_name: [profile.first_name, profile.middle_name, profile.last_name].filter(Boolean).join(" "),
+        email: normalizeEmail(profile.email),
+        status: enrollment.status || "inactive",
+        enrollment_date: enrollment.enrollment_date,
+        cadence: "monthly",
+        cadence_days_floor: Number(enrollment.cadence_days_floor || 30),
+        plan_account_scope: enrollment.plan_account_scope || RETIREMENT_SAGE_PLAN_SCOPE,
+        maintains_own_trade_ledger: Boolean(enrollment.maintains_own_trade_ledger),
+        source: enrollment.source || "smartsleeve_website_special_offer",
+        updated_at: enrollment.updated_at || null,
+      });
+    }
+    cursor = listed.list_complete ? undefined : listed.cursor;
+  } while (cursor);
+  enrollees.sort((a, b) => a.email.localeCompare(b.email));
+  return jsonResponse(request, env, {
+    ok: true,
+    schema_version: 1,
+    record_type: "retirement_sage_enrollee_registry",
+    generated_at: new Date().toISOString(),
+    enrollees,
+  });
 }
 
 async function logout(request, env) {
@@ -1087,6 +1947,14 @@ export default {
         platform_access_supported: true,
         username_login_supported: true,
         password_reset_supported: true,
+        app_feed_supported: true,
+        app_feed_storage_configured: Boolean(env.APP_FEED_BUCKET),
+        app_feed_refresh_configured: Boolean(env.SMARTSLEEVE_APP_FEED_REFRESH_URL && env.SMARTSLEEVE_APP_FEED_REFRESH_TOKEN),
+        order_intents_supported: true,
+        admin_publish_configured: Boolean(env.SMARTSLEEVE_ADMIN_TOKEN),
+        special_offers_supported: Boolean(env.SMARTSLEEVE_SPECIAL_OFFER_CODES),
+        retirement_sage_enrollment_supported: true,
+        cedars_voya_content_configured: Boolean(env.APP_FEED_BUCKET),
       });
     }
     if (url.pathname === "/register" && request.method === "POST") {
@@ -1101,8 +1969,35 @@ export default {
     if (url.pathname === "/profile" && request.method === "POST") {
       return updateProfile(request, env);
     }
+    if (url.pathname === "/special-offers/redeem" && request.method === "POST") {
+      return redeemSpecialOffer(request, env);
+    }
+    if (url.pathname === "/special-offers/cedars-voya/content" && request.method === "GET") {
+      return readCedarsVoyaProspectus(request, env);
+    }
+    if (url.pathname === "/retirement-sage/enrollment" && request.method === "POST") {
+      return updateRetirementSageEnrollment(request, env);
+    }
     if (url.pathname === "/logout" && request.method === "POST") {
       return logout(request, env);
+    }
+    if (url.pathname === "/api/app-feed" && request.method === "GET") {
+      return readAppFeed(request, env);
+    }
+    if (url.pathname === "/api/app-feed/refresh" && request.method === "POST") {
+      return refreshAppFeed(request, env);
+    }
+    if (url.pathname === "/admin/app-feed" && request.method === "POST") {
+      return publishAppFeed(request, env);
+    }
+    if (url.pathname === "/admin/retirement-sage-enrollees" && request.method === "GET") {
+      return exportRetirementSageEnrollees(request, env);
+    }
+    if (url.pathname === "/order-intents" && request.method === "POST") {
+      return createOrderIntent(request, env);
+    }
+    if (url.pathname === "/order-intents" && request.method === "GET") {
+      return listOrderIntents(request, env);
     }
     if (url.pathname === "/password-reset/request" && request.method === "POST") {
       return requestPasswordReset(request, env);

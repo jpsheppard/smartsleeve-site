@@ -130,3 +130,40 @@ Run the Worker lifecycle tests with:
 cd site_auth
 npm test
 ```
+
+## Special Offers and Retirement Sage
+
+Verified website accounts receive a conditional `Special Offers` navigation
+link from `site-auth.js`. Offer codes are validated only by the Auth Worker from
+the `SMARTSLEEVE_SPECIAL_OFFER_CODES` secret; codes must never be embedded in
+public HTML, JavaScript, Worker variables, or documentation.
+
+The Cedars-Sinai Voya offer stores its unlock and monthly-email enrollment state
+inside the verified account profile. Its complete prospectus is not part of the
+public GitHub Pages build. The Worker checks the account entitlement before
+reading this private R2 object:
+
+```text
+smartsleeve-app-feed/special_offers/cedars_voya_retirement_sage_prospectus.html
+```
+
+The source is generated in the sibling platform repo at
+`reports/retirement_sage_prospectus.html`. Publish a regenerated source with:
+
+```sh
+npx wrangler r2 object put \
+  smartsleeve-app-feed/special_offers/cedars_voya_retirement_sage_prospectus.html \
+  --file ../platform/reports/retirement_sage_prospectus.html \
+  --remote --content-type 'text/html; charset=utf-8'
+```
+
+Relevant authenticated routes are:
+
+- `POST /special-offers/redeem`
+- `GET /special-offers/cedars-voya/content`
+- `POST /retirement-sage/enrollment`
+- `GET /admin/retirement-sage-enrollees` (admin token required)
+
+The platform sender merges the admin export into its local enrollee registry at
+send time. Website status takes precedence for the same verified email, allowing
+an enrollee to cancel future monthly messages from their account page.

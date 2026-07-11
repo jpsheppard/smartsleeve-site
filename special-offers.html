@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Special Offers | SmartSleeve</title>
+  <meta name="description" content="Unlock and manage special SmartSleeve account offers.">
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="theme-color" content="#020617">
+  <meta name="smartsleeve-auth-endpoint" content="https://smartsleeve-auth.jpsheppard88.workers.dev">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+  <link rel="stylesheet" href="/site-auth.css?v=20260710-special-offers-v1">
+  <link rel="stylesheet" href="/special-offers.css?v=20260710-special-offers-v1">
+</head>
+<body>
+  <header class="offers-header">
+    <a class="offers-brand" href="/" aria-label="SmartSleeve home">
+      <img src="/brand/smartsleeve-ss-current-best-proof.png?v=20260710-approved-ss-reference-v2" alt="SmartSleeve">
+    </a>
+    <nav aria-label="SmartSleeve page navigation">
+      <a href="/">Home</a>
+      <a href="/app/#shop">Shop</a>
+      <a href="/about.html">About</a>
+      <a href="/contact.html">Contact</a>
+      <a class="active" href="/special-offers.html" data-ss-special-offers>Special Offers</a>
+      <a href="/app/">Portal</a>
+    </nav>
+  </header>
+
+  <main class="offers-main">
+    <section class="offers-hero">
+      <p class="eyebrow">Member Access</p>
+      <h1>Special Offers</h1>
+      <p>Enter an invitation code once to permanently unlock its offer on your verified SmartSleeve account.</p>
+      <div class="account-state" id="account-state" role="status">Checking your SmartSleeve session...</div>
+      <button class="primary-button" id="account-sign-in" type="button" hidden>Sign in or create account</button>
+    </section>
+
+    <section class="offers-workspace" id="offers-workspace" hidden>
+      <div class="offer-tabs" role="tablist" aria-label="Special offer sections">
+        <button type="button" role="tab" id="access-tab" aria-controls="access-panel" aria-selected="true" data-offer-tab="access">
+          <span>Access Offer</span>
+          <small>Invitation code</small>
+        </button>
+        <button type="button" role="tab" id="cedars-tab" aria-controls="cedars-panel" aria-selected="false" aria-disabled="true" data-offer-tab="cedars-voya">
+          <span>Cedars-Sinai Voya</span>
+          <small id="cedars-tab-status">Locked</small>
+        </button>
+      </div>
+
+      <section class="offer-panel" id="access-panel" role="tabpanel" aria-labelledby="access-tab">
+        <div class="access-layout">
+          <div>
+            <p class="panel-kicker">Invitation Access</p>
+            <h2>Unlock a special offer</h2>
+            <p>Codes are tied to your signed-in account after redemption. You will not need to enter the same code again.</p>
+          </div>
+          <form class="offer-code-card" id="offer-code-form">
+            <label for="offer-code">Special Offer code</label>
+            <div class="code-entry-row">
+              <input id="offer-code" name="offer_code" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" required>
+              <button class="primary-button" type="submit">Submit</button>
+            </div>
+            <p id="offer-code-message" class="form-message" role="status"></p>
+          </form>
+        </div>
+        <article class="unlocked-card" id="unlocked-card" hidden>
+          <span class="unlocked-icon" aria-hidden="true">✓</span>
+          <div>
+            <p class="panel-kicker">Unlocked</p>
+            <h3>Cedars-Sinai Voya</h3>
+            <p>Your account now has permanent access to Cedars-Voya 403(b) Retirement Plan Management.</p>
+          </div>
+          <button class="secondary-button" type="button" data-open-cedars>Open offer</button>
+        </article>
+      </section>
+
+      <section class="offer-panel" id="cedars-panel" role="tabpanel" aria-labelledby="cedars-tab" hidden>
+        <div class="cedars-title-block">
+          <p class="panel-kicker">Sage by SmartSleeve</p>
+          <h2>Cedars-Voya 403(b) Retirement Plan Management</h2>
+          <p>Enroll in Retirement Sage to receive monthly emails with Safe, Steady, and Savage Sage recommendations and monthly fund-allocation picks for your Cedars-Sinai Voya 403(b) Retirement Plan&rsquo;s Core Funds.</p>
+        </div>
+
+        <section class="enrollment-card" aria-labelledby="enrollment-title">
+          <div class="enrollment-copy">
+            <span class="enrollment-status" id="enrollment-status">Not enrolled</span>
+            <h3 id="enrollment-title">Monthly Retirement Sage recommendations</h3>
+            <p>Recommendations are delivered to <strong id="enrollment-email">your verified email</strong>. SmartSleeve does not access your Voya account or place trades. You remain in control of every allocation decision.</p>
+          </div>
+          <form id="enrollment-form">
+            <label class="consent-row" id="consent-row">
+              <input id="enrollment-consent" type="checkbox">
+              <span>I want to receive monthly Cedars-Sinai Voya 403(b) Retirement Sage recommendation emails from SmartSleeve.</span>
+            </label>
+            <button class="primary-button" id="enroll-button" type="submit">Enroll in Retirement Sage</button>
+            <button class="text-button" id="cancel-enrollment" type="button" hidden>Cancel monthly emails</button>
+            <p id="enrollment-message" class="form-message" role="status"></p>
+          </form>
+        </section>
+
+        <div class="prospectus-heading">
+          <div>
+            <p class="panel-kicker">Complete Prospectus</p>
+            <h3>How Retirement Sage works</h3>
+          </div>
+          <span>Interactive web edition</span>
+        </div>
+        <div class="prospectus-loading" id="prospectus-loading" role="status">Loading the protected prospectus...</div>
+        <div class="prospectus-host" id="prospectus-host"></div>
+      </section>
+    </section>
+  </main>
+
+  <footer class="site-footer">© 2026 SmartSleeve Quantitative Trading Systems, LLC.</footer>
+  <script src="/site-auth.js?v=20260710-special-offers-v1" defer></script>
+  <script src="/special-offers.js?v=20260710-special-offers-v1" defer></script>
+</body>
+</html>

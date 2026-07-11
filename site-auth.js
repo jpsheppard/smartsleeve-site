@@ -116,6 +116,7 @@
 
   function emitChange() {
     renderWidget();
+    renderSpecialOffersNavigation();
     window.dispatchEvent(new CustomEvent("smartsleeve-auth-change", {
       detail: {
         ready: state.ready,
@@ -123,6 +124,30 @@
         sessionToken: state.sessionToken
       }
     }));
+  }
+
+  function renderSpecialOffersNavigation() {
+    var selectors = [
+      ".landing-side-menu",
+      "nav[aria-label=\"SmartSleeve page navigation\"]",
+      ".sidebar nav[aria-label=\"Primary\"]"
+    ];
+    selectors.forEach(function (selector) {
+      document.querySelectorAll(selector).forEach(function (navigation) {
+        var existing = navigation.querySelector("[data-ss-special-offers]");
+        if (!state.profile) {
+          if (existing) existing.remove();
+          return;
+        }
+        if (existing) return;
+        var link = document.createElement("a");
+        link.href = "/special-offers.html";
+        link.textContent = "Special Offers";
+        link.setAttribute("data-ss-special-offers", "true");
+        var portalLink = navigation.querySelector("a[href=\"/app/\"]");
+        navigation.insertBefore(link, portalLink || null);
+      });
+    });
   }
 
   function displayName(profile) {
@@ -484,12 +509,14 @@
     open: openModal,
     logout: logout,
     saveProfile: saveProfile,
-    hasPortalAccess: hasPortalAccess
+    hasPortalAccess: hasPortalAccess,
+    request: authFetch
   };
 
   document.addEventListener("DOMContentLoaded", function () {
     ensureWidget();
     renderWidget();
+    renderSpecialOffersNavigation();
     refresh();
   });
 })();
