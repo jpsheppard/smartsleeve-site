@@ -12,6 +12,12 @@
   var appFeedRefreshEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/api/app-feed/refresh" : "";
   var sessionToken = params.get("session_token") || "";
   var lastAuthProfile = null;
+  var portfolioDataLayer = window.SmartSleevePortfolioData.create({
+    fetchPoll: fetchAppFeed,
+    applySnapshot: function (payload, metadata) {
+      applyFeed(payload, metadata.sourceUrl);
+    }
+  });
 
   var state = {
     payload: null,
@@ -4712,6 +4718,7 @@
     var target = String(section || "dashboard").split("?")[0];
     var aliases = {overview: "dashboard", portfolio: "dashboard", command: "trade", trades: "trade", picks: "stock-picks", stock: "stock-picks", recs: "recommendations", recommend: "recommendations", recommendations: "recommendations", health: "diagnostics", risk: "diagnostics"};
     target = aliases[target] || target;
+    document.body.classList.remove("public-shop");
     $all("[data-section]").forEach(function (panel) {
       panel.classList.toggle("active", panel.getAttribute("data-section") === target);
     });
@@ -4746,7 +4753,14 @@
     scrollActiveBottomNavIntoView();
   }
 
+  function syncPortfolioRoute() {
+    if (isShopSection()) return;
+    handleNav(currentHashSection());
+  }
+
   function wireEvents() {
+    window.addEventListener("hashchange", syncPortfolioRoute);
+    window.addEventListener("pageshow", syncPortfolioRoute);
     $all("[data-nav]").forEach(function (link) {
       link.addEventListener("click", function (event) {
         event.preventDefault();
@@ -5241,9 +5255,8 @@
 
   function loadFeed(options) {
     options = options || {};
-    return fetchAppFeed(options)
-      .then(function (result) {
-        applyFeed(result.payload, result.url);
+    return portfolioDataLayer.poll(options)
+      .then(function () {
         return true;
       })
       .catch(function (error) {
@@ -5296,6 +5309,7 @@
     restoreOrderNotificationSeen();
     renderSession();
     wireEvents();
+    syncPortfolioRoute();
     window.addEventListener("smartsleeve-auth-change", function (event) {
       var detail = event.detail || {};
       var profile = detail.profile || null;

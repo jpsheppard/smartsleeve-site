@@ -118,6 +118,18 @@
     loadCatalogOnce();
   }
 
+  function hideShop() {
+    document.body.classList.remove("public-shop");
+  }
+
+  function syncShopRoute() {
+    if (isShopRoute()) {
+      showShop();
+    } else {
+      hideShop();
+    }
+  }
+
   function merchBrand(product) {
     return /sqts/i.test(product.name || product.key || "") ? "sqts" : "ss";
   }
@@ -759,8 +771,9 @@
       syncAuthProfile(event.detail && event.detail.profile);
     });
     window.addEventListener("hashchange", function () {
-      if (isShopRoute()) showShop();
+      syncShopRoute();
     });
+    window.addEventListener("pageshow", syncShopRoute);
     if (window.MutationObserver) {
       new MutationObserver(function () {
         if (isShopRoute()) {
@@ -776,8 +789,9 @@
     syncAuthProfile();
     renderCart();
     if (isShopRoute()) {
-      window.setTimeout(showShop, 0);
+      window.setTimeout(syncShopRoute, 0);
     } else {
+      hideShop();
       loadCatalogOnce();
     }
   });
