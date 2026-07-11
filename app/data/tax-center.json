@@ -1,0 +1,147 @@
+{
+  "as_of_date": "2026-07-11",
+  "available": true,
+  "disclaimer": "Educational operating view, not tax advice. Rates and wash-sale treatment require CPA review before any live taxable-account action.",
+  "generated_at": "2026-07-11T18:25:23.753779+00:00",
+  "ledger": {
+    "accounts": [],
+    "dispositions": [],
+    "lots": [],
+    "note": "Ledger gains offset and carryforward candidate use only published ledger dispositions; a CPA must reconcile external gains, the $3,000 ordinary-income allowance, and the filed return.",
+    "status": "awaiting_ledger",
+    "summary": {
+      "allowed_loss_ytd_usd": null,
+      "carryforward_candidate_usd": null,
+      "disallowance_rate_pct": null,
+      "harvested_loss_ytd_usd": null,
+      "ledger_gains_offset_ytd_usd": null
+    },
+    "tax_year": 2026
+  },
+  "record_type": "tax_center",
+  "schema_version": 1,
+  "source": {
+    "artifacts": [
+      "tax_harvest_broad.json",
+      "tax_harvest_semis.json",
+      "collision_demo.json"
+    ],
+    "contract": "Tax Authority generated tearsheets + household tax-lot JSONL",
+    "ledger": null,
+    "scenario": "john_2026"
+  },
+  "tax_alpha": {
+    "books": [
+      {
+        "basket": "broad",
+        "carryforward_at_horizon_usd": 0.0,
+        "config": {
+          "commission_per_trade": 0.0,
+          "cost_bps": 2.0,
+          "end_year": 2026,
+          "half_spread_bps": 1.0,
+          "harvest_threshold_pct": 0.05,
+          "max_proxy_rotations": 2,
+          "n_symbols": 30,
+          "replacement_correlation_input": 0.95,
+          "replacement_mode": "proxy",
+          "scan_every": 5,
+          "start_year": 2014
+        },
+        "cost_drag_usd": 580.0,
+        "deferral_value_usd": 30739.0,
+        "disallowance_rate_pct": 0.0,
+        "disallowed_usd": 0.0,
+        "harvest_count": 32,
+        "harvest_yield_pct_per_yr": 0.61,
+        "liquidate_at_horizon": {
+          "after_tax_value_usd": 7237.0,
+          "embedded_gain_taxed_usd": 1088021.0,
+          "tax_alpha_pct_per_yr": 0.015
+        },
+        "modeled_allowed_loss_usd": 76387.0,
+        "modeled_harvested_loss_usd": 76387.0,
+        "modeled_losses_applied_usd": 76387.0,
+        "never_liquidate": {
+          "after_tax_value_usd": 28132.0,
+          "tax_alpha_pct_per_yr": 0.047
+        },
+        "scenario": "john_2026",
+        "tracking_error_pct": 0.232,
+        "window_years": 12.52
+      },
+      {
+        "basket": "semis",
+        "carryforward_at_horizon_usd": 0.0,
+        "config": {
+          "commission_per_trade": 0.0,
+          "cost_bps": 2.0,
+          "end_year": 2026,
+          "half_spread_bps": 1.0,
+          "harvest_threshold_pct": 0.05,
+          "max_proxy_rotations": 2,
+          "n_symbols": 15,
+          "replacement_correlation_input": 0.95,
+          "replacement_mode": "proxy",
+          "scan_every": 5,
+          "start_year": 2015
+        },
+        "cost_drag_usd": 841.0,
+        "deferral_value_usd": 59172.0,
+        "disallowance_rate_pct": 0.0,
+        "disallowed_usd": 0.0,
+        "harvest_count": 24,
+        "harvest_yield_pct_per_yr": 1.16,
+        "liquidate_at_horizon": {
+          "after_tax_value_usd": -319492.0,
+          "embedded_gain_taxed_usd": 16916929.0,
+          "tax_alpha_pct_per_yr": -0.062
+        },
+        "modeled_allowed_loss_usd": 133100.0,
+        "modeled_harvested_loss_usd": 133100.0,
+        "modeled_losses_applied_usd": 133100.0,
+        "never_liquidate": {
+          "after_tax_value_usd": -415136.0,
+          "tax_alpha_pct_per_yr": -0.059
+        },
+        "scenario": "john_2026",
+        "tracking_error_pct": 0.679,
+        "window_years": 11.52
+      }
+    ],
+    "default_basket": "broad",
+    "default_scenario": "john_2026",
+    "framing": "Tax-loss harvesting defers tax; it does not erase it. Never-liquidate is an upper bookend and liquidate-at-horizon is the lower bookend."
+  },
+  "wash_guard": {
+    "accounts": [
+      {
+        "account_id": "alpaca-taxable",
+        "detail": "Live/API-synced account visible to the Tax Authority.",
+        "role": "Harvesting account",
+        "temperature": "hot"
+      },
+      {
+        "account_id": "ibkr-roth",
+        "detail": "Declared or periodically synced account with a projected DRIP.",
+        "role": "Collision account",
+        "temperature": "cold"
+      }
+    ],
+    "collision": {
+      "cause": "DRIP reinvestment in cold IBKR Roth",
+      "collision_date": "2026-06-09",
+      "days_after_harvest": 6,
+      "harvest_date": "2026-06-03",
+      "household_action": "skip_harvest",
+      "household_reason": "harvest would be disallowed by a purchase of VOO in ibkr-roth within 30 days",
+      "realized_loss_at_risk_usd": 22500.0,
+      "single_custodian_action": "clear",
+      "symbol": "VOO",
+      "would_single_account_miss": true
+    },
+    "collisions_caught": 1,
+    "hero_saved_usd": 10147.0,
+    "tax_scenario": "john_2026"
+  }
+}

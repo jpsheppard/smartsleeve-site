@@ -5025,6 +5025,7 @@
       recommendations: ["Recs", "Actionable Sage recommendations ready for review or draft trade tickets."],
       trade: ["Trade Center", "Draft, review, approve, reject, and audit trade decisions."],
       reallocation: ["Reallocation", "Estimate basis cost, settlement friction, and patience before drafting a trade."],
+      "tax-center": ["Tax Center", "Tax alpha, household wash-sale protection, and the account-level lot ledger."],
       sage: ["Sage", "Agent controls, recommendations, decision feed, and execution diagnostics."],
       diagnostics: ["Diagnostics", "Broker health, margin clarity, account coverage, and sync gaps."]
     };
@@ -5362,6 +5363,9 @@
     }
     var accounts = (payload.accounts || []).map(normalizeAccount);
     state.payload = payload;
+    if (window.SmartSleeveTaxCenter && payload.taxCenter) {
+      window.SmartSleeveTaxCenter.applyData(payload.taxCenter);
+    }
     state.feedSource = isRealtimeUpdate ? "realtime" : sourceUrl;
     state.allAccounts = visibleAccountRows(accounts);
     state.accounts = developerFilteredAccounts(state.allAccounts);
