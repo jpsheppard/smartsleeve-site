@@ -239,7 +239,7 @@
       "<label>Last name<input id=\"ss-auth-last-name\" type=\"text\" autocomplete=\"family-name\"></label>",
       "</div>",
       "<label class=\"ss-auth-login-field\"><span id=\"ss-auth-identity-label\">Username</span><input id=\"ss-auth-identity\" type=\"text\" autocomplete=\"username\" autocapitalize=\"none\" spellcheck=\"false\"></label>",
-      "<label class=\"ss-auth-login-field\">Password<input id=\"ss-auth-password\" type=\"password\" autocomplete=\"current-password\" minlength=\"12\" data-lpignore=\"true\" data-1p-ignore=\"true\"></label>",
+      "<label class=\"ss-auth-login-field\">Password<input id=\"ss-auth-password\" type=\"password\" autocomplete=\"current-password\" data-lpignore=\"true\" data-1p-ignore=\"true\"></label>",
       "<label class=\"ss-auth-register-fields\">Confirm password<input id=\"ss-auth-password-confirm\" type=\"password\" autocomplete=\"new-password\" minlength=\"12\" data-lpignore=\"true\" data-1p-ignore=\"true\"></label>",
       "<label class=\"ss-auth-register-fields\">Phone <small>Optional</small><input id=\"ss-auth-phone\" type=\"tel\" autocomplete=\"tel\" placeholder=\"+1 (773) 530-8525\"></label>",
       "<fieldset class=\"ss-auth-register-fields ss-auth-address-group\"><legend>Shipping address <small>Optional</small></legend>",
@@ -311,7 +311,16 @@
       identity.setAttribute("autocomplete", next === "register" ? "email" : "username");
     }
     var password = $("ss-auth-password");
-    if (password) password.setAttribute("autocomplete", next === "register" ? "new-password" : "current-password");
+    if (password) {
+      password.setAttribute("autocomplete", next === "register" ? "new-password" : "current-password");
+      if (next === "register") {
+        password.setAttribute("minlength", "12");
+      } else {
+        // Existing accounts may predate the current new-password policy.
+        // Login must verify the stored password without applying registration rules.
+        password.removeAttribute("minlength");
+      }
+    }
     var forgot = $("ss-auth-forgot");
     if (forgot) forgot.hidden = next !== "login";
     $("ss-auth-submit").textContent = next === "register" ? "Create account" : next === "profile" ? "Save profile" : "Sign in";
