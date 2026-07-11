@@ -12,6 +12,8 @@
   var appFeedRefreshEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/api/app-feed/refresh" : "";
   var realtimeTicketEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/api/realtime-ticket" : "";
   var realtimeParam = params.get("realtime");
+  var FALLBACK_FEED_REFRESH_MS = 60000;
+  var LIVE_FEED_REFRESH_MS = 300000;
   var realtimeEnabled = realtimeParam == null
     ? metaContent("smartsleeve-realtime-enabled") === "true"
     : /^(1|true|on)$/i.test(realtimeParam);
@@ -342,9 +344,11 @@
   }
 
   function handleRealtimeStatus(next) {
+    var previousStatus = state.realtime.status;
     state.realtime.status = next.state || "fallback";
     state.realtime.detail = next.detail || "Polling fallback active.";
     renderRealtimeStatus();
+    if (previousStatus !== state.realtime.status) scheduleFeedRefresh(true);
   }
 
   function handleRealtimeDiagnostic(diagnostic) {
@@ -1879,14 +1883,26 @@
     persistOrderNotificationSeen();
   }
 
-  function scheduleFeedRefresh() {
-    if (state.feedRefreshTimer || !appFeedEndpoint) return;
-    // 5 min, not 60s: each poll costs 2 KV reads (session + account) against the
-    // auth worker's free-tier daily KV operation cap; 60s polling across a few
-    // open tabs was enough to trip Cloudflare's 50%-of-daily-limit alert.
-    state.feedRefreshTimer = window.setInterval(function () {
-      if (!$("auth-gate")) loadFeed({silent: true});
-    }, 300000);
+  function scheduleFeedRefresh(reschedule) {
+    if (!appFeedEndpoint) return;
+    if (reschedule && state.feedRefreshTimer) {
+      window.clearTimeout(state.feedRefreshTimer);
+      state.feedRefreshTimer = null;
+    }
+    if (state.feedRefreshTimer) return;
+    // Fast polling is reserved for the actual fallback state. While the socket
+    // is healthy, retain the lower-cost five-minute poll for dormant accounts
+    // and analytics fields that are not part of realtime protocol v1.
+    var delay = state.realtime.status === "live" ? LIVE_FEED_REFRESH_MS : FALLBACK_FEED_REFRESH_MS;
+    state.feedRefreshTimer = window.setTimeout(function () {
+      state.feedRefreshTimer = null;
+      var refresh = $("auth-gate") ? Promise.resolve(false) : loadFeed({silent: true});
+      Promise.resolve(refresh).then(function () {
+        scheduleFeedRefresh();
+      }, function () {
+        scheduleFeedRefresh();
+      });
+    }, delay);
   }
 
   function buildRecommendations() {

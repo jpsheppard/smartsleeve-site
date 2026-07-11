@@ -12,7 +12,7 @@ Server contract: adjacent platform repository, `docs/realtime_portfolio_protocol
 4. `portfolio.snapshot` and `account.update` messages are validated against protocol v1.
 5. Per-account ordering accepts a higher `sourceSequence` in the same `sourceEpoch`, accepts the first state from a new epoch, and ignores duplicate/lower sequences.
 6. `app/portfolio-data.js` matches the account by exact `accountId`, preserves fallback-only analytics fields, and replaces holdings, quantities, cash, prices, broker/marked values, and freshness metadata.
-7. Polling remains scheduled every five minutes. Poll results are re-merged with the last accepted realtime slices so a fallback response cannot roll a live account backward.
+7. Polling runs every 60 seconds while realtime is disconnected, connecting, or disabled. While realtime is healthy, the app retains a lower-cost five-minute poll for dormant accounts and analytics fields outside protocol v1. Poll results are re-merged with the last accepted realtime slices so a fallback response cannot roll a live account backward.
 
 Realtime absence never deletes a fallback account. An account absent from the scoped `/api/app-feed` response cannot be added by a WebSocket message.
 
@@ -70,4 +70,4 @@ The browser integration harness verifies:
 
 iOS and desktop load `smartsleeve.ai/app/` and inherit this web client after their normal hosted-page refresh. Validate background/foreground and sleep/wake behavior in the packaged shells.
 
-Android product flavors still point at the legacy DigitalOcean CDN app. Move both flavors to the canonical `smartsleeve.ai/app/` URL, or establish a committed canonical artifact-sync process, before declaring Android realtime-enabled.
+Android product flavors use the canonical `smartsleeve.ai/app/` URL and inherit the shared realtime client. Packaged-device QA should verify WebSocket survival across background/foreground transitions and Android WebView process recreation.
