@@ -12,7 +12,7 @@ Server contract: adjacent platform repository, `docs/realtime_portfolio_protocol
 4. `portfolio.snapshot` and `account.update` messages are validated against protocol v1.
 5. Per-account ordering accepts a higher `sourceSequence` in the same `sourceEpoch`, accepts the first state from a new epoch, and ignores duplicate/lower sequences.
 6. `app/portfolio-data.js` matches the account by exact `accountId`, preserves fallback-only analytics fields, and replaces holdings, quantities, cash, prices, broker/marked values, and freshness metadata.
-7. Polling runs every 60 seconds in all connection states. This keeps dormant accounts and analytics fields outside protocol v1 within a one-minute fallback window on Workers Paid. Poll results are re-merged with the last accepted realtime slices so a fallback response cannot roll a live account backward.
+7. Polling runs every five seconds in all connection states. The production Auth Worker uses the same five-second in-isolate app-feed cache and does not touch session KV state for these high-frequency reads. This keeps dormant accounts and analytics fields outside protocol v1 within a five-second fallback window on Workers Paid. Poll results are re-merged with the last accepted realtime slices so a fallback response cannot roll a live account backward.
 
 Realtime absence never deletes a fallback account. An account absent from the scoped `/api/app-feed` response cannot be added by a WebSocket message.
 

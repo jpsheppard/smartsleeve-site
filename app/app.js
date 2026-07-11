@@ -12,7 +12,7 @@
   var appFeedRefreshEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/api/app-feed/refresh" : "";
   var realtimeTicketEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/api/realtime-ticket" : "";
   var realtimeParam = params.get("realtime");
-  var FEED_REFRESH_MS = 60000;
+  var FEED_REFRESH_MS = 5000;
   var realtimeEnabled = realtimeParam == null
     ? metaContent("smartsleeve-realtime-enabled") === "true"
     : /^(1|true|on)$/i.test(realtimeParam);
@@ -1884,7 +1884,7 @@
     if (!appFeedEndpoint) return;
     if (state.feedRefreshTimer) return;
     // Workers Paid provides enough headroom to keep dormant accounts and
-    // analytics fields outside realtime protocol v1 on a one-minute cadence,
+    // analytics fields outside realtime protocol v1 on a five-second cadence,
     // even while the WebSocket is healthy.
     state.feedRefreshTimer = window.setTimeout(function () {
       state.feedRefreshTimer = null;
