@@ -12,8 +12,7 @@
   var appFeedRefreshEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/api/app-feed/refresh" : "";
   var realtimeTicketEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/api/realtime-ticket" : "";
   var realtimeParam = params.get("realtime");
-  var FALLBACK_FEED_REFRESH_MS = 60000;
-  var LIVE_FEED_REFRESH_MS = 300000;
+  var FEED_REFRESH_MS = 60000;
   var realtimeEnabled = realtimeParam == null
     ? metaContent("smartsleeve-realtime-enabled") === "true"
     : /^(1|true|on)$/i.test(realtimeParam);
@@ -344,11 +343,9 @@
   }
 
   function handleRealtimeStatus(next) {
-    var previousStatus = state.realtime.status;
     state.realtime.status = next.state || "fallback";
     state.realtime.detail = next.detail || "Polling fallback active.";
     renderRealtimeStatus();
-    if (previousStatus !== state.realtime.status) scheduleFeedRefresh(true);
   }
 
   function handleRealtimeDiagnostic(diagnostic) {
@@ -1883,17 +1880,12 @@
     persistOrderNotificationSeen();
   }
 
-  function scheduleFeedRefresh(reschedule) {
+  function scheduleFeedRefresh() {
     if (!appFeedEndpoint) return;
-    if (reschedule && state.feedRefreshTimer) {
-      window.clearTimeout(state.feedRefreshTimer);
-      state.feedRefreshTimer = null;
-    }
     if (state.feedRefreshTimer) return;
-    // Fast polling is reserved for the actual fallback state. While the socket
-    // is healthy, retain the lower-cost five-minute poll for dormant accounts
-    // and analytics fields that are not part of realtime protocol v1.
-    var delay = state.realtime.status === "live" ? LIVE_FEED_REFRESH_MS : FALLBACK_FEED_REFRESH_MS;
+    // Workers Paid provides enough headroom to keep dormant accounts and
+    // analytics fields outside realtime protocol v1 on a one-minute cadence,
+    // even while the WebSocket is healthy.
     state.feedRefreshTimer = window.setTimeout(function () {
       state.feedRefreshTimer = null;
       var refresh = $("auth-gate") ? Promise.resolve(false) : loadFeed({silent: true});
@@ -1902,7 +1894,7 @@
       }, function () {
         scheduleFeedRefresh();
       });
-    }, delay);
+    }, FEED_REFRESH_MS);
   }
 
   function buildRecommendations() {
