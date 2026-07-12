@@ -30,4 +30,4 @@ Regression coverage: `merch_checkout/shipment-status.test.mjs` and `merch_checko
 
 ## Product action
 
-Both SmartSleeve and SQTS Gym Towel listings are retired. Static catalog, frontend, sync pipeline, Worker catalog, and direct checkout all enforce the removal.
+The delivered Printful SmartSleeve SS Gym Towel was physically evaluated on July 11, 2026, and its overall quality was extremely poor and unacceptable for sale under the SmartSleeve brand. Both SmartSleeve and SQTS Gym Towel listings were discontinued because they used the same underlying Printful gym-towel product. Static catalog, frontend, sync pipeline, Worker catalog, and direct checkout all enforce the removal. The durable product decision is recorded in `../merch/product-quality-log.md`.

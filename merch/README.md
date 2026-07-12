@@ -2,6 +2,14 @@
 
 These files power the static shop preview at `/app/#shop`.
 
+## Product Quality And Discontinuations
+
+Physical sample decisions are recorded in [`product-quality-log.md`](product-quality-log.md). On July 11, 2026, the Printful SmartSleeve SS Gym Towel failed physical product testing because its overall quality was extremely poor and unacceptable for the SmartSleeve brand. All Printful gym-towel variants, including SS and SQTS versions, were discontinued and removed from sale.
+
+The current Printful men's T-shirts, men's tank tops, men's muscle tees, and women's racerback tanks were also physically tested in early July 2026. All four product types tested as high quality and are approved for the current SmartSleeve and SQTS storefront configurations.
+
+A discontinued product must not be restored from a digital mockup or catalog sync alone. It requires a materially different product or supplier, a new physical sample, and a documented approval entry in the quality log.
+
 ## Print Artwork
 
 - Current approved SmartSleeve SS slogan source: `../brand/smartsleeve-ss-current-best.svg`. The transparent production render is `../brand/smartsleeve-ss-current-best-print-transparent.png`. This is the no-haze SS mark with the approved tight SmartSleeve/slogan spacing and no period after the slogan. See `../docs/asset-registry.md` before replacing or regenerating merch assets.

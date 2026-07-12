@@ -100,7 +100,7 @@ for shipment sent/shipped and delivered events. The Worker stores Printful-to-St
 
 The scheduled reconciliation also treats each Printful shipment independently and scans recent stored Printful orders as a backstop when a historical pending key is absent. A pre-created tracking URL or tracking number does not mean a package shipped, and a delivered package does not mark sibling packages delivered. Multi-item lifecycle mail fails closed when Printful has not yet supplied resolvable shipment-item references; the webhook retries and the poll provides the richer shipment record instead of emailing the full order incorrectly.
 
-Gym towels are intentionally retired from the SmartSleeve shop. They are filtered from catalog sync, omitted from both Worker and static catalogs, and rejected by the checkout endpoint even if stale production variables still exist.
+Gym towels are intentionally retired from the SmartSleeve shop after the Printful SS Gym Towel failed physical quality testing on July 11, 2026. They are filtered from catalog sync, omitted from both Worker and static catalogs, and rejected by the checkout endpoint even if stale production variables still exist. See `../merch/product-quality-log.md` for the product decision and conditions for any future reconsideration.
 
 ### Notification idempotency (no duplicate emails)
 
