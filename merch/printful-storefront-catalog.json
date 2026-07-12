@@ -980,38 +980,6 @@
       ]
     },
     {
-      "front_mockup": "/merch/mockups/printful-444665351-smartsleeve-gym-towel-front.jpg",
-      "front_print_preview": "https://files.cdn.printful.com/files/2f0/2f0bc54cc90dff656d83d7c2ce86cc93_preview.png",
-      "key": "printful-444665351-smartsleeve-gym-towel",
-      "name": "SmartSleeve Gym Towel",
-      "preview": "/merch/mockups/printful-444665351-smartsleeve-gym-towel-front.jpg",
-      "price_label": "$15.99",
-      "prices": {
-        "28X16": "15.99"
-      },
-      "printful_name": "SmartSleeve Gym Towel",
-      "printful_product_id": 444665351,
-      "sizes": [
-        "28X16"
-      ]
-    },
-    {
-      "front_mockup": "/merch/mockups/printful-444665354-sqts-gym-towel-front.jpg",
-      "front_print_preview": "https://files.cdn.printful.com/files/743/743e4eca63bf7cefa0c2f55b41db56de_preview.png",
-      "key": "printful-444665354-sqts-gym-towel",
-      "name": "SQTS Gym Towel",
-      "preview": "/merch/mockups/printful-444665354-sqts-gym-towel-front.jpg",
-      "price_label": "$15.99",
-      "prices": {
-        "28X16": "15.99"
-      },
-      "printful_name": "SQTS Gym Towel",
-      "printful_product_id": 444665354,
-      "sizes": [
-        "28X16"
-      ]
-    },
-    {
       "front_mockup": "/merch/mockups/printful-444665358-smartsleeve-rally-towel-front.jpg",
       "front_print_preview": "https://files.cdn.printful.com/files/cab/cab406fcf63612a5125d2be0a4601a64_preview.png",
       "key": "printful-444665358-smartsleeve-rally-towel",

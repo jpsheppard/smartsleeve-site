@@ -77,7 +77,7 @@ SmartSleeve Shop sends three customer-facing emails:
 
 1. Order placed: the Stripe receipt/order confirmation, with itemized merchandise, addresses, payment method, order status, tracking if available, and an estimated delivery range.
 2. Order shipped: sent from the Printful shipment webhook, with tracking/status links when Printful or the carrier provides customer-safe URLs.
-3. Order delivered: sent from the Printful delivered webhook, with delivery status and tracking details.
+3. Order delivered: sent once per delivered Printful package, with only that package's items, delivery status, and tracking details.
 
 The receipt language stays SmartSleeve-owned. Printful is treated as SmartSleeve's fulfillment vendor and should not be named in customer-facing tracking/status copy.
 
@@ -97,6 +97,10 @@ https://<your-worker-host>/printful-webhook?token=<PRINTFUL_WEBHOOK_SECRET>
 ```
 
 for shipment sent/shipped and delivered events. The Worker stores Printful-to-Stripe order indexes in `MERCH_ORDERS`, then sends each lifecycle email once per **shipment** (not just per order stage), so an order that ships in multiple packages gets one shipped email per package.
+
+The scheduled reconciliation also treats each Printful shipment independently. A pre-created tracking URL or tracking number does not mean a package shipped, and a delivered package does not mark sibling packages delivered. Multi-item lifecycle mail fails closed when Printful has not yet supplied resolvable shipment-item references; the webhook retries and the poll provides the richer shipment record instead of emailing the full order incorrectly.
+
+Gym towels are intentionally retired from the SmartSleeve shop. They are filtered from catalog sync, omitted from both Worker and static catalogs, and rejected by the checkout endpoint even if stale production variables still exist.
 
 ### Notification idempotency (no duplicate emails)
 

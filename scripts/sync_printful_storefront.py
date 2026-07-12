@@ -136,6 +136,11 @@ def merch_sort_key(product: dict[str, Any]) -> tuple[int, int, int, int, str, in
     )
 
 
+def is_retired_merch_product(product: dict[str, Any]) -> bool:
+    """Products intentionally blocked from all future storefront syncs."""
+    return "gym towel" in product_display_text(product)
+
+
 def normalize(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
 
@@ -615,6 +620,8 @@ def build_catalog_and_vars_for_all_products(
     warnings: list[str] = []
 
     for product in products:
+        if is_retired_merch_product(product):
+            continue
         product_id = int(product.get("id") or 0)
         if not product_id:
             continue
@@ -662,6 +669,8 @@ def build_catalog_and_vars(
     warnings: list[str] = []
 
     for target in targets:
+        if is_retired_merch_product({"key": target.key, "name": target.name}):
+            continue
         matched = match_product(target, products, mapping)
         if not matched:
             warnings.append(f"No unique Printful product match for {target.key} ({target.name})")

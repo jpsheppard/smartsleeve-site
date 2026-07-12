@@ -1,0 +1,32 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "smartsleeve-merch-checkout",
+  "main": "cloudflare_worker.js",
+  "compatibility_date": "2026-06-01",
+  "kv_namespaces": [
+    {
+      "binding": "MERCH_ORDERS",
+      "id": "191add415472437cb397c050ce3d18d4"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "NOTIFICATION_LOCK",
+        "class_name": "NotificationLock"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["NotificationLock"]
+    }
+  ],
+  "triggers": {
+    "crons": ["*/30 * * * *"]
+  },
+  "observability": {
+    "enabled": true
+  }
+}

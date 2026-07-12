@@ -166,6 +166,10 @@
     return /(beach|gym|rally)\s*towel/i.test(product.name || product.key || "");
   }
 
+  function isGymTowelProduct(product) {
+    return /gym(?:\s+|-|_)*towel/i.test(product.name || product.key || "");
+  }
+
   function isSingleSurfaceProduct(product) {
     return isMousepadProduct(product) || isSockProduct(product) || isBandanaProduct(product) || isNeckGaiterProduct(product) || isTowelProduct(product);
   }
@@ -438,7 +442,13 @@
 
   function productsFrom(payload) {
     return ((payload && payload.products) || []).filter(function (product) {
-      return product && product.key && product.name && product.sizes && product.sizes.length && !isNeckGaiterProduct(product);
+      return product
+        && product.key
+        && product.name
+        && product.sizes
+        && product.sizes.length
+        && !isNeckGaiterProduct(product)
+        && !isGymTowelProduct(product);
     });
   }
 

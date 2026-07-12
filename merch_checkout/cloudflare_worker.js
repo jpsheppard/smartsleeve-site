@@ -225,7 +225,11 @@ function isPublicSqtsProduct(productKey, product) {
 }
 
 function isPublicMerchProduct(productKey, product) {
-  return Boolean(normalizeProductKey(productKey) && product && product.name);
+  const key = normalizeProductKey(productKey);
+  const label = `${key} ${String(product && product.name || "")}`
+    .toLowerCase()
+    .replace(/[-_]+/g, " ");
+  return Boolean(key && product && product.name && !/\bgym\s+towel\b/.test(label));
 }
 
 function catalogProduct(env, productKey) {
@@ -1963,14 +1967,19 @@ function lifecycleCopy(stage, env, session, fulfillment, options = {}) {
   const statusUrl = fulfillmentStatusUrl(session, fulfillment);
   const delivery = estimatedDeliveryDetails(env, session, fulfillment);
   if (stage === "delivered") {
+    const partial = Boolean(options.partialShipment);
     return {
-      subject: "Your SmartSleeve merch order was delivered",
-      heading: "Your order was delivered",
-      intro: "SmartSleeve has received a delivery update for your merch order.",
+      subject: partial
+        ? "Part of your SmartSleeve merch order was delivered"
+        : "Your SmartSleeve merch order was delivered",
+      heading: partial ? "Part of your order was delivered" : "Your order was delivered",
+      intro: partial
+        ? "A package from your SmartSleeve merch order was delivered. Other items may arrive separately, and you'll get a separate email for each package."
+        : "SmartSleeve has received a delivery update for your merch order.",
       detail: trackingUrl
         ? "Carrier tracking details are linked below."
         : "If the package is not where you expect it, check around the delivery address and contact SmartSleeve if it still cannot be found.",
-      itemsLabel: "Items in your order",
+      itemsLabel: partial ? "Items in this delivery" : "Items in your order",
       trackingLabel: trackingUrl ? "Delivery tracking" : "Tracking",
       trackingText: trackingUrl || "The carrier reported this order delivered.",
       trackingUrl,
@@ -2274,18 +2283,23 @@ async function sendLifecycleEmail(env, session, stage, fulfillment, options = {}
   if (allItems.length === 0) {
     return { status: "skipped", reason: "No order line items available" };
   }
-  // For split shipments, scope the item list to just the parcel(s) in this
-  // shipment so the email doesn't report the whole order as shipped. Falls back
-  // to the full order list when the parcel's items can't be determined.
+  // Scope both shipped and delivered emails to this parcel. For a multi-item
+  // order, fail closed when Printful has not supplied resolvable parcel items;
+  // the webhook will retry and the scheduled API poll can enrich the payload.
   let items = allItems;
   let partialShipment = false;
-  if (stage === "shipped") {
-    const previouslyNotifiedTracking = options.previouslyNotifiedTracking || notifiedShipmentSignatures(options.stored);
+  if (stage === "shipped" || stage === "delivered") {
+    const previouslyNotifiedTracking = options.previouslyNotifiedTracking || notifiedShipmentSignatures(options.stored, stage);
     const scoped = scopeItemsToNewShipments(options.stored, fulfillment, allItems, previouslyNotifiedTracking);
-    if (scoped && scoped.length) {
-      items = scoped;
-      partialShipment = scoped.length < allItems.length;
+    if (!scoped.determined) {
+      return {
+        status: "failed",
+        reason: "Printful parcel items could not be matched to this multi-item order",
+        retryable: true,
+      };
     }
+    items = scoped.items;
+    partialShipment = Boolean(scoped.partial);
   }
   const emailOptions = { partialShipment };
   const copy = lifecycleCopy(stage, env, fullSession, fulfillment, emailOptions);
@@ -2573,9 +2587,6 @@ function storedOrderIsPollable(env, stored, lookbackDays) {
   const notifications = stored.notifications && typeof stored.notifications === "object"
     ? stored.notifications
     : {};
-  if (notifications.delivered) {
-    return false;
-  }
   // Keep polling shipped-but-undelivered orders when delivery or split-shipment
   // polling is enabled, so additional Printful parcels are still detected.
   const keepPollingShipped = printfulDeliveryPollingEnabled(env) || printfulSplitShipmentPollingEnabled(env);
@@ -2599,13 +2610,40 @@ function storedNotificationExists(stored, stage) {
   return Boolean(stored && stored.notifications && stored.notifications[stage]);
 }
 
-// Printful ships parts of an order separately (apparel now, a towel later) and
-// sends a "shipped" event per parcel. Dedupe shipped notifications by a per-shipment
-// signature (tracking number preferred, then shipment id, then split-shipment
-// external id like "<ext>-rest") so each parcel emails the customer exactly once.
+function shipmentRecordsFromFulfillment(fulfillment) {
+  const result = fulfillmentResult(fulfillment);
+  const records = [];
+  if (result && result.shipment && typeof result.shipment === "object") {
+    records.push(result.shipment);
+  }
+  if (result && Array.isArray(result.shipments)) {
+    records.push(...result.shipments.filter((shipment) => shipment && typeof shipment === "object"));
+  }
+  return records;
+}
+
+function shipmentSignatures(shipment) {
+  if (!shipment || typeof shipment !== "object") {
+    return [];
+  }
+  const tracking = shipmentTrackingNumber(shipment);
+  if (tracking) {
+    return [tracking];
+  }
+  const id = shipment.shipment_id ?? shipment.shipment_number ?? shipment.id;
+  return id === undefined || id === null || String(id).trim() === "" ? [] : [`shipment:${String(id).trim()}`];
+}
+
+// Printful ships parts of an order separately and emits one event per parcel.
+// Prefer a parcel's tracking number, then its shipment id, so order ids and
+// pre-created sibling shipments can never collapse into the same notification.
 function shipmentSignaturesFromFulfillment(fulfillment) {
   if (!fulfillment || typeof fulfillment !== "object") {
     return [];
+  }
+  const records = shipmentRecordsFromFulfillment(fulfillment);
+  if (records.length) {
+    return uniqueNonEmpty(records.flatMap(shipmentSignatures));
   }
   const payload = fulfillment.provider_response || fulfillment;
   const tracking = objectValuesByKey(payload, /tracking_number|tracking_code/i);
@@ -2619,20 +2657,20 @@ function shipmentSignaturesFromFulfillment(fulfillment) {
   return signatures;
 }
 
-function notifiedShipmentSignatures(stored) {
-  const map = stored && stored.notifications && stored.notifications.shipped_shipments;
+function notifiedShipmentSignatures(stored, stage = "shipped") {
+  const map = stored && stored.notifications && stored.notifications[`${stage}_shipments`];
   return new Set(map && typeof map === "object" ? Object.keys(map) : []);
 }
 
-// Whether a shipped fulfillment references a parcel we have not emailed about yet.
+// Whether a fulfillment references a parcel we have not emailed about at this stage.
 // When no shipment signature can be extracted, falls back to the original
 // once-per-stage dedup so an unidentifiable shipment can't cause repeat emails.
-function shippedShipmentIsNew(stored, fulfillment) {
+function shipmentNotificationIsNew(stored, stage, fulfillment) {
   const signatures = shipmentSignaturesFromFulfillment(fulfillment);
   if (!signatures.length) {
-    return !storedNotificationExists(stored, "shipped");
+    return !storedNotificationExists(stored, stage);
   }
-  const seen = notifiedShipmentSignatures(stored);
+  const seen = notifiedShipmentSignatures(stored, stage);
   return signatures.some((signature) => !seen.has(signature));
 }
 
@@ -2640,22 +2678,33 @@ function normalizeItemMatchName(value) {
   return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
-// Map Printful order-item id -> item name, from the stored split sub-orders.
-function orderItemNameIndex(stored) {
-  const res = fulfillmentResult(stored && stored.fulfillment);
+// Map Printful order-item id/external-id -> item name from the stored split
+// sub-orders and the current webhook/poll payload.
+function orderItemNameIndex(stored, fulfillment) {
   const index = new Map();
-  const subOrders = Array.isArray(res.orders) ? res.orders : [];
-  for (const subOrder of subOrders) {
-    const items = [].concat(
-      Array.isArray(subOrder.items) ? subOrder.items : [],
-      Array.isArray(subOrder.order_items) ? subOrder.order_items : [],
-    );
-    for (const item of items) {
-      if (item && item.id != null && item.name) {
-        index.set(String(item.id), String(item.name));
-      }
+  const addOrder = (order) => {
+    if (!order || typeof order !== "object") {
+      return;
     }
-  }
+    const items = [].concat(Array.isArray(order.items) ? order.items : [], Array.isArray(order.order_items) ? order.order_items : []);
+    for (const item of items) {
+      if (!item || !item.name) {
+        continue;
+      }
+      [item.id, item.order_item_id, item.external_id, item.order_item_external_id]
+        .filter((value) => value !== undefined && value !== null && String(value).trim())
+        .forEach((value) => index.set(String(value), String(item.name)));
+    }
+  };
+  const addResult = (result) => {
+    if (!result || typeof result !== "object") {
+      return;
+    }
+    addOrder(result.order);
+    (Array.isArray(result.orders) ? result.orders : []).forEach(addOrder);
+  };
+  addResult(fulfillmentResult(stored && stored.fulfillment));
+  addResult(fulfillmentResult(fulfillment));
   return index;
 }
 
@@ -2667,6 +2716,7 @@ function shipmentItemOrderIdsAndNames(shipment) {
   const entries = [].concat(
     Array.isArray(shipment && shipment.items) ? shipment.items : [],
     Array.isArray(shipment && shipment.order_items) ? shipment.order_items : [],
+    Array.isArray(shipment && shipment.shipment_items) ? shipment.shipment_items : [],
   );
   const ids = [];
   const names = [];
@@ -2674,13 +2724,12 @@ function shipmentItemOrderIdsAndNames(shipment) {
     if (item == null) {
       continue;
     }
-    const id = item.order_item_id ?? item.item_id ?? item.id ?? (item.order_item && item.order_item.id);
-    if (id != null) {
-      ids.push(String(id));
-    }
-    if (item.name) {
-      names.push(String(item.name));
-    }
+    [item.order_item_id, item.order_item_external_id, item.item_id, item.id, item.order_item && item.order_item.id]
+      .filter((value) => value !== undefined && value !== null && String(value).trim())
+      .forEach((value) => ids.push(String(value)));
+    [item.order_item_name, item.name]
+      .filter((value) => value !== undefined && value !== null && String(value).trim())
+      .forEach((value) => names.push(String(value)));
     if (item.product && item.product.name) {
       names.push(String(item.product.name));
     }
@@ -2691,12 +2740,11 @@ function shipmentItemOrderIdsAndNames(shipment) {
 // Normalized names of items in shipments not yet emailed, or null when the
 // shipment payload carries no resolvable item references (caller keeps full list).
 function newShipmentItemNames(stored, fulfillment, previouslyNotifiedTracking) {
-  const res = fulfillmentResult(fulfillment);
-  const shipments = Array.isArray(res.shipments) ? res.shipments : [];
+  const shipments = shipmentRecordsFromFulfillment(fulfillment);
   if (!shipments.length) {
     return null;
   }
-  const nameIndex = orderItemNameIndex(stored);
+  const nameIndex = orderItemNameIndex(stored, fulfillment);
   const wanted = new Set();
   let sawReference = false;
   for (const shipment of shipments) {
@@ -2737,22 +2785,25 @@ function receiptItemMatchesShipment(item, wantedNames) {
   return false;
 }
 
-// Scope the order's line items to just the parcel(s) in this shipment. Returns
-// null (caller keeps the full order list) when scoping can't be determined or
-// would select all/none, so a shipped email never shows a wrong or empty list.
+// Scope the order's line items to the current parcel. The `determined` flag is
+// deliberately separate from `partial`: a parcel may legitimately contain every
+// item. Multi-item emails are not sent when Printful gives no resolvable item refs.
 function scopeItemsToNewShipments(stored, fulfillment, receiptItems, previouslyNotifiedTracking) {
-  if (!stored || !Array.isArray(receiptItems) || receiptItems.length <= 1) {
-    return null;
+  if (!Array.isArray(receiptItems) || !receiptItems.length) {
+    return { determined: false, items: [] };
+  }
+  if (receiptItems.length === 1) {
+    return { determined: true, items: receiptItems, partial: false };
   }
   const wanted = newShipmentItemNames(stored, fulfillment, previouslyNotifiedTracking);
   if (!wanted || !wanted.size) {
-    return null;
+    return { determined: false, items: [] };
   }
   const matched = receiptItems.filter((item) => receiptItemMatchesShipment(item, wanted));
-  if (!matched.length || matched.length === receiptItems.length) {
-    return null;
+  if (!matched.length) {
+    return { determined: false, items: [] };
   }
-  return matched;
+  return { determined: true, items: matched, partial: matched.length < receiptItems.length };
 }
 
 function uniqueNonEmpty(values) {
@@ -2878,28 +2929,46 @@ function textFromUnknown(value) {
   return "";
 }
 
-function stageFromPrintfulShipments(shipments, order = {}) {
-  const shipmentList = Array.isArray(shipments) ? shipments : [];
+export function stageFromPrintfulShipment(shipment) {
+  if (!shipment || typeof shipment !== "object") {
+    return "";
+  }
+  const trackingEvents = Array.isArray(shipment.tracking_events) ? shipment.tracking_events : [];
   const combined = textFromUnknown([
-    order && order.status,
-    ...shipmentList.map((shipment) => [
-      shipment.status,
-      shipment.shipment_status,
-      shipment.delivery_status,
-      shipment.delivered_at,
-      shipment.tracking_events,
-    ]),
+    shipment.status,
+    shipment.shipment_status,
+    shipment.delivery_status,
+    shipment.delivered_at,
+    ...trackingEvents.map((event) => event && [event.status, event.type, event.event_type]),
   ]).toLowerCase();
-  if (/\bdelivered\b/.test(combined) || shipmentList.some((shipment) => shipment && shipment.delivered_at)) {
+  if (/\bdelivered\b/.test(combined) || shipment.delivered_at) {
     return "delivered";
   }
-  if (shipmentList.some((shipment) => shipment && (shipment.shipped_at || shipment.tracking_url || shipment.tracking_number))) {
+  // Printful creates a shipment record and My Orders URL while an order is still
+  // waiting for fulfillment. Those fields identify the future parcel; they do not
+  // mean the parcel has left the fulfillment center. Require an explicit provider
+  // status, event, or shipped timestamp before notifying the customer.
+  if (shipment.shipped_at) {
     return "shipped";
   }
   if (/\b(shipped|shipment_sent|sent|in_transit|fulfilled)\b/.test(combined)) {
     return "shipped";
   }
   return "";
+}
+
+export function stageFromPrintfulShipments(shipments, order = {}) {
+  const shipmentList = Array.isArray(shipments) ? shipments : [];
+  const stages = shipmentList.map(stageFromPrintfulShipment);
+  if (stages.includes("delivered")) {
+    return "delivered";
+  }
+  if (stages.includes("shipped")) {
+    return "shipped";
+  }
+  return /\b(shipped|shipment_sent|sent|in_transit|fulfilled)\b/.test(String(order && order.status || "").toLowerCase())
+    ? "shipped"
+    : "";
 }
 
 // A reserved-but-not-yet-committed claim older than this is treated as abandoned
@@ -2915,12 +2984,12 @@ function stableHash(value) {
   return hash.toString(36);
 }
 
-// Per-(session, stage, parcel) claim key. Shipped notifications are keyed by the
-// same parcel signatures the dedup uses, so each parcel is claimed independently and
-// a split order still emails once per box; other stages are keyed per stage.
+// Per-(session, stage, parcel) claim key. Shipment lifecycle notifications use the
+// same parcel signatures as dedup, so split-order shipped and delivered events are
+// each claimed independently.
 function notificationClaimKey(sessionId, stage, fulfillment) {
   const base = notificationKey(sessionId, stage);
-  if (stage !== "shipped") {
+  if (stage !== "shipped" && stage !== "delivered") {
     return base;
   }
   const signatures = shipmentSignaturesFromFulfillment(fulfillment);
@@ -2997,8 +3066,8 @@ async function sendOrderStageNotification(env, sessionId, stage, fulfillment) {
         stored = null;
       }
     }
-    const alreadyNotified = stage === "shipped"
-      ? !shippedShipmentIsNew(stored, fulfillment)
+    const alreadyNotified = stage === "shipped" || stage === "delivered"
+      ? !shipmentNotificationIsNew(stored, stage, fulfillment)
       : storedNotificationExists(stored, stage);
     if (alreadyNotified) {
       return { status: "duplicate", stage, session_id: sessionId };
@@ -3026,7 +3095,7 @@ async function sendOrderStageNotification(env, sessionId, stage, fulfillment) {
   }
   const notification = await sendLifecycleEmail(env, session, stage, fulfillment, {
     stored,
-    previouslyNotifiedTracking: notifiedShipmentSignatures(stored),
+    previouslyNotifiedTracking: notifiedShipmentSignatures(stored, stage),
   });
   if (notification.status === "failed") {
     await releaseNotificationClaim(env, claimKey);
@@ -3038,7 +3107,9 @@ async function sendOrderStageNotification(env, sessionId, stage, fulfillment) {
     }));
     return { status: "failed", stage, session_id: sessionId, notification };
   }
-  const shipmentSignatures = stage === "shipped" ? shipmentSignaturesFromFulfillment(fulfillment) : [];
+  const shipmentSignatures = stage === "shipped" || stage === "delivered"
+    ? shipmentSignaturesFromFulfillment(fulfillment)
+    : [];
   await recordOrderNotification(env, sessionId, stage, notification, stored, shipmentSignatures);
   await commitNotificationClaim(env, claimKey);
   // Keep the pending poll key alive after a shipment when split-shipment polling is
@@ -3047,13 +3118,13 @@ async function sendOrderStageNotification(env, sessionId, stage, fulfillment) {
   const clearAfterShipped = stage === "shipped"
     && !printfulDeliveryPollingEnabled(env)
     && !printfulSplitShipmentPollingEnabled(env);
-  if (stage === "delivered" || clearAfterShipped) {
+  if (clearAfterShipped) {
     await clearPrintfulPendingPoll(env, sessionId, { stored });
   }
   return { status: notification.status, stage, session_id: sessionId, notification };
 }
 
-async function markInferredNotification(env, sessionId, stage, reason) {
+async function markInferredNotification(env, sessionId, stage, reason, fulfillment = null) {
   if (!env.MERCH_ORDERS || !sessionId || !stage) {
     return;
   }
@@ -3061,45 +3132,109 @@ async function markInferredNotification(env, sessionId, stage, reason) {
     status: "inferred",
     reason,
     email_sent: false,
-  });
+  }, null, fulfillment ? shipmentSignaturesFromFulfillment(fulfillment) : []);
 }
 
-async function processPolledPrintfulOrder(env, sessionId, stored) {
-  const deliveredAlready = storedNotificationExists(stored, "delivered");
-  if (deliveredAlready) {
-    await clearPrintfulPendingPoll(env, sessionId, { stored });
-    return { status: "skipped", reason: "delivered notification already recorded", session_id: sessionId };
+async function reconcilePolledShipmentNotifications(env, sessionId, stored, shipments) {
+  if (!env.MERCH_ORDERS || !stored || !Array.isArray(shipments)) {
+    return stored;
   }
+  const notifications = stored.notifications && typeof stored.notifications === "object"
+    ? Object.assign({}, stored.notifications)
+    : {};
+  const currentlyShipped = new Set();
+  const currentlyDelivered = new Set();
+  for (const shipment of shipments) {
+    const stage = stageFromPrintfulShipment(shipment);
+    const signatures = shipmentSignatures(shipment);
+    if (stage === "shipped" || stage === "delivered") {
+      signatures.forEach((signature) => currentlyShipped.add(signature));
+    }
+    if (stage === "delivered") {
+      signatures.forEach((signature) => currentlyDelivered.add(signature));
+    }
+  }
+  let changed = false;
+  const shippedMapExists = notifications.shipped_shipments && typeof notifications.shipped_shipments === "object";
+  if (shippedMapExists) {
+    const filtered = Object.fromEntries(Object.entries(notifications.shipped_shipments)
+      .filter(([signature]) => currentlyShipped.has(signature)));
+    if (Object.keys(filtered).length !== Object.keys(notifications.shipped_shipments).length) {
+      notifications.shipped_shipments = filtered;
+      changed = true;
+    }
+  } else if (notifications.shipped && currentlyShipped.size) {
+    notifications.shipped_shipments = Object.fromEntries(Array.from(currentlyShipped)
+      .map((signature) => [signature, { stored_at: new Date().toISOString(), legacy_inferred: true }]));
+    changed = true;
+  }
+  const deliveredMapExists = notifications.delivered_shipments && typeof notifications.delivered_shipments === "object";
+  if (!deliveredMapExists && notifications.delivered && currentlyDelivered.size) {
+    notifications.delivered_shipments = Object.fromEntries(Array.from(currentlyDelivered)
+      .map((signature) => [signature, { stored_at: new Date().toISOString(), legacy_inferred: true }]));
+    changed = true;
+  }
+  if (!changed) {
+    return stored;
+  }
+  const updated = Object.assign({}, stored, { notifications });
+  await env.MERCH_ORDERS.put(orderKey(sessionId), JSON.stringify(updated));
+  return updated;
+}
+
+export async function processPolledPrintfulOrder(env, sessionId, stored) {
   const shipmentResult = await fetchPrintfulShipmentsForStoredOrder(env, sessionId, stored);
   if (!shipmentResult.ok) {
     return { status: "failed", reason: "Printful shipment lookup failed", session_id: sessionId, failures: shipmentResult.failures };
   }
-  const stage = stageFromPrintfulShipments(shipmentResult.shipments, shipmentResult.order || {});
-  if (!stage) {
+  const shipments = Array.isArray(shipmentResult.shipments) ? shipmentResult.shipments : [];
+  const stagedShipments = shipments
+    .map((shipment) => ({ shipment, stage: stageFromPrintfulShipment(shipment) }))
+    .filter((entry) => entry.stage);
+  if (!stagedShipments.length) {
     return { status: "skipped", reason: "no shipped or delivered status yet", session_id: sessionId };
   }
-  const fulfillment = printfulPollingFulfillment({
-    shipments: shipmentResult.shipments,
-    order: shipmentResult.order,
-    lookup_source: shipmentResult.source,
-    lookup_candidate_type: shipmentResult.candidate && shipmentResult.candidate.type,
-  }, stage);
-  if (stage === "delivered") {
-    const shippedAlready = storedNotificationExists(stored, "shipped");
-    const delivered = await sendOrderStageNotification(env, sessionId, "delivered", fulfillment);
-    if (delivered.status !== "failed") {
-      await clearPrintfulPendingPoll(env, sessionId, { stored });
+  stored = await reconcilePolledShipmentNotifications(env, sessionId, stored, shipments);
+  const results = [];
+  for (const entry of stagedShipments) {
+    const fulfillment = printfulPollingFulfillment({
+      shipments: [entry.shipment],
+      order: shipmentResult.order,
+      lookup_source: shipmentResult.source,
+      lookup_candidate_type: shipmentResult.candidate && shipmentResult.candidate.type,
+    }, entry.stage);
+    if (entry.stage === "delivered") {
+      const shippedAlready = !shipmentNotificationIsNew(stored, "shipped", fulfillment);
+      const delivered = await sendOrderStageNotification(env, sessionId, "delivered", fulfillment);
+      results.push(delivered);
+      if (!shippedAlready && delivered.status !== "failed") {
+        await markInferredNotification(
+          env,
+          sessionId,
+          "shipped",
+          "delivery status was observed before a shipped email was sent",
+          fulfillment,
+        );
+      }
+    } else {
+      results.push(await sendOrderStageNotification(env, sessionId, "shipped", fulfillment));
     }
-    if (!shippedAlready && delivered.status !== "failed") {
-      await markInferredNotification(env, sessionId, "shipped", "delivery status was observed before a shipped email was sent");
-    }
-    return delivered;
   }
-  // stage === "shipped": sendOrderStageNotification dedupes per shipment, so each
-  // parcel emails once. The pending poll key is intentionally left in place (unless
-  // split-shipment polling is disabled inside sendOrderStageNotification) so later
-  // split shipments are still caught; it is pruned on delivery or window expiry.
-  return sendOrderStageNotification(env, sessionId, "shipped", fulfillment);
+  const allKnownShipmentsDelivered = shipments.length > 0
+    && shipments.every((shipment) => stageFromPrintfulShipment(shipment) === "delivered");
+  if (allKnownShipmentsDelivered) {
+    await clearPrintfulPendingPoll(env, sessionId, { stored });
+  }
+  const sent = results.filter((result) => result.status === "sent").length;
+  const failed = results.filter((result) => result.status === "failed");
+  return {
+    status: failed.length ? "failed" : sent ? "sent" : "skipped",
+    reason: failed.length ? "one or more parcel notifications failed" : sent ? undefined : "no new parcel notifications",
+    session_id: sessionId,
+    notification_count: sent,
+    parcel_results: results,
+    all_known_shipments_delivered: allKnownShipmentsDelivered,
+  };
 }
 
 async function pollPrintfulShipmentStatuses(env, context = {}) {
@@ -3181,9 +3316,7 @@ async function pollPrintfulShipmentStatuses(env, context = {}) {
       }
       considered += 1;
       const result = await processPolledPrintfulOrder(env, sessionId, stored);
-      if (result.status === "sent") {
-        notifications += 1;
-      }
+      notifications += Math.max(0, Number(result.notification_count) || (result.status === "sent" ? 1 : 0));
       if (result.status === "failed") {
         failures.push(result);
       }
@@ -3261,14 +3394,15 @@ async function recordOrderNotification(env, sessionId, stage, notification, exis
       ? stored.notifications
       : {};
     notifications[stage] = { stored_at: storedAt, notification };
-    if (stage === "shipped" && Array.isArray(shipmentSignatures) && shipmentSignatures.length) {
-      const shippedShipments = notifications.shipped_shipments && typeof notifications.shipped_shipments === "object"
-        ? notifications.shipped_shipments
+    if ((stage === "shipped" || stage === "delivered") && Array.isArray(shipmentSignatures) && shipmentSignatures.length) {
+      const mapKey = `${stage}_shipments`;
+      const notifiedShipments = notifications[mapKey] && typeof notifications[mapKey] === "object"
+        ? notifications[mapKey]
         : {};
       for (const signature of shipmentSignatures) {
-        shippedShipments[signature] = { stored_at: storedAt };
+        notifiedShipments[signature] = { stored_at: storedAt };
       }
-      notifications.shipped_shipments = shippedShipments;
+      notifications[mapKey] = notifiedShipments;
     }
     await env.MERCH_ORDERS.put(orderKey(sessionId), JSON.stringify(Object.assign(stored, { notifications })));
   } catch (_err) {
@@ -3290,6 +3424,55 @@ function printfulWebhookDeliveryInfo(payload, fulfillment) {
   };
 }
 
+function fulfillmentHasShipmentItemReferences(fulfillment) {
+  return shipmentRecordsFromFulfillment(fulfillment).some((shipment) => {
+    const refs = shipmentItemOrderIdsAndNames(shipment);
+    return refs.ids.length > 0 || refs.names.length > 0;
+  });
+}
+
+async function enrichPrintfulWebhookFulfillment(env, sessionId, fulfillment) {
+  if (fulfillmentHasShipmentItemReferences(fulfillment) || !env.MERCH_ORDERS || !env.PRINTFUL_API_KEY) {
+    return fulfillment;
+  }
+  const raw = await env.MERCH_ORDERS.get(orderKey(sessionId));
+  if (!raw) {
+    return fulfillment;
+  }
+  let stored;
+  try {
+    stored = JSON.parse(raw);
+  } catch (_err) {
+    return fulfillment;
+  }
+  const lookup = await fetchPrintfulShipmentsForStoredOrder(env, sessionId, stored);
+  if (!lookup.ok) {
+    return fulfillment;
+  }
+  const eventShipments = shipmentRecordsFromFulfillment(fulfillment);
+  const eventSignatures = new Set(eventShipments.flatMap(shipmentSignatures));
+  const eventIds = new Set(eventShipments
+    .map((shipment) => shipment && (shipment.shipment_id ?? shipment.id))
+    .filter((value) => value !== undefined && value !== null)
+    .map(String));
+  const matched = (lookup.shipments || []).find((shipment) => {
+    const id = shipment && (shipment.shipment_id ?? shipment.id);
+    if (id !== undefined && id !== null && eventIds.has(String(id))) {
+      return true;
+    }
+    return shipmentSignatures(shipment).some((signature) => eventSignatures.has(signature));
+  });
+  if (!matched) {
+    return fulfillment;
+  }
+  return printfulPollingFulfillment({
+    shipments: [matched],
+    order: lookup.order,
+    lookup_source: lookup.source,
+    webhook_payload: fulfillment.provider_response,
+  }, fulfillment.status);
+}
+
 async function handlePrintfulWebhook(request, env) {
   const url = new URL(request.url);
   if (!isPrintfulWebhookAuthorized(request, env, url)) {
@@ -3309,7 +3492,8 @@ async function handlePrintfulWebhook(request, env) {
       stage,
     }, 202);
   }
-  const fulfillment = printfulWebhookFulfillment(payload, stage);
+  const webhookFulfillment = printfulWebhookFulfillment(payload, stage);
+  const fulfillment = await enrichPrintfulWebhookFulfillment(env, sessionId, webhookFulfillment);
   const delivery = printfulWebhookDeliveryInfo(payload, fulfillment);
   // Observability: log every delivery so duplicate/retried Printful webhooks are
   // visible in `wrangler tail` / Cloudflare logs (the DO lock makes them harmless).

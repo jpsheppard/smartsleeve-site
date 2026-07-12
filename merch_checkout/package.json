@@ -5,9 +5,9 @@
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",
     "wrangler": "wrangler",
-    "test": "node dedup.test.mjs"
+    "test": "node dedup.test.mjs && node shipment-status.test.mjs && node split-shipment.test.mjs"
   },
   "devDependencies": {
-    "wrangler": "latest"
+    "wrangler": "^4.110.0"
   }
 }
