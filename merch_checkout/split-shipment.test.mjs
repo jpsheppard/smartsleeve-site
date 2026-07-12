@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import worker, { processPolledPrintfulOrder } from "./cloudflare_worker.js";
+import worker, { pollPrintfulShipmentStatuses, processPolledPrintfulOrder } from "./cloudflare_worker.js";
 
 const SID = "cs_test_SPLIT";
 const ORDER_KEY = `stripe:session:${SID}`;
@@ -163,15 +163,16 @@ function makeEnv(order) {
   const order = storedOrder(legacyNotifications);
   const env = makeEnv(order);
   sentEmails = [];
-  const migrated = await processPolledPrintfulOrder(env, SID, order);
-  assert.equal(migrated.notification_count, 0, "deploy migration must not repeat today's customer emails");
+  const migrated = await pollPrintfulShipmentStatuses(env, { cron: "test" });
+  assert.equal(migrated.considered, 1, "recent-order fallback must find an order with no pending key");
+  assert.equal(migrated.notifications, 0, "deploy migration must not repeat today's customer emails");
   const saved = JSON.parse(await env.MERCH_ORDERS.get(ORDER_KEY));
   assert.ok(!saved.notifications.shipped_shipments["BEACH-TRACK"], "legacy false-positive future parcel must be unmarked");
   assert.ok(saved.notifications.delivered_shipments["GYM-TRACK"], "the already-emailed delivered parcel must be inferred");
 
   currentShipments = [gym(), fleece(), beach("shipped")];
-  const next = await processPolledPrintfulOrder(env, SID, saved);
-  assert.equal(next.notification_count, 1);
+  const next = await pollPrintfulShipmentStatuses(env, { cron: "test" });
+  assert.equal(next.notifications, 1);
   assert.equal(sentEmails.length, 1);
   assert.match(sentEmails[0].text, /Beach Towel/);
   assert.doesNotMatch(sentEmails[0].text, /Gym Towel|Fleece Jacket/);

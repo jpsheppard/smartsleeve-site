@@ -24,6 +24,7 @@ The scheduled poll classified the complete array returned by Printful as one ord
 - Ignore pre-created tracking URLs, tracking numbers, and free-form carrier text unless an explicit shipped status or timestamp exists.
 - Deduplicate both shipped and delivered messages per parcel.
 - Reconcile legacy notification state so future/unshipped tracking numbers are unmarked without repeating the already-sent July 11 delivery email.
+- Scan recent stored Printful orders when an older Worker already cleared their pending-poll key.
 
 Regression coverage: `merch_checkout/shipment-status.test.mjs` and `merch_checkout/split-shipment.test.mjs`.
 

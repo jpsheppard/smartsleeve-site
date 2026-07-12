@@ -3237,7 +3237,7 @@ export async function processPolledPrintfulOrder(env, sessionId, stored) {
   };
 }
 
-async function pollPrintfulShipmentStatuses(env, context = {}) {
+export async function pollPrintfulShipmentStatuses(env, context = {}) {
   if (!env.MERCH_ORDERS) {
     return { status: "skipped", reason: "MERCH_ORDERS KV binding not configured" };
   }
@@ -3259,6 +3259,7 @@ async function pollPrintfulShipmentStatuses(env, context = {}) {
   let notifications = 0;
   let pruned = 0;
   const failures = [];
+  const processedSessionIds = new Set();
   do {
     const remainingScan = scanLimit - scanned;
     if (remainingScan <= 0 || considered >= limit) {
@@ -3315,6 +3316,7 @@ async function pollPrintfulShipmentStatuses(env, context = {}) {
         continue;
       }
       considered += 1;
+      processedSessionIds.add(sessionId);
       const result = await processPolledPrintfulOrder(env, sessionId, stored);
       notifications += Math.max(0, Number(result.notification_count) || (result.status === "sent" ? 1 : 0));
       if (result.status === "failed") {
@@ -3322,6 +3324,54 @@ async function pollPrintfulShipmentStatuses(env, context = {}) {
       }
     }
   } while (cursor && scanned < scanLimit && considered < limit);
+
+  // Backstop historical orders whose pending key was lost or cleared by an older
+  // Worker. Exact order-key parsing excludes notification/claim records, and the
+  // same lookback/pollability checks keep this bounded to recent Printful orders.
+  let orderCursor;
+  do {
+    const remainingScan = scanLimit - scanned;
+    if (remainingScan <= 0 || considered >= limit) {
+      break;
+    }
+    const listed = await env.MERCH_ORDERS.list({
+      prefix: "stripe:session:",
+      limit: Math.min(1000, remainingScan),
+      cursor: orderCursor,
+    });
+    orderCursor = listed.cursor;
+    for (const key of listed.keys || []) {
+      if (considered >= limit || scanned >= scanLimit) {
+        break;
+      }
+      scanned += 1;
+      const sessionId = storedOrderSessionIdFromKey(key.name);
+      if (!sessionId || processedSessionIds.has(sessionId)) {
+        continue;
+      }
+      const raw = await env.MERCH_ORDERS.get(key.name);
+      if (!raw) {
+        continue;
+      }
+      let stored;
+      try {
+        stored = JSON.parse(raw);
+      } catch (_err) {
+        failures.push({ session_id: sessionId, reason: "stored order JSON parse failed" });
+        continue;
+      }
+      if (!storedOrderIsPollable(env, stored, lookbackDays)) {
+        continue;
+      }
+      considered += 1;
+      processedSessionIds.add(sessionId);
+      const result = await processPolledPrintfulOrder(env, sessionId, stored);
+      notifications += Math.max(0, Number(result.notification_count) || (result.status === "sent" ? 1 : 0));
+      if (result.status === "failed") {
+        failures.push(result);
+      }
+    }
+  } while (orderCursor && scanned < scanLimit && considered < limit);
   return {
     status: failures.length ? "completed_with_failures" : "completed",
     cron: context.cron,

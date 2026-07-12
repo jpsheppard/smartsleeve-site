@@ -98,7 +98,7 @@ https://<your-worker-host>/printful-webhook?token=<PRINTFUL_WEBHOOK_SECRET>
 
 for shipment sent/shipped and delivered events. The Worker stores Printful-to-Stripe order indexes in `MERCH_ORDERS`, then sends each lifecycle email once per **shipment** (not just per order stage), so an order that ships in multiple packages gets one shipped email per package.
 
-The scheduled reconciliation also treats each Printful shipment independently. A pre-created tracking URL or tracking number does not mean a package shipped, and a delivered package does not mark sibling packages delivered. Multi-item lifecycle mail fails closed when Printful has not yet supplied resolvable shipment-item references; the webhook retries and the poll provides the richer shipment record instead of emailing the full order incorrectly.
+The scheduled reconciliation also treats each Printful shipment independently and scans recent stored Printful orders as a backstop when a historical pending key is absent. A pre-created tracking URL or tracking number does not mean a package shipped, and a delivered package does not mark sibling packages delivered. Multi-item lifecycle mail fails closed when Printful has not yet supplied resolvable shipment-item references; the webhook retries and the poll provides the richer shipment record instead of emailing the full order incorrectly.
 
 Gym towels are intentionally retired from the SmartSleeve shop. They are filtered from catalog sync, omitted from both Worker and static catalogs, and rejected by the checkout endpoint even if stale production variables still exist.
 
