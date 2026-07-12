@@ -2,6 +2,38 @@
 
 This log records physical product tests, quality decisions, and discontinued merchandise. A product marked **Discontinued** must not appear in the public catalog or be accepted by checkout unless a later dated entry documents a replacement product and an approved physical sample.
 
+## 2026-07-12 — Printful Accessories
+
+### SmartSleeve Beach Towel
+
+- **Decision:** Approved to remain on sale
+- **Quality assessment:** Acceptable, but not excellent
+
+A physical SmartSleeve Beach Towel was received and evaluated on July 12, 2026. Its quality was acceptable for continued sale, although it did not test as highly as the approved apparel, bandanas, or socks. The current Printful beach-towel product may remain in the merch store.
+
+### SmartSleeve and SQTS Bandanas
+
+- **Decision:** Approved
+- **Quality assessment:** Excellent
+
+Physical SmartSleeve and SQTS bandanas were received and evaluated on July 12, 2026. Both designs tested as excellent-quality merchandise and are approved to remain in the merch store.
+
+### SmartSleeve Crew Socks
+
+- **Decision:** Approved
+- **Quality assessment:** Excellent
+- **Production-art constraint:** SS chip logo only; no `SmartSleeve` name beneath the logo
+
+Physical SmartSleeve crew socks were received and evaluated on July 12, 2026. The sock quality tested as excellent and the product is approved to remain in the merch store.
+
+Printful revised the sock artwork for production. The manufactured SmartSleeve sock uses only the SS chip logo and does not include the `SmartSleeve` name beneath it. This is an artwork constraint, not a product-quality defect. Storefront imagery must show the production-accurate SS-only design; a mockup displaying the SS logo plus the `SmartSleeve` name is obsolete and must not be used as the customer-facing representation.
+
+The Printful-supplied preview included with the order also displayed the obsolete SS-plus-`SmartSleeve` treatment and did not match the delivered product. For this product, the received physical sample is the source of truth for customer-facing imagery. The storefront therefore uses metadata-stripped photos of the received socks for both the main product view and the embroidery detail inset.
+
+### Approval scope
+
+These decisions cover the current Printful product blanks, print methods, artwork configurations, and fulfillment setup tested above. Retest a physical sample if any of those materially change, and record the later decision in this log.
+
 ## 2026-07-11 — Printful Gym Towels
 
 - **Decision:** Discontinued

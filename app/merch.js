@@ -5,7 +5,7 @@
   var catalogEndpoint = meta("smartsleeve-merch-catalog-endpoint");
   var authEndpoint = meta("smartsleeve-auth-endpoint");
   var registerEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/register" : "";
-  var merchImageVersion = "20260710-approved-ss-reference-v3";
+  var merchImageVersion = "20260712-production-accurate-ss-socks";
   var staticCatalogEndpoint = "/merch/printful-storefront-catalog.json";
   var state = {
     products: [],
@@ -234,6 +234,9 @@
   function merchFrontDetailImage(product) {
     var cut = merchCut(product);
     var brand = merchBrand(product);
+    if (cut === "Socks" && brand === "ss") {
+      return "/merch/insets/smartsleeve-ss-sock-detail.jpg";
+    }
     if (cut === "Polo") {
       return brand === "sqts" ? "/merch/insets/sqts-polo-detail.png" : "/merch/insets/smartsleeve-ss-polo-detail.png";
     }

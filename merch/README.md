@@ -8,6 +8,8 @@ Physical sample decisions are recorded in [`product-quality-log.md`](product-qua
 
 The current Printful men's T-shirts, men's tank tops, men's muscle tees, and women's racerback tanks were also physically tested in early July 2026. All four product types tested as high quality and are approved for the current SmartSleeve and SQTS storefront configurations.
 
+On July 12, 2026, physical samples of additional Printful accessories were evaluated. The SmartSleeve beach towel was acceptable, though not excellent, and may remain on sale. SmartSleeve and SQTS bandanas and the SmartSleeve crew socks tested as excellent and are approved to remain on sale. The manufactured SmartSleeve sock uses the SS chip logo only—without the `SmartSleeve` name beneath it—so customer-facing sock imagery must use that production-accurate design.
+
 A discontinued product must not be restored from a digital mockup or catalog sync alone. It requires a materially different product or supplier, a new physical sample, and a documented approval entry in the quality log.
 
 ## Print Artwork
@@ -36,6 +38,8 @@ A discontinued product must not be restored from a digital mockup or catalog syn
 
 ## Web Previews
 
+- `mockups/printful-444625345-smartsleeve-crew-socks-front.jpg`: production-accurate photo of the received SmartSleeve crew socks, used instead of Printful's inaccurate SS-plus-`SmartSleeve` preview.
+- `insets/smartsleeve-ss-sock-detail.jpg`: close-up of the SS-only embroidery on the received SmartSleeve crew socks.
 - `sqts-original-tee-preview.png`: storefront preview render for the original SQTS tee.
 - `smartsleeve-ss-tee-brand-preview.png`: brand SS tee with front-only art and blank back.
 - `smartsleeve-ss-tee-preview.png`: storefront preview render for the SmartSleeve SS chip tee.
