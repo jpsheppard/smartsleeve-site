@@ -164,15 +164,16 @@
 
   function ensureWidget() {
     if ($("ss-auth-widget")) return;
+    var slot = $("app-account-widget-slot");
     var widget = document.createElement("div");
     widget.id = "ss-auth-widget";
-    widget.className = "ss-auth-widget";
+    widget.className = "ss-auth-widget" + (slot ? " ss-auth-widget--embedded" : "");
     widget.innerHTML = [
       "<div class=\"ss-auth-status\"><b id=\"ss-auth-title\">SmartSleeve</b><span id=\"ss-auth-subtitle\">Checking session</span></div>",
       "<button type=\"button\" class=\"ss-auth-button\" id=\"ss-auth-open\">Sign in</button>",
       "<button type=\"button\" class=\"ss-auth-link\" id=\"ss-auth-logout\" hidden>Sign out</button>"
     ].join("");
-    document.body.appendChild(widget);
+    (slot || document.body).appendChild(widget);
     $("ss-auth-open").addEventListener("click", function () { openModal(state.profile ? "profile" : "login"); });
     $("ss-auth-logout").addEventListener("click", logout);
   }

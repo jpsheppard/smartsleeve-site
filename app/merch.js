@@ -3,27 +3,17 @@
 
   var checkoutEndpoint = meta("smartsleeve-merch-checkout-endpoint");
   var catalogEndpoint = meta("smartsleeve-merch-catalog-endpoint");
-  var authEndpoint = meta("smartsleeve-auth-endpoint");
-  var registerEndpoint = authEndpoint ? authEndpoint.replace(/\/$/, "") + "/register" : "";
   var merchImageVersion = "20260712-production-accurate-ss-socks";
   var staticCatalogEndpoint = "/merch/printful-storefront-catalog.json";
+  var cartStorageKey = "smartsleeve_merch_cart_v1";
   var state = {
     products: [],
     cart: [],
+    cartRestored: false,
     catalogLoaded: false,
     checkoutMode: "guest",
     customerEmail: "",
-    authProfile: null,
-    account: {
-      username: "",
-      firstName: "",
-      middleName: "",
-      lastName: "",
-      phone: "",
-      password: "",
-      passwordConfirm: "",
-      acceptedTerms: false
-    }
+    authProfile: null
   };
 
   function $(id) {
@@ -85,13 +75,61 @@
   }
 
   function syncAuthProfile(profile) {
-    state.authProfile = profile || currentAuthProfile();
+    var previousProfile = state.authProfile;
+    state.authProfile = arguments.length
+      ? (profile || null)
+      : ((window.SmartSleeveAuth && window.SmartSleeveAuth.state && window.SmartSleeveAuth.state.profile) || null);
     var signedInRadio = document.querySelector("input[name=\"merch-checkout-mode\"][value=\"signed_in\"]");
     var guestRadio = document.querySelector("input[name=\"merch-checkout-mode\"][value=\"guest\"]");
-    if (state.authProfile && signedInRadio && guestRadio && guestRadio.checked && !state.customerEmail) {
+    var emailInput = $("merch-customer-email");
+    if (state.authProfile && signedInRadio) {
       signedInRadio.checked = true;
+    } else if (guestRadio) {
+      guestRadio.checked = true;
+      if (previousProfile && emailInput && normalizeEmail(emailInput.value) === normalizeEmail(previousProfile.email)) {
+        emailInput.value = "";
+      }
     }
     updateCheckoutUi();
+  }
+
+  function readStoredCart() {
+    try {
+      var parsed = JSON.parse(window.localStorage.getItem(cartStorageKey) || "[]");
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      return [];
+    }
+  }
+
+  function persistCart() {
+    try {
+      window.localStorage.setItem(cartStorageKey, JSON.stringify(state.cart.map(function (item) {
+        return {
+          product_key: item.product.key,
+          size: item.size,
+          quantity: item.quantity
+        };
+      })));
+    } catch (error) {
+      // Checkout still works when browser storage is unavailable.
+    }
+  }
+
+  function restoreCart() {
+    if (state.cartRestored) return;
+    state.cartRestored = true;
+    state.cart = readStoredCart().map(function (stored) {
+      var product = state.products.find(function (item) { return item.key === stored.product_key; });
+      var size = String(stored.size || "");
+      if (!product || (product.sizes || []).indexOf(size) === -1) return null;
+      return {
+        product: product,
+        size: size,
+        quantity: Math.max(1, Math.min(9, Number(stored.quantity) || 1))
+      };
+    }).filter(Boolean);
+    persistCart();
   }
 
   function cssEscape(value) {
@@ -187,9 +225,9 @@
     if (isOuterwearProduct(product)) return "Right chest logo";
     if (/polo/i.test(product.name || product.key || "")) return "Left chest logo";
     var value = String(product.name || product.key || "").toLowerCase();
-    if (value.indexOf("website+qr") !== -1 || value.indexOf("website-qr") !== -1) return "Website + QR";
+    if (/website\s*(?:\+|-)\s*qr/.test(value)) return "Website + QR";
     if (value.indexOf("website") !== -1) return "Website";
-    return "Black";
+    return "Plain back";
   }
 
   function merchCut(product) {
@@ -406,7 +444,7 @@
       var bOrder = umbrellaKey(b) === "Office" ? officeOrder : umbrellaKey(b) === "Towels" ? towelOrder : apparelOrder;
       return sortValue(merchCut(a), aOrder) - sortValue(merchCut(b), bOrder)
         || sortValue(merchFrontLabel(a), ["SS", "SQTS"]) - sortValue(merchFrontLabel(b), ["SS", "SQTS"])
-        || sortValue(merchBackType(a), ["Black", "Website", "Website + QR", "Right chest logo", "Full-surface print"]) - sortValue(merchBackType(b), ["Black", "Website", "Website + QR", "Right chest logo", "Full-surface print"])
+        || sortValue(merchBackType(a), ["Plain back", "Website", "Website + QR", "Right chest logo", "Full-surface print"]) - sortValue(merchBackType(b), ["Plain back", "Website", "Website + QR", "Right chest logo", "Full-surface print"])
         || merchDisplayName(a).localeCompare(merchDisplayName(b));
     });
   }
@@ -532,6 +570,7 @@
       var livePayload = results[0].status === "fulfilled" ? results[0].value : null;
       var fallbackPayload = results[1].status === "fulfilled" ? results[1].value : null;
       state.products = fallbackPayload ? productsFrom(fallbackPayload) : productsFrom(livePayload);
+      restoreCart();
       renderCatalog();
       renderCart();
     }).catch(function () {
@@ -543,23 +582,13 @@
 
   function readCheckoutForm() {
     var checked = document.querySelector("input[name=\"merch-checkout-mode\"]:checked");
-    state.checkoutMode = checked ? checked.value : "guest";
     var profile = currentAuthProfile();
+    state.checkoutMode = profile ? "signed_in" : (checked ? checked.value : "guest");
     var emailInput = $("merch-customer-email");
     if (state.checkoutMode === "signed_in" && profile && profile.email && emailInput) {
       emailInput.value = profile.email;
     }
     state.customerEmail = normalizeEmail((emailInput || {}).value || "");
-    state.account = {
-      username: String(($("merch-account-username") || {}).value || "").trim(),
-      firstName: String(($("merch-account-first-name") || {}).value || "").trim(),
-      middleName: String(($("merch-account-middle-name") || {}).value || "").trim(),
-      lastName: String(($("merch-account-last-name") || {}).value || "").trim(),
-      phone: String(($("merch-account-phone") || {}).value || "").trim(),
-      password: String(($("merch-account-password") || {}).value || ""),
-      passwordConfirm: String(($("merch-account-password-confirm") || {}).value || ""),
-      acceptedTerms: Boolean(($("merch-account-terms") || {}).checked)
-    };
   }
 
   function validation() {
@@ -573,22 +602,15 @@
       return {ok: true, message: "Signed in. Saved email and shipping profile will be sent securely to Stripe Checkout."};
     }
     if (!validEmail(state.customerEmail)) return {ok: false, message: "Enter a valid email to receive your receipt."};
-    if (state.checkoutMode !== "create_account") return {ok: true, message: "Shipping is free. Taxes are calculated by Stripe if applicable."};
-    if (!registerEndpoint) return {ok: false, message: "Account creation is not available; use guest checkout."};
-    if (!state.account.username) return {ok: false, message: "Choose a username or use guest checkout."};
-    if (!state.account.firstName || !state.account.lastName) return {ok: false, message: "Enter first and last name for the SmartSleeve user."};
-    if (state.account.password.length < 12) return {ok: false, message: "Use a password of at least 12 characters."};
-    if (state.account.password !== state.account.passwordConfirm) return {ok: false, message: "Password confirmation does not match."};
-    if (!state.account.acceptedTerms) return {ok: false, message: "Confirm the SmartSleeve user account scope."};
-    return {ok: true, message: "Account setup starts before Stripe checkout. Shipping is free."};
+    return {ok: true, message: "Shipping is free. Taxes are calculated by Stripe if applicable."};
   }
 
   function updateCheckoutUi() {
     readCheckoutForm();
-    var fields = $("merch-account-fields");
-    if (fields) fields.hidden = state.checkoutMode !== "create_account";
+    var checkoutChoice = document.querySelector(".merch-checkout-choice");
     var signedInFields = $("merch-signed-in-fields");
     var profile = currentAuthProfile();
+    if (checkoutChoice) checkoutChoice.hidden = Boolean(profile);
     var emailInput = $("merch-customer-email");
     if (emailInput) {
       emailInput.readOnly = state.checkoutMode === "signed_in" && Boolean(profile && profile.email);
@@ -605,6 +627,8 @@
           ? (shippingAddress(profile) ? "Saved shipping address is ready for Stripe Checkout." : "No saved shipping address yet. Add it in Account to reduce checkout typing.")
           : "Sign in to reuse your saved profile across SmartSleeve."
       );
+      var signInButton = $("merch-sign-in-button");
+      if (signInButton) signInButton.textContent = profile ? "Manage account" : "Sign in or create account";
     }
     var next = validation();
     var button = $("merch-checkout-button");
@@ -648,6 +672,7 @@
     } else {
       state.cart.push({product: product, size: size, quantity: 1});
     }
+    persistCart();
     renderCart();
   }
 
@@ -655,6 +680,7 @@
     state.cart = state.cart.filter(function (item) {
       return merchCartKey(item.product.key, item.size) !== key;
     });
+    persistCart();
     renderCart();
   }
 
@@ -662,36 +688,8 @@
     var item = state.cart.find(function (cartItem) { return merchCartKey(cartItem.product.key, cartItem.size) === key; });
     if (!item) return;
     item.quantity = Math.max(1, Math.min(9, Number(quantity) || 1));
+    persistCart();
     renderCart();
-  }
-
-  function createAccountIfRequested() {
-    if (state.checkoutMode !== "create_account") return Promise.resolve();
-    return fetch(registerEndpoint, {
-      method: "POST",
-      mode: "cors",
-      credentials: "include",
-      headers: {"Content-Type": "application/json", "Accept": "application/json"},
-      body: JSON.stringify({
-        username: state.account.username,
-        email: state.customerEmail,
-        first_name: state.account.firstName,
-        middle_name: state.account.middleName,
-        last_name: state.account.lastName,
-        phone: state.account.phone,
-        password: state.account.password,
-        password_confirm: state.account.passwordConfirm,
-        accepted_terms: state.account.acceptedTerms
-      })
-    }).then(function (response) {
-      return response.json().catch(function () { return {}; }).then(function (payload) {
-        if (!response.ok || !payload.ok) {
-          var detail = payload.errors && payload.errors.length ? payload.errors.join(", ") : (payload.error || "registration_failed");
-          if (detail === "account_already_verified") return;
-          throw new Error(detail);
-        }
-      });
-    });
   }
 
   function startCheckout() {
@@ -704,28 +702,26 @@
     var button = $("merch-checkout-button");
     if (button) {
       button.disabled = true;
-      button.textContent = state.checkoutMode === "create_account" ? "Creating account..." : "Opening checkout...";
+      button.textContent = "Opening checkout...";
     }
-    text("merch-cart-note", state.checkoutMode === "create_account" ? "Creating SmartSleeve user, then opening checkout..." : "Opening checkout...");
-    createAccountIfRequested().then(function () {
-      var profile = currentAuthProfile() || {};
-      if (button) button.textContent = "Opening checkout...";
-      return fetch(checkoutEndpoint, {
-        method: "POST",
-        mode: "cors",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({
-          customer_email: state.customerEmail,
-          checkout_mode: state.checkoutMode,
-          account_username: state.checkoutMode === "create_account" ? state.account.username : (profile.username || ""),
-          smartsleeve_account_email: state.checkoutMode === "signed_in" ? (profile.email || "") : "",
-          customer_name: state.checkoutMode === "signed_in" ? displayName(profile) : "",
-          shipping_address: state.checkoutMode === "signed_in" ? shippingAddress(profile) : null,
-          items: state.cart.map(function (item) {
-            return {product_key: item.product.key, size: item.size, quantity: item.quantity};
-          })
+    text("merch-cart-note", "Opening checkout...");
+    persistCart();
+    var profile = currentAuthProfile() || {};
+    fetch(checkoutEndpoint, {
+      method: "POST",
+      mode: "cors",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        customer_email: state.customerEmail,
+        checkout_mode: state.checkoutMode,
+        account_username: profile.username || "",
+        smartsleeve_account_email: state.checkoutMode === "signed_in" ? (profile.email || "") : "",
+        customer_name: state.checkoutMode === "signed_in" ? displayName(profile) : "",
+        shipping_address: state.checkoutMode === "signed_in" ? shippingAddress(profile) : null,
+        items: state.cart.map(function (item) {
+          return {product_key: item.product.key, size: item.size, quantity: item.quantity};
         })
-      });
+      })
     }).then(function (response) {
       return response.json().catch(function () { return {}; }).then(function (payload) {
         if (!response.ok || !payload.checkout_url) throw new Error(payload.error || "Checkout session was not created.");
@@ -772,13 +768,22 @@
         startCheckout();
       });
       form.addEventListener("input", updateCheckoutUi);
-      form.addEventListener("change", updateCheckoutUi);
+      form.addEventListener("change", function (event) {
+        updateCheckoutUi();
+        if (event.target && event.target.matches("input[name=\"merch-checkout-mode\"][value=\"signed_in\"]") && event.target.checked && !currentAuthProfile()) {
+          persistCart();
+          if (window.SmartSleeveAuth && typeof window.SmartSleeveAuth.open === "function") {
+            window.SmartSleeveAuth.open("login");
+          }
+        }
+      });
     }
     var checkout = $("merch-checkout-button");
     if (checkout) checkout.addEventListener("click", startCheckout);
     var signIn = $("merch-sign-in-button");
     if (signIn) {
       signIn.addEventListener("click", function () {
+        persistCart();
         if (window.SmartSleeveAuth && typeof window.SmartSleeveAuth.open === "function") {
           window.SmartSleeveAuth.open(currentAuthProfile() ? "profile" : "login");
         }

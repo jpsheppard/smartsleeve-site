@@ -753,6 +753,83 @@
       ]
     },
     {
+      "back_mockup": "/merch/mockups/printful-445899310-smartsleeve-sqts-women-s-tank-plain-back-back.png",
+      "front_mockup": "/merch/mockups/printful-445899310-smartsleeve-sqts-women-s-tank-plain-back-front.png",
+      "front_print_preview": "https://files.cdn.printful.com/files/ba3/ba378c7a3a7266e7fe01363eb980d3bb_preview.png",
+      "key": "printful-445899310-smartsleeve-sqts-women-s-tank-plain-back",
+      "name": "SQTS Women's Tank - Plain Back",
+      "preview": "/merch/mockups/printful-445899310-smartsleeve-sqts-women-s-tank-plain-back-front.png",
+      "price_label": "$22.99",
+      "prices": {
+        "L": "22.99",
+        "M": "22.99",
+        "S": "22.99",
+        "XL": "22.99",
+        "XS": "22.99"
+      },
+      "printful_name": "SmartSleeve SQTS - Women's Tank - Plain Back",
+      "printful_product_id": 445899310,
+      "sizes": [
+        "XS",
+        "S",
+        "M",
+        "L",
+        "XL"
+      ]
+    },
+    {
+      "back_mockup": "/merch/mockups/printful-445899564-smartsleeve-sqts-women-s-tank-website-back-back.png",
+      "back_print_preview": "https://files.cdn.printful.com/files/892/8921130f075b2e5e87d1421867b811f0_preview.png",
+      "front_mockup": "/merch/mockups/printful-445899564-smartsleeve-sqts-women-s-tank-website-back-front.png",
+      "front_print_preview": "https://files.cdn.printful.com/files/ba3/ba378c7a3a7266e7fe01363eb980d3bb_preview.png",
+      "key": "printful-445899564-smartsleeve-sqts-women-s-tank-website-back",
+      "name": "SQTS Women's Tank - Website Back",
+      "preview": "/merch/mockups/printful-445899564-smartsleeve-sqts-women-s-tank-website-back-front.png",
+      "price_label": "$28.99",
+      "prices": {
+        "L": "28.99",
+        "M": "28.99",
+        "S": "28.99",
+        "XL": "28.99",
+        "XS": "28.99"
+      },
+      "printful_name": "SmartSleeve SQTS - Women's Tank - Website Back",
+      "printful_product_id": 445899564,
+      "sizes": [
+        "XS",
+        "S",
+        "M",
+        "L",
+        "XL"
+      ]
+    },
+    {
+      "back_mockup": "/merch/mockups/printful-445899621-smartsleeve-sqts-women-s-tank-website-qr-back-back.png",
+      "back_print_preview": "https://files.cdn.printful.com/files/f45/f45131a3ba93eb54f7e211e77745a940_preview.png",
+      "front_mockup": "/merch/mockups/printful-445899621-smartsleeve-sqts-women-s-tank-website-qr-back-front.png",
+      "front_print_preview": "https://files.cdn.printful.com/files/ba3/ba378c7a3a7266e7fe01363eb980d3bb_preview.png",
+      "key": "printful-445899621-smartsleeve-sqts-women-s-tank-website-qr-back",
+      "name": "SQTS Women's Tank - Website + QR Back",
+      "preview": "/merch/mockups/printful-445899621-smartsleeve-sqts-women-s-tank-website-qr-back-front.png",
+      "price_label": "$28.99",
+      "prices": {
+        "L": "28.99",
+        "M": "28.99",
+        "S": "28.99",
+        "XL": "28.99",
+        "XS": "28.99"
+      },
+      "printful_name": "SmartSleeve SQTS - Women's Tank - Website+QR Back",
+      "printful_product_id": 445899621,
+      "sizes": [
+        "XS",
+        "S",
+        "M",
+        "L",
+        "XL"
+      ]
+    },
+    {
       "front_mockup": "/merch/mockups/printful-444483126-smartsleeve-fleece-jacket-front.jpg",
       "key": "printful-444483126-smartsleeve-fleece-jacket",
       "name": "SmartSleeve Fleece Jacket",

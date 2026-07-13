@@ -20,8 +20,8 @@
   <link rel="manifest" href="/site.webmanifest">
   <link rel="stylesheet" href="/app/styles.css?v=20260710-realtime-v1">
   <link rel="stylesheet" href="/app/tax-center.css?v=20260711-tax-authority-v1">
-  <link rel="stylesheet" href="/app/merch.css?v=20260710-general-accounts-v1">
-  <link rel="stylesheet" href="/site-auth.css?v=20260710-special-offers-v1">
+  <link rel="stylesheet" href="/app/merch.css?v=20260712-account-nav-v1">
+  <link rel="stylesheet" href="/site-auth.css?v=20260712-embedded-app-v1">
 </head>
 <body>
   <div class="app-shell">
@@ -34,7 +34,11 @@
         <strong id="session-title">Loading account</strong>
         <small id="session-detail">Syncing portfolio snapshot.</small>
       </div>
+      <div id="app-account-widget-slot" class="app-account-widget-slot" aria-label="SmartSleeve account"></div>
       <nav class="primary-nav concise-nav" aria-label="Primary">
+        <a class="website-link" href="/">Website Home</a>
+        <a class="website-link" href="/about.html">About</a>
+        <a class="website-link" href="/contact.html">Contact</a>
         <a href="#dashboard" data-nav="dashboard" class="active">Dashboard</a>
         <a href="#accounts" data-nav="accounts">Accounts</a>
         <a href="#sleeves" data-nav="sleeves">Sleeves</a>
@@ -782,7 +786,12 @@
 
       <section id="shop" class="panel" data-section="shop">
         <div class="shop-public-header">
-          <a class="text-button subtle shop-private-link" href="/app/">Portal</a>
+          <nav class="shop-site-nav" aria-label="SmartSleeve website">
+            <a href="/">Home</a>
+            <a href="/about.html">About</a>
+            <a href="/contact.html">Contact</a>
+            <a class="shop-private-link" href="/app/">Portal</a>
+          </nav>
         </div>
 
         <div class="section-heading merch-heading">
@@ -815,43 +824,13 @@
                 <input id="merch-customer-email" type="email" autocomplete="email" autocapitalize="none" spellcheck="false" required>
               </label>
               <div class="merch-checkout-choice" role="radiogroup" aria-label="Checkout type">
-                <label><input type="radio" name="merch-checkout-mode" value="signed_in"><span>SmartSleeve account</span></label>
                 <label><input type="radio" name="merch-checkout-mode" value="guest" checked><span>Guest checkout</span></label>
-                <label><input type="radio" name="merch-checkout-mode" value="create_account"><span>Create SmartSleeve account</span></label>
+                <label><input type="radio" name="merch-checkout-mode" value="signed_in"><span>SmartSleeve Account</span></label>
               </div>
               <div class="merch-signed-in-fields" id="merch-signed-in-fields" hidden>
                 <b id="merch-signed-in-title">Use your SmartSleeve account</b>
                 <span id="merch-signed-in-detail">Sign in to reuse your saved profile and shipping address.</span>
-                <button type="button" class="text-button" id="merch-sign-in-button">Sign in / manage profile</button>
-              </div>
-              <div class="merch-account-fields" id="merch-account-fields" hidden>
-                <label>Username
-                  <input id="merch-account-username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false">
-                </label>
-                <div class="merch-account-name-row">
-                  <label>First name
-                    <input id="merch-account-first-name" type="text" autocomplete="given-name">
-                  </label>
-                  <label>Middle name (optional)
-                    <input id="merch-account-middle-name" type="text" autocomplete="additional-name">
-                  </label>
-                  <label>Last name
-                    <input id="merch-account-last-name" type="text" autocomplete="family-name">
-                  </label>
-                </div>
-                <label>Phone (optional)
-                  <input id="merch-account-phone" type="tel" autocomplete="tel" placeholder="+1 (773) 530-8525">
-                </label>
-                <label>Password
-                  <input id="merch-account-password" type="password" autocomplete="new-password" minlength="12" data-lpignore="true" data-1p-ignore="true">
-                </label>
-                <label>Confirm password
-                  <input id="merch-account-password-confirm" type="password" autocomplete="new-password" minlength="12" data-lpignore="true" data-1p-ignore="true">
-                </label>
-                <label class="merch-check">
-                  <input id="merch-account-terms" type="checkbox">
-                  <span>This creates a general SmartSleeve user only; it does not authorize broker access or trading.</span>
-                </label>
+                <button type="button" class="text-button" id="merch-sign-in-button">Sign in or create account</button>
               </div>
             </form>
             <dl class="merch-cart-totals">
@@ -941,6 +920,9 @@
   </div>
 
   <nav class="bottom-nav concise-bottom-nav" aria-label="Primary mobile">
+    <a href="/">Home</a>
+    <a href="/about.html">About</a>
+    <a href="/contact.html">Contact</a>
     <a href="#dashboard" data-nav="dashboard" class="active">Dashboard</a>
     <a href="#accounts" data-nav="accounts">Accounts</a>
     <a href="#sleeves" data-nav="sleeves">Sleeves</a>
@@ -958,7 +940,7 @@
   <script src="/app/portfolio-realtime.js?v=20260710-realtime-v1" defer></script>
   <script src="/app/tax-center.js?v=20260711-tax-authority-v1" defer></script>
   <script src="/app/app.js?v=20260710-5s-poll-v4" defer></script>
-  <script src="/site-auth.js?v=20260710-legacy-login-v1" defer></script>
-  <script src="/app/merch.js?v=20260710-realtime-v1" defer></script>
+  <script src="/site-auth.js?v=20260712-embedded-app-v1" defer></script>
+  <script src="/app/merch.js?v=20260712-account-cart-nav-v2" defer></script>
 </body>
 </html>
