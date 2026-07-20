@@ -20,7 +20,7 @@
   <link rel="manifest" href="/site.webmanifest">
   <link rel="stylesheet" href="/app/styles.css?v=20260710-realtime-v1">
   <link rel="stylesheet" href="/app/tax-center.css?v=20260711-tax-authority-v1">
-  <link rel="stylesheet" href="/app/merch.css?v=20260712-account-nav-v1">
+  <link rel="stylesheet" href="/app/merch.css?v=20260719-paid-cart-clear-v1">
   <link rel="stylesheet" href="/site-auth.css?v=20260712-embedded-app-v1">
 </head>
 <body>
@@ -798,6 +798,11 @@
           <h2>Merch Shop</h2>
         </div>
 
+        <div class="merch-order-banner" id="merch-order-banner" role="status" aria-live="polite" hidden>
+          <b id="merch-order-title"></b>
+          <span id="merch-order-detail"></span>
+        </div>
+
         <div class="shop-layout">
           <article class="panel-card merch-catalog-card">
             <div class="card-head">
@@ -941,6 +946,6 @@
   <script src="/app/tax-center.js?v=20260711-tax-authority-v1" defer></script>
   <script src="/app/app.js?v=20260710-5s-poll-v4" defer></script>
   <script src="/site-auth.js?v=20260712-embedded-app-v1" defer></script>
-  <script src="/app/merch.js?v=20260712-account-cart-nav-v2" defer></script>
+  <script src="/app/merch.js?v=20260719-paid-cart-clear-v1" defer></script>
 </body>
 </html>

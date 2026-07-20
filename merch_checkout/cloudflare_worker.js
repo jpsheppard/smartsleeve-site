@@ -46,6 +46,7 @@
 //   GET  /health
 //   GET  /catalog
 //   POST /checkout
+//   POST /checkout-status
 //   POST /stripe-webhook
 //   POST /printful-webhook
 //   POST /admin/retry-printful
@@ -775,6 +776,27 @@ async function createStripeCheckoutSession(request, env) {
     checkout_url: payload.url,
     session_id: payload.id,
     item_count: items.length,
+  });
+}
+
+async function checkoutStatus(request, env) {
+  if (!env.STRIPE_SECRET_KEY) {
+    return jsonResponse(request, env, { error: "Checkout status is not configured" }, 503);
+  }
+  const body = await readJson(request);
+  const sessionId = String(body.session_id || "").trim();
+  if (!isStripeSessionId(sessionId)) {
+    return jsonResponse(request, env, { error: "A valid Stripe Checkout session_id is required" }, 400);
+  }
+  const session = await fetchStripeCheckoutSession(env, sessionId);
+  if (!session || session.error) {
+    const status = session && session.http_status === 404 ? 404 : 502;
+    return jsonResponse(request, env, { error: "Stripe Checkout session could not be confirmed" }, status);
+  }
+  return jsonResponse(request, env, {
+    ok: true,
+    paid: String(session.payment_status || "").toLowerCase() === "paid",
+    checkout_complete: String(session.status || "").toLowerCase() === "complete",
   });
 }
 
@@ -3963,6 +3985,9 @@ export default {
     }
     if (request.method === "POST" && url.pathname === "/checkout") {
       return createStripeCheckoutSession(request, env);
+    }
+    if (request.method === "POST" && url.pathname === "/checkout-status") {
+      return checkoutStatus(request, env);
     }
     if (request.method === "POST" && url.pathname === "/stripe-webhook") {
       return handleStripeWebhook(request, env);

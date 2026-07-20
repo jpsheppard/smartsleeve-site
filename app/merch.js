@@ -6,6 +6,8 @@
   var merchImageVersion = "20260712-production-accurate-ss-socks";
   var staticCatalogEndpoint = "/merch/printful-storefront-catalog.json";
   var cartStorageKey = "smartsleeve_merch_cart_v1";
+  var pendingCheckoutStorageKey = "smartsleeve_merch_pending_checkout_v1";
+  var processedCheckoutsStorageKey = "smartsleeve_merch_processed_checkouts_v1";
   var state = {
     products: [],
     cart: [],
@@ -13,7 +15,8 @@
     catalogLoaded: false,
     checkoutMode: "guest",
     customerEmail: "",
-    authProfile: null
+    authProfile: null,
+    checkoutVerificationSession: ""
   };
 
   function $(id) {
@@ -142,6 +145,158 @@
     return target === "shop" || target === "store" || target === "shop-success" || target === "shop-cancel";
   }
 
+  function shopRouteInfo() {
+    var value = String(window.location.hash || "#").replace(/^#/, "");
+    var separator = value.indexOf("?");
+    var name = separator === -1 ? value : value.slice(0, separator);
+    var query = separator === -1 ? "" : value.slice(separator + 1);
+    return {name: name, params: new URLSearchParams(query)};
+  }
+
+  function isStripeSessionId(value) {
+    return /^cs_(test|live)_[A-Za-z0-9]+$/.test(String(value || "").trim());
+  }
+
+  function checkoutStatusEndpoint() {
+    if (!checkoutEndpoint) return "";
+    try {
+      var url = new URL(checkoutEndpoint, window.location.href);
+      url.pathname = url.pathname.replace(/\/checkout\/?$/, "/checkout-status");
+      url.search = "";
+      url.hash = "";
+      return url.toString();
+    } catch (error) {
+      return "";
+    }
+  }
+
+  function readPendingCheckout() {
+    try {
+      var pending = JSON.parse(window.localStorage.getItem(pendingCheckoutStorageKey) || "null");
+      return pending && isStripeSessionId(pending.session_id) ? pending : null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function storePendingCheckout(sessionId) {
+    if (!isStripeSessionId(sessionId)) return;
+    try {
+      window.localStorage.setItem(pendingCheckoutStorageKey, JSON.stringify({
+        session_id: sessionId,
+        created_at: new Date().toISOString()
+      }));
+    } catch (error) {
+      // A verified success return still works when browser storage is unavailable.
+    }
+  }
+
+  function processedCheckoutIds() {
+    try {
+      var ids = JSON.parse(window.localStorage.getItem(processedCheckoutsStorageKey) || "[]");
+      return Array.isArray(ids) ? ids.filter(isStripeSessionId) : [];
+    } catch (error) {
+      return [];
+    }
+  }
+
+  function rememberProcessedCheckout(sessionId) {
+    try {
+      var ids = processedCheckoutIds().filter(function (id) { return id !== sessionId; });
+      ids.unshift(sessionId);
+      window.localStorage.setItem(processedCheckoutsStorageKey, JSON.stringify(ids.slice(0, 12)));
+      var pending = readPendingCheckout();
+      if (pending && pending.session_id === sessionId) {
+        window.localStorage.removeItem(pendingCheckoutStorageKey);
+      }
+    } catch (error) {
+      // The cart is still cleared in memory when browser storage is unavailable.
+    }
+  }
+
+  function showOrderBanner(title, detail, tone) {
+    var banner = $("merch-order-banner");
+    if (!banner) return;
+    banner.hidden = false;
+    banner.classList.toggle("is-success", tone === "success");
+    banner.classList.toggle("is-warning", tone === "warning");
+    text("merch-order-title", title);
+    text("merch-order-detail", detail);
+  }
+
+  function hideOrderBanner() {
+    var banner = $("merch-order-banner");
+    if (banner) banner.hidden = true;
+  }
+
+  function leaveSuccessRoute() {
+    window.history.replaceState(null, "", "#shop");
+  }
+
+  function clearPurchasedCart(sessionId) {
+    state.cart = [];
+    state.cartRestored = true;
+    persistCart();
+    rememberProcessedCheckout(sessionId);
+    renderCart();
+  }
+
+  function verifyCheckoutReturn() {
+    var route = shopRouteInfo();
+    if (route.name === "shop-cancel") {
+      showOrderBanner("Checkout canceled", "Your cart is unchanged.", "warning");
+      return;
+    }
+    if (route.name !== "shop-success") {
+      hideOrderBanner();
+      return;
+    }
+    var sessionId = String(route.params.get("session_id") || "").trim();
+    if (!isStripeSessionId(sessionId)) {
+      showOrderBanner("Payment not confirmed", "Your cart was left unchanged. Please use your Stripe receipt or contact SmartSleeve if you completed payment.", "warning");
+      return;
+    }
+    if (processedCheckoutIds().indexOf(sessionId) !== -1) {
+      showOrderBanner("Order already confirmed", "This return was already handled, so your current cart was left unchanged.", "success");
+      leaveSuccessRoute();
+      return;
+    }
+    var pending = readPendingCheckout();
+    if (pending && pending.session_id !== sessionId) {
+      showOrderBanner("Checkout return did not match", "Your current cart was left unchanged for safety.", "warning");
+      leaveSuccessRoute();
+      return;
+    }
+    var statusEndpoint = checkoutStatusEndpoint();
+    if (!statusEndpoint || state.checkoutVerificationSession === sessionId) return;
+    state.checkoutVerificationSession = sessionId;
+    showOrderBanner("Confirming payment", "Your cart will clear as soon as Stripe confirms this order.", "");
+    fetch(statusEndpoint, {
+      method: "POST",
+      mode: "cors",
+      cache: "no-store",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({session_id: sessionId})
+    }).then(function (response) {
+      return response.json().catch(function () { return {}; }).then(function (payload) {
+        if (!response.ok) throw new Error(payload.error || "Payment confirmation failed.");
+        var current = shopRouteInfo();
+        if (current.name !== "shop-success" || current.params.get("session_id") !== sessionId) return;
+        if (payload.ok && payload.paid && payload.checkout_complete) {
+          clearPurchasedCart(sessionId);
+          showOrderBanner("Payment confirmed", "Thank you. Your purchased items were removed from the cart, and your receipt has been emailed.", "success");
+          leaveSuccessRoute();
+          return;
+        }
+        state.checkoutVerificationSession = "";
+        showOrderBanner("Payment is still processing", "Your cart was left unchanged. Refresh this page after Stripe finishes processing.", "warning");
+      });
+    }).catch(function () {
+      state.checkoutVerificationSession = "";
+      showOrderBanner("Payment confirmation delayed", "Your cart was left unchanged. Refresh this page or use your Stripe receipt before trying again.", "warning");
+    });
+  }
+
   function showShop() {
     var wasPublicShop = document.body.classList.contains("public-shop");
     document.body.classList.add("public-shop");
@@ -155,6 +310,7 @@
     var gate = $("auth-gate");
     if (gate) gate.remove();
     loadCatalogOnce();
+    verifyCheckoutReturn();
     if (!wasPublicShop) window.dispatchEvent(new CustomEvent("smartsleeve-route-mode", {detail: {shop: true}}));
   }
 
@@ -725,6 +881,7 @@
     }).then(function (response) {
       return response.json().catch(function () { return {}; }).then(function (payload) {
         if (!response.ok || !payload.checkout_url) throw new Error(payload.error || "Checkout session was not created.");
+        storePendingCheckout(payload.session_id);
         window.location.href = payload.checkout_url;
       });
     }).catch(function (error) {

@@ -61,6 +61,41 @@ body.public-shop main {
   font-size: 56px;
 }
 
+.merch-order-banner {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 8px;
+  color: var(--text);
+  background: rgba(15, 23, 42, 0.74);
+}
+
+.merch-order-banner[hidden] {
+  display: none;
+}
+
+.merch-order-banner.is-success {
+  border-color: rgba(57, 255, 20, 0.4);
+  background: rgba(57, 255, 20, 0.08);
+}
+
+.merch-order-banner.is-warning {
+  border-color: rgba(250, 204, 21, 0.4);
+  background: rgba(250, 204, 21, 0.08);
+}
+
+.merch-order-banner b {
+  font-size: 15px;
+}
+
+.merch-order-banner span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .merch-cart-card {
   position: sticky;
   top: 16px;
