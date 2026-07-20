@@ -2,12 +2,13 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-OUTPUT_DIR="${1:-${ROOT_DIR}/.deploy/cloudflare-pages}"
+OUTPUT_INPUT="${1:-${ROOT_DIR}/.deploy/cloudflare-pages}"
 
-case "${OUTPUT_DIR}" in
-  "${ROOT_DIR}/.deploy/"*|/tmp/*|/private/tmp/*) ;;
+case "${OUTPUT_INPUT}" in
+  .deploy/*) OUTPUT_DIR="${ROOT_DIR}/${OUTPUT_INPUT}" ;;
+  "${ROOT_DIR}/.deploy/"*|/tmp/*|/private/tmp/*) OUTPUT_DIR="${OUTPUT_INPUT}" ;;
   *)
-    echo "Refusing to replace an output directory outside .deploy or /tmp: ${OUTPUT_DIR}" >&2
+    echo "Refusing to replace an output directory outside .deploy or /tmp: ${OUTPUT_INPUT}" >&2
     exit 1
     ;;
 esac
