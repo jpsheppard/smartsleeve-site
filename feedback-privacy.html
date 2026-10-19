@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Feedback Privacy | SmartSleeve</title>
+  <meta name="description" content="How SmartSleeve's internal read-only feedback collector accesses, stores and uses email feedback.">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <meta name="theme-color" content="#020617">
+  <style>
+    :root { color-scheme: dark; --bg: #020617; --text: #e5fbe7; --muted: #9fb5a7; --green: #39ff14; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: clamp(20px, 5vw, 64px) 20px; background: var(--bg); color: var(--text); font: 17px/1.7 system-ui, sans-serif; }
+    main { max-width: 780px; margin: auto; }
+    a { color: var(--green); text-underline-offset: .2em; overflow-wrap: anywhere; }
+    a:focus-visible { outline: 2px solid var(--green); outline-offset: 5px; }
+    .brand { display: inline-block; margin-bottom: 2rem; font-weight: 700; text-decoration: none; }
+    h1 { margin: 0; font-size: clamp(32px, 6vw, 48px); line-height: 1.15; }
+    h2 { margin: 2rem 0 .5rem; color: var(--green); font-size: 23px; line-height: 1.35; }
+    p { margin: .75rem 0; }
+    .date, footer { color: var(--muted); font-size: 14px; }
+    footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #284136; }
+  </style>
+</head>
+<body>
+  <main>
+    <a class="brand" href="/">SmartSleeve</a>
+    <h1>Feedback privacy notice</h1>
+    <p class="date">Updated October 19, 2026</p>
+    <p>This notice covers the read-only SmartSleeve Feedback collector introduced on October 19, 2026. It does not cover other SmartSleeve products or the retired automatic implementation service.</p>
+
+    <h2>Purpose</h2>
+    <p>SmartSleeve Feedback is an internal feedback intake service operated by SmartSleeve Quantitative Trading Systems, LLC. It collects messages sent to <a href="mailto:feedback@smartsleeve.ai">feedback@smartsleeve.ai</a> so the mailbox owner can review product feedback. It is not a public Gmail integration or an automatic coding service.</p>
+
+    <h2>What the collector reads</h2>
+    <p>The service uses Google's Gmail read-only permission. That permission can read email messages and settings, but the collector checks the authorized mailbox identity and searches only for messages addressed to the feedback address. It reads matching messages and stores their message identifiers, sender, subject, received time and a bounded text body.</p>
+    <p>It does not download attachments, follow message links, send mail, or change Gmail messages or labels.</p>
+
+    <h2>Storage and use</h2>
+    <p>Feedback is stored on SmartSleeve's private server hosted by DigitalOcean. Access is restricted to the mailbox owner and authorized maintenance needed to operate the service. The feedback archive is used for manual review requested by the owner; it is not automatically submitted to AI services, used to train AI models, sold, or used for advertising.</p>
+    <p>Operational monitoring receives aggregate counts, timestamps and health status, without message contents.</p>
+
+    <h2>Sensitive information</h2>
+    <p>The collector masks common credential patterns, but this does not guarantee that every secret in a message will be removed. Please do not send passwords, access tokens, brokerage credentials or unnecessary sensitive information.</p>
+
+    <h2>Retention and your choices</h2>
+    <p>Archived feedback and the identifiers used to prevent duplicate collection remain stored until manually deleted; there is no automatic deletion schedule.</p>
+    <p>The mailbox owner can revoke the app's access in <a href="https://myaccount.google.com/connections">Google Account connections</a> to stop future collection. Revocation does not delete messages already archived or messages held in Gmail.</p>
+    <p>Contact <a href="mailto:john@smartsleeve.ai">john@smartsleeve.ai</a> about this service or to request review or deletion of archived feedback.</p>
+
+    <footer>© 2026 SmartSleeve Quantitative Trading Systems, LLC.</footer>
+  </main>
+</body>
+</html>
