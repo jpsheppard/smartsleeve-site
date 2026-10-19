@@ -26,6 +26,7 @@ PUBLIC_PATHS=(
   favicon-512x512.png
   favicon.ico
   favicon.svg
+  feedback-privacy.html
   index.html
   merch
   reset-password.html
